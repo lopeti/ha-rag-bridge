@@ -1,8 +1,11 @@
 """Metadata ingestion script.
 
-Exports entity metadata from Home Assistant, creates embeddings using either
-the local or OpenAI backend, and upserts the result into ArangoDB. Only static
-metadata is stored, runtime state information is ignored.
+
+Exports entity metadata from Home Assistant, creates text embeddings using
+either the local or OpenAI backend and
+upserts the result into ArangoDB. Only static metadata is stored, runtime
+state information is ignored.
+
 """
 
 from __future__ import annotations
