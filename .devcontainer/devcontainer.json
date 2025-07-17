@@ -1,0 +1,8 @@
+{
+    "name": "ha-rag-bridge",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "forwardPorts": [8000],
+    "postCreateCommand": "poetry install"
+}
