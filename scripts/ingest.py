@@ -1,9 +1,11 @@
 """Metadata ingestion script.
 
+
 Exports entity metadata from Home Assistant, creates text embeddings using
 either the local or OpenAI backend and
 upserts the result into ArangoDB. Only static metadata is stored, runtime
 state information is ignored.
+
 """
 
 from __future__ import annotations
@@ -22,6 +24,58 @@ from arango import ArangoClient
 
 logger = logging.getLogger(__name__)
 
+
+class EmbeddingBackend:
+    """Abstract embedding backend interface."""
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        """Return embeddings for the given texts."""
+        raise NotImplementedError
+
+
+class LocalBackend(EmbeddingBackend):
+    """Embed texts locally using SentenceTransformers."""
+
+    def __init__(self) -> None:
+        from sentence_transformers import SentenceTransformer
+
+        self.model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        embeddings = self.model.encode(
+            texts,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
+        return [e.tolist() for e in embeddings]
+
+
+class OpenAIBackend(EmbeddingBackend):
+    """Embed texts using the OpenAI API."""
+
+    def __init__(self) -> None:
+        self.client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        model = "text-embedding-3-large"
+        for attempt in range(3):
+            try:
+                resp = self.client.embeddings.create(model=model, input=texts)
+                return [item.embedding for item in resp.data]  # type: ignore[index]
+            except Exception as exc:  # pragma: no cover - network errors
+                if "quota" in str(exc).lower() and model != "text-embedding-3-small":
+                    logger.warning("Quota exceeded, falling back to small model")
+                    model = "text-embedding-3-small"
+                    continue
+
+                if attempt == 2:
+                    raise
+                wait = 2**attempt
+                logger.warning("Embedding retry in %ss due to %s", wait, exc)
+                time.sleep(wait)
+
+        return [[] for _ in texts]
 
 def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
     """GET with up to three retries and exponential backoff."""
@@ -68,29 +122,6 @@ def build_text(entity: dict) -> str:
     return f"{friendly_name}. {area}. {domain}. {synonyms}. {extra_synonyms}".strip()
 
 
-def embed_texts(texts: List[str], client: openai.OpenAI) -> List[List[float]]:
-    """Embed a batch of texts with retry and model fallback."""
-
-    model = "text-embedding-3-large"
-    for attempt in range(3):
-        try:
-            resp = client.embeddings.create(model=model, input=texts)
-            return [item.embedding for item in resp.data]  # type: ignore[index]
-        except Exception as exc:  # pragma: no cover - network errors
-            # Fallback to smaller model on quota errors
-            if "quota" in str(exc).lower() and model != "text-embedding-3-small":
-                logger.warning("Quota exceeded, falling back to small model")
-                model = "text-embedding-3-small"
-                continue
-
-            if attempt == 2:
-                raise
-            wait = 2**attempt
-            logger.warning("Embedding retry in %ss due to %s", wait, exc)
-            time.sleep(wait)
-
-    # Should not reach here but return empty embeddings in case of persistent errors
-    return [[] for _ in texts]
 
 
 def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
@@ -120,7 +151,12 @@ def ingest(entity_id: Optional[str] = None) -> None:
     if not states:
         return
 
-    oai_client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    backend = os.getenv("EMBEDDING_BACKEND", "local").lower()
+    logger.info("Using embedding backend: %s", backend)
+    if backend == "openai":
+        emb_backend: EmbeddingBackend = OpenAIBackend()
+    else:
+        emb_backend = LocalBackend()
 
     arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
     db_name = os.getenv("ARANGO_DB", "_system")
@@ -132,7 +168,7 @@ def ingest(entity_id: Optional[str] = None) -> None:
         batch = states[i : i + batch_size]
         texts = [build_text(e) for e in batch]
         try:
-            embeddings = embed_texts(texts, oai_client)
+            embeddings = emb_backend.embed(texts)
         except Exception as exc:  # pragma: no cover - network errors
             logger.warning("Skipping batch due to embedding error: %s", exc)
             continue
