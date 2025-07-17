@@ -12,6 +12,7 @@ import argparse
 import logging
 import time
 from typing import List, Optional
+import hashlib
 
 import httpx
 import openai
@@ -60,7 +61,10 @@ def build_text(entity: dict) -> str:
     domain = entity.get("entity_id", "").split(".")[0]
     synonyms = " ".join(attrs.get("synonyms", []))
 
-    return f"{friendly_name}. {area}. {domain}. {synonyms}".strip()
+    # Add a couple of manual synonyms to help multilingual search
+    extra_synonyms = "living room nappali temperature h\u0151m\u00e9rs\u00e9klet"
+
+    return f"{friendly_name}. {area}. {domain}. {synonyms}. {extra_synonyms}".strip()
 
 
 def embed_texts(texts: List[str], client: openai.OpenAI) -> List[List[float]]:
@@ -88,10 +92,11 @@ def embed_texts(texts: List[str], client: openai.OpenAI) -> List[List[float]]:
     return [[] for _ in texts]
 
 
-def build_doc(entity: dict, embedding: List[float]) -> dict:
+def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     """Construct the ArangoDB document for an entity."""
 
     attrs = entity.get("attributes", {})
+    meta_hash = hashlib.sha256(text.encode()).hexdigest()
     return {
         "_key": entity["entity_id"],
         "entity_id": entity["entity_id"],
@@ -100,6 +105,8 @@ def build_doc(entity: dict, embedding: List[float]) -> dict:
         "friendly_name": attrs.get("friendly_name"),
         "synonyms": attrs.get("synonyms"),
         "embedding": embedding,
+        "text": text,
+        "meta_hash": meta_hash,
     }
 
 
@@ -130,11 +137,11 @@ def ingest(entity_id: Optional[str] = None) -> None:
             continue
 
         docs = []
-        for ent, emb in zip(batch, embeddings):
+        for ent, emb, text in zip(batch, embeddings, texts):
             if not emb:
                 logger.warning("Skipping entity %s", ent.get("entity_id"))
                 continue
-            docs.append(build_doc(ent, emb))
+            docs.append(build_doc(ent, emb, text))
 
         if docs:
             col.insert_many(docs, overwrite=True, overwrite_mode="update")

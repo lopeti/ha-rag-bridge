@@ -48,4 +48,15 @@ def test_ingest_upserts(monkeypatch):
     args, kwargs = mock_collection.insert_many.call_args
     assert kwargs.get("overwrite") is True
     docs = args[0]
-    assert docs[0]["embedding"]
+    doc = docs[0]
+    assert doc["embedding"]
+    expected_text = (
+        "Test. Kitchen. sensor. foo. living room nappali temperature h\u0151m\u00e9rs\u00e9klet"
+    )
+    assert doc["text"] == expected_text
+    import hashlib
+
+    assert (
+        doc["meta_hash"]
+        == hashlib.sha256(expected_text.encode()).hexdigest()
+    )
