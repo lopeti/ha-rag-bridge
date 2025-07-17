@@ -9,6 +9,7 @@ def test_ingest_upserts(monkeypatch):
         "HA_URL": "http://ha",
         "HA_TOKEN": "token",
         "OPENAI_API_KEY": "sk",
+        "EMBEDDING_BACKEND": "openai",
         "ARANGO_URL": "http://db",
         "ARANGO_USER": "root",
         "ARANGO_PASS": "pass",
@@ -29,11 +30,9 @@ def test_ingest_upserts(monkeypatch):
     mock_client.__enter__.return_value = mock_client
     monkeypatch.setattr(ingest.httpx, "Client", MagicMock(return_value=mock_client))
 
-    embed_resp = MagicMock()
-    embed_resp.data = [MagicMock(embedding=[0.0] * 1536)]
-    mock_oai = MagicMock()
-    mock_oai.embeddings.create.return_value = embed_resp
-    monkeypatch.setattr(ingest.openai, "OpenAI", MagicMock(return_value=mock_oai))
+    mock_backend = MagicMock()
+    mock_backend.embed.return_value = [[0.0] * 1536]
+    monkeypatch.setattr(ingest, "OpenAIBackend", MagicMock(return_value=mock_backend))
 
     mock_collection = MagicMock()
     mock_db = MagicMock()
