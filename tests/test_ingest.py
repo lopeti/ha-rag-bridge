@@ -44,4 +44,8 @@ def test_ingest_upserts(monkeypatch):
 
     ingest.ingest()
 
-    mock_collection.insert.assert_called_once()
+    mock_collection.insert_many.assert_called_once()
+    args, kwargs = mock_collection.insert_many.call_args
+    assert kwargs.get("overwrite") is True
+    docs = args[0]
+    assert docs[0]["embedding"]
