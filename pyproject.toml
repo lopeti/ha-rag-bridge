@@ -1,1 +1,12 @@
 [tool.poetry]
+name = "ha-rag-bridge"        # bármi lehet, de legyen slug-formátumú
+version = "0.1.0"             # semver
+description = "Home-Assistant RAG bridge"
+authors = ["lopeti <lovas.peter.hu@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
