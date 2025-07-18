@@ -14,6 +14,7 @@ import os
 import argparse
 import logging
 import time
+from datetime import datetime
 from typing import List, Optional
 import hashlib
 
@@ -142,21 +143,6 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     }
 
 
-def upsert_edge(col, _from: str, _to: str, label: str) -> None:
-    """Create or update an edge document."""
-
-    key_raw = f"{label}:{_from}->{_to}"
-    key = hashlib.sha1(key_raw.encode()).hexdigest()
-    doc = {
-        "_key": key,
-        "_from": _from,
-        "_to": _to,
-        "label": label,
-        "ts_created": int(time.time()),
-    }
-    col.insert_many([doc], overwrite=True, overwrite_mode="update")
-
-
 def ingest(entity_id: Optional[str] = None) -> None:
     """Run the ingestion process."""
 
@@ -206,18 +192,40 @@ def ingest(entity_id: Optional[str] = None) -> None:
 
         if docs:
             col.insert_many(docs, overwrite=True, overwrite_mode="update")
+            edges: List[dict] = []
             for ent, d in zip(ents_for_docs, docs):
                 eid = d["_key"]
                 attrs = ent.get("attributes", {})
                 area_id = attrs.get("area") or attrs.get("area_id")
-                device_id = ent.get("device_id")
+                device_id = attrs.get("device_id")
+                edge_count = 0
                 if area_id:
                     area_col.insert({"_key": area_id, "name": area_id}, overwrite=True, overwrite_mode="update")
-                    upsert_edge(edge_col, f"area/{area_id}", f"entity/{eid}", "area_contains")
+                    key_raw = f"area_contains:area/{area_id}->entity/{eid}"
+                    edges.append({
+                        "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
+                        "_from": f"area/{area_id}",
+                        "_to": f"entity/{eid}",
+                        "label": "area_contains",
+                        "created_by": "ingest",
+                        "ts_created": datetime.utcnow().isoformat(),
+                    })
+                    edge_count += 1
                 if device_id:
                     device_col.insert({"_key": device_id, "name": device_id}, overwrite=True, overwrite_mode="update")
-                    upsert_edge(edge_col, f"device/{device_id}", f"entity/{eid}", "device_hosts")
-                logger.info("Upserted %s", d["entity_id"])
+                    key_raw = f"device_hosts:device/{device_id}->entity/{eid}"
+                    edges.append({
+                        "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
+                        "_from": f"device/{device_id}",
+                        "_to": f"entity/{eid}",
+                        "label": "device_hosts",
+                        "created_by": "ingest",
+                        "ts_created": datetime.utcnow().isoformat(),
+                    })
+                    edge_count += 1
+                logger.info("Upserted %s (doc) +%d edges", d["entity_id"], edge_count)
+            if edges:
+                edge_col.insert_many(edges, overwrite=True, overwrite_mode="ignore")
 
 
 def cli() -> None:

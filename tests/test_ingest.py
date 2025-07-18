@@ -67,7 +67,9 @@ def test_ingest_upserts(monkeypatch):
 
     mock_edge_col.insert_many.assert_called()
     edge_docs = mock_edge_col.insert_many.call_args[0][0]
+    assert len(edge_docs) >= 1
     assert any(e["label"] == "area_contains" for e in edge_docs)
+    assert all(e["created_by"] == "ingest" for e in edge_docs)
     assert doc["text"] == expected_text
     import hashlib
 
