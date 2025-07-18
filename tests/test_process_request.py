@@ -42,3 +42,30 @@ def test_process_request(monkeypatch):
     assert "switch.bedroom" in system
     assert "Relevant domains:" in system
     assert isinstance(data.get("tools"), list) and data["tools"]
+
+def test_process_request_adds_state(monkeypatch):
+    os.environ.update({
+        "ARANGO_URL": "http://db",
+        "ARANGO_USER": "root",
+        "ARANGO_PASS": "pass",
+        "EMBEDDING_BACKEND": "local",
+    })
+    mock_backend = MagicMock()
+    mock_backend.embed.return_value = [[0.0] * 1536]
+    monkeypatch.setattr(main, "LocalBackend", MagicMock(return_value=mock_backend))
+    docs = [
+        {"entity_id": "sensor.room_temp", "domain": "sensor", "unit_of_measurement": "°C"},
+    ]
+    mock_cursor = MagicMock()
+    mock_cursor.__iter__.return_value = docs
+    mock_db = MagicMock()
+    mock_db.aql.execute.return_value = mock_cursor
+    mock_arango = MagicMock()
+    mock_arango.db.return_value = mock_db
+    monkeypatch.setattr(main, "ArangoClient", MagicMock(return_value=mock_arango))
+    monkeypatch.setattr(main, "get_last_state", MagicMock(return_value="23.9 °C"))
+
+    resp = client.post("/process-request", json={"user_message": "Hőmérséklet?"})
+    assert resp.status_code == 200
+    system = resp.json()["messages"][0]["content"]
+    assert "Current value of sensor.room_temp: 23.9 °C" in system

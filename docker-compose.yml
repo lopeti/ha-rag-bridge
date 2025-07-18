@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXD_REPORTING_DISABLED=true
