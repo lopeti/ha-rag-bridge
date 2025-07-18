@@ -1,38 +1,46 @@
 from __future__ import annotations
 
 import os
+import logging
 from typing import Optional, Any
+
+from cachetools import TTLCache, cached
 
 import httpx
 from influxdb_client import InfluxDBClient
 
+logger = logging.getLogger(__name__)
+
+_CACHE = TTLCache(maxsize=1024, ttl=int(os.getenv("STATE_CACHE_TTL", "30")))
+
 
 def _query_influx(entity_id: str) -> Optional[Any]:
     url = os.getenv("INFLUX_URL")
-    token = os.getenv("INFLUX_TOKEN")
+    token = os.getenv("INFLUX_TOKEN", "")
     org = os.getenv("INFLUX_ORG", "homeassistant")
     bucket = os.getenv("INFLUX_BUCKET", "homeassistant")
     measurement = os.getenv("INFLUX_MEASUREMENT", "measurement")
-    if not url or not token:
+    if not url:
         return None
 
     query = (
         f'from(bucket: "{bucket}")\n'
         '  |> range(start: -5m)\n'
-        f'  |> filter(fn: (r) => r["_measurement"] == "{measurement}")\n'
-        f'  |> filter(fn: (r) => r["entity_id"] == "{entity_id}")\n'
+        +(f'  |> filter(fn: (r) => r["_measurement"] == "{measurement}")\n' if measurement else '')
+        +f'  |> filter(fn: (r) => r["entity_id"] == "{entity_id}")\n'
         '  |> last()'
     )
 
     try:
-        with InfluxDBClient(url=url, token=token, org=org, timeout=5000) as client:
+        with InfluxDBClient(url=url, token=token or None, org=org, timeout=5000) as client:
             tables = client.query_api().query(query)
             for table in tables:
                 for record in table.records:
                     value = record.get_value()
                     unit = record.values.get("unit_of_measurement")
                     return f"{value} {unit}".strip() if unit else value
-    except Exception:
+    except Exception as exc:
+        logger.warning("Influx query failed for %s: %s", entity_id, exc)
         return None
     return None
 
@@ -63,6 +71,7 @@ def _query_ha_state(entity_id: str) -> Optional[Any]:
     return None
 
 
+@cached(_CACHE)
 def get_last_state(entity_id: str) -> Optional[Any]:
     """Return the last value + unit, or None if unavailable."""
     value = _query_influx(entity_id)
