@@ -34,17 +34,29 @@ def test_ingest_upserts(monkeypatch):
     mock_backend.embed.return_value = [[0.0] * 1536]
     monkeypatch.setattr(ingest, "OpenAIBackend", MagicMock(return_value=mock_backend))
 
-    mock_collection = MagicMock()
+    mock_entity_col = MagicMock()
+    mock_edge_col = MagicMock()
+    mock_area_col = MagicMock()
+    mock_device_col = MagicMock()
+
+    def get_collection(name):
+        return {
+            "entity": mock_entity_col,
+            "edge": mock_edge_col,
+            "area": mock_area_col,
+            "device": mock_device_col,
+        }[name]
+
     mock_db = MagicMock()
-    mock_db.collection.return_value = mock_collection
+    mock_db.collection.side_effect = get_collection
     mock_arango = MagicMock()
     mock_arango.db.return_value = mock_db
     monkeypatch.setattr(ingest, "ArangoClient", MagicMock(return_value=mock_arango))
 
     ingest.ingest()
 
-    mock_collection.insert_many.assert_called_once()
-    args, kwargs = mock_collection.insert_many.call_args
+    mock_entity_col.insert_many.assert_called_once()
+    args, kwargs = mock_entity_col.insert_many.call_args
     assert kwargs.get("overwrite") is True
     docs = args[0]
     doc = docs[0]
@@ -52,6 +64,10 @@ def test_ingest_upserts(monkeypatch):
     expected_text = (
         "Test. Kitchen. sensor. foo. living room nappali temperature h\u0151m\u00e9rs\u00e9klet"
     )
+
+    mock_edge_col.insert_many.assert_called()
+    edge_docs = mock_edge_col.insert_many.call_args[0][0]
+    assert any(e["label"] == "area_contains" for e in edge_docs)
     assert doc["text"] == expected_text
     import hashlib
 
