@@ -44,6 +44,18 @@ curl -X POST :8000/graph/edge \
   -d '{"_from":"area/nappali","_to":"area/etkezo","label":"area_adjacent"}'
 ```
 
+## Manual ingest
+
+Add device manuals to the graph:
+
+```bash
+poetry run python scripts/ingest_docs.py --file manuals/gree.pdf --device_id=gree_klima
+```
+
+After ingest you can ask for instructions, e.g.:
+
+> "Hogyan tudom a Gree klímát Wi-Fi módba állítani?"
+
 ## InfluxDB integration
 
 Enable the official *InfluxDB* addon in Home Assistant and create a read-only token.
