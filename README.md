@@ -53,3 +53,7 @@ Add the connection details to your `.env` file (see `.env.sample`) and run `dock
 
 - `INFLUX_MEASUREMENT=""`  # üres, ha a HA addon üres measurementre ír
 - Cache TTL: 30 s (változtatható az env-ben)
+
+### Service cache
+The catalog of `/api/services` is fetched on first request and cached for 6 h
+(configurable via `SERVICE_CACHE_TTL`).
