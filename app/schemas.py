@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Dict
 
 
@@ -45,3 +45,27 @@ class LLMResponse(BaseModel):
 class ExecResult(BaseModel):
     status: str
     message: str
+
+class EdgeCreate(BaseModel):
+    _from: str
+    _to: str
+    label: str
+    weight: float = 1.0
+    source: str | None = None
+    ts_created: str | None = None
+
+    @field_validator('label')
+    @classmethod
+    def _valid_label(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('label must not be empty')
+        if len(v) > 30:
+            raise ValueError('label too long')
+        return v
+
+
+class EdgeResult(BaseModel):
+    status: str
+    edge_key: str
+    action: str
+
