@@ -20,9 +20,9 @@ def test_process_request(monkeypatch):
     monkeypatch.setattr(main, "LocalBackend", MagicMock(return_value=mock_backend))
 
     docs = [
-        {"entity_id": "sensor.kitchen_temp"},
-        {"entity_id": "light.livingroom"},
-        {"entity_id": "switch.bedroom"},
+        {"entity_id": "sensor.kitchen_temp", "domain": "sensor"},
+        {"entity_id": "light.livingroom", "domain": "light"},
+        {"entity_id": "switch.bedroom", "domain": "switch"},
     ]
 
     mock_cursor = MagicMock()
@@ -40,4 +40,5 @@ def test_process_request(monkeypatch):
     assert "sensor.kitchen_temp" in system
     assert "light.livingroom" in system
     assert "switch.bedroom" in system
+    assert "Relevant domains:" in system
     assert isinstance(data.get("tools"), list) and data["tools"]

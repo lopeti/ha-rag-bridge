@@ -25,7 +25,5 @@ python scripts/watch_entities.py
 Example usage:
 
 ```bash
-curl -X POST http://localhost:8000/process-request \
-    -H 'Content-Type: application/json' \
-    -d '{"user_message":"Kapcsold le a nappali lámpát!"}'
+curl -X POST /process-request -d '{"user_message":"Kapcsold fel a nappali lámpát"}'
 ```
