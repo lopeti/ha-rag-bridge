@@ -1,0 +1,36 @@
+'use strict';
+const db = require('@arangodb').db;
+
+function ensureDocumentCollection(name) {
+  if (!db._collection(name)) {
+    db._createDocumentCollection(name);
+  }
+  return db._collection(name);
+}
+
+const manual = ensureDocumentCollection('document');
+if (!manual.getIndexes().some(i => i.type === 'hnsw')) {
+  manual.ensureIndex({type:'hnsw', fields:['embedding'], dimensions:1536, metric:'cosine'});
+}
+
+const viewProps = {
+  links: {
+    document: {
+      includeAllFields: false,
+      storeValues: 'none',
+      fields: {
+        text: { analyzers: ['text_en'] },
+        embedding: { analyzers: ['vector'], vector: { dimension: 1536, metric: 'cosine' } }
+      },
+      features: ['frequency','norm','position']
+    }
+  }
+};
+
+if (!db._view('v_manual')) {
+  db._createView('v_manual', 'arangosearch', viewProps);
+} else {
+  db._view('v_manual').properties(viewProps, true);
+}
+
+console.log('Migration 002 completed');

@@ -57,6 +57,23 @@ def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
     return list(cursor)
 
 
+def query_manual(db, doc_id: str, q_vec: Sequence[float], q_text: str, k: int = 2) -> List[str]:
+    aql = (
+        "FOR d IN v_manual "
+        "SEARCH d.document_id == @doc AND ANALYZER("
+        "SIMILARITY(d.embedding, @qv) > 0.7 OR PHRASE(d.text, @msg, 'text_en')" 
+        ", 'text_en') "
+        "SORT BM25(d) DESC "
+        "LIMIT @k "
+        "RETURN d.text"
+    )
+    cursor = db.aql.execute(
+        aql,
+        bind_vars={"doc": doc_id, "qv": q_vec, "msg": q_text, "k": k},
+    )
+    return list(cursor)
+
+
 def service_to_tool(domain: str, name: str, spec: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a service spec to a tool definition."""
     return {
@@ -131,6 +148,22 @@ async def process_request(payload: schemas.Request):
                 system_prompt += (
                     f"Current value of {top['entity_id'].lower()}: {last}\n"
                 )
+        device_id = top.get("device_id")
+        if device_id:
+            try:
+                cur = db.aql.execute(
+                    "FOR e IN edge FILTER e._from == @d AND e.label == 'device_has_manual' RETURN PARSE_IDENTIFIER(e._to).key",
+                    bind_vars={"d": f"device/{device_id}"},
+                )
+                manual_id = next(iter(cur), None)
+                if manual_id:
+                    hints = query_manual(db, manual_id, query_vector, payload.user_message)
+                    if hints:
+                        system_prompt += "Manual hints:\n"
+                        for h in hints:
+                            system_prompt += f"- {h}\n"
+            except Exception:  # pragma: no cover - db errors
+                pass
 
     tools: List[Dict] = []
     if intent == "control":
@@ -186,3 +219,4 @@ async def process_response(payload: schemas.LLMResponse):
 
 app.include_router(router)
 app.include_router(graph_router)
+
