@@ -34,6 +34,16 @@ def test_process_request(monkeypatch):
     monkeypatch.setattr(main, "ArangoClient", MagicMock(return_value=mock_arango))
     monkeypatch.setattr(main, "get_last_state", MagicMock(return_value=None))
 
+    class DummyCat:
+        async def get_domain_services(self, domain):
+            mapping = {
+                "light": {"turn_on": {"fields": {"entity_id": {"required": True, "type": "string"}}}},
+                "switch": {"turn_off": {"fields": {"entity_id": {"required": True, "type": "string"}}}},
+            }
+            return mapping.get(domain, {})
+
+    monkeypatch.setattr(main, "service_catalog", DummyCat())
+
     resp = client.post("/process-request", json={"user_message": "Kapcsold le a nappali lámpát!"})
     assert resp.status_code == 200
     data = resp.json()
@@ -65,6 +75,12 @@ def test_process_request_adds_state(monkeypatch):
     mock_arango.db.return_value = mock_db
     monkeypatch.setattr(main, "ArangoClient", MagicMock(return_value=mock_arango))
     monkeypatch.setattr(main, "get_last_state", MagicMock(return_value="23.9 °C"))
+
+    class DummyCat:
+        async def get_domain_services(self, domain):
+            return {}
+
+    monkeypatch.setattr(main, "service_catalog", DummyCat())
 
     resp = client.post("/process-request", json={"user_message": "Hőmérséklet?"})
     assert resp.status_code == 200

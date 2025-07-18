@@ -1,7 +1,7 @@
 import os
 import re
 import json
-from typing import List, Sequence
+from typing import List, Sequence, Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException
 
 from .routers.graph import router as graph_router
@@ -12,38 +12,15 @@ from arango import ArangoClient
 from . import schemas
 from scripts.ingest import LocalBackend, OpenAIBackend, EmbeddingBackend
 from .services.state_service import get_last_state
+from .services.service_catalog import ServiceCatalog
 
 app = FastAPI()
 router = APIRouter()
 
-CONTROL_DOMAINS = {"light", "switch", "media_player"}
+service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6*3600))))
 
 CONTROL_RE = re.compile(r"\b(kapcsold|ind\xEDtsd|\xE1ll\xEDtsd|turn\s+on|turn\s+off)\b", re.IGNORECASE)
 READ_RE = re.compile(r"\b(mennyi|h\xE1ny|milyen|fok|temperature|status)\b", re.IGNORECASE)
-
-TURN_ON_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "homeassistant.turn_on",
-        "parameters": {
-            "type": "object",
-            "properties": {"entity_id": {"type": "string"}},
-            "required": ["entity_id"],
-        },
-    },
-}
-
-TURN_OFF_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "homeassistant.turn_off",
-        "parameters": {
-            "type": "object",
-            "properties": {"entity_id": {"type": "string"}},
-            "required": ["entity_id"],
-        },
-    },
-}
 
 
 def detect_intent(text: str) -> str:
@@ -78,6 +55,21 @@ def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
     )
     cursor = db.aql.execute(aql, bind_vars={"msg": q_text})
     return list(cursor)
+
+
+def service_to_tool(domain: str, name: str, spec: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a service spec to a tool definition."""
+    return {
+        "type": "function",
+        "function": {
+            "name": f"{domain}.{name}",
+            "parameters": {
+                "type": "object",
+                "properties": spec.get("fields", {}),
+                "required": [k for k, v in spec.get("fields", {}).items() if v.get("required")],
+            },
+        },
+    }
 
 
 def retrieve_entities(db, q_vec: Sequence[float], q_text: str, k_list=(5, 15)) -> List[dict]:
@@ -123,7 +115,8 @@ async def process_request(payload: schemas.Request):
 
     ids = [doc.get("entity_id") for doc in results]
     comma_sep = ",".join(ids)
-    domains = ",".join(sorted({doc.get("domain") for doc in results if doc.get("domain")}))
+    domain_set = sorted({doc.get("domain") for doc in results if doc.get("domain")})
+    domains = ",".join(domain_set)
     system_prompt = (
         "You are a Home Assistant agent.\n"
         f"Relevant entities: {comma_sep}\n"
@@ -139,10 +132,12 @@ async def process_request(payload: schemas.Request):
                     f"Current value of {top['entity_id'].lower()}: {last}\n"
                 )
 
-    if intent == "control" and any(d.get("domain") in CONTROL_DOMAINS for d in results):
-        tools = [TURN_ON_TOOL, TURN_OFF_TOOL]
-    else:
-        tools = []
+    tools: List[Dict] = []
+    if intent == "control":
+        for dom in domain_set:
+            services = await service_catalog.get_domain_services(dom)
+            for name, spec in services.items():
+                tools.append(service_to_tool(dom, name, spec))
 
     return {
         "messages": [

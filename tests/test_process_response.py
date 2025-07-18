@@ -11,7 +11,7 @@ def setup_env():
     })
 
 
-def make_payload(content="OK", entity="light.test", func="homeassistant.turn_on"):
+def make_payload(content="OK", entity="light.test", func="light.turn_on"):
     return {
         "id": "1",
         "choices": [
@@ -59,7 +59,7 @@ def test_process_response_success(monkeypatch):
     resp = client.post("/process-response", json=make_payload())
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "message": "OK"}
-    assert captured == [("/api/services/homeassistant/turn_on", {"entity_id": "light.test"})]
+    assert captured == [("/api/services/light/turn_on", {"entity_id": "light.test"})]
 
 
 def test_process_response_error(monkeypatch):

@@ -30,12 +30,21 @@ def test_adaptive_control_tools(monkeypatch):
     ]
     monkeypatch.setattr(main, "retrieve_entities", MagicMock(return_value=ents))
 
+    class DummyCat:
+        async def get_domain_services(self, domain):
+            return {
+                "turn_on": {"fields": {"entity_id": {"required": True, "type": "string"}}},
+                "turn_off": {"fields": {"entity_id": {"required": True, "type": "string"}}},
+            } if domain == "light" else {}
+
+    monkeypatch.setattr(main, "service_catalog", DummyCat())
+
     resp = client.post("/process-request", json={"user_message": "Kapcsold fel a nappali lámpát"})
     assert resp.status_code == 200
     data = resp.json()
     tool_names = [t["function"]["name"] for t in data.get("tools", [])]
-    assert "homeassistant.turn_on" in tool_names
-    assert "homeassistant.turn_off" in tool_names
+    assert "light.turn_on" in tool_names
+    assert "light.turn_off" in tool_names
     assert "Relevant domains: light,sensor" in data["messages"][0]["content"]
 
 
@@ -50,6 +59,12 @@ def test_adaptive_read_no_tools(monkeypatch):
     ents = [{"entity_id": "sensor.temp", "domain": "sensor"}]
     monkeypatch.setattr(main, "retrieve_entities", MagicMock(return_value=ents))
     monkeypatch.setattr(main, "get_last_state", MagicMock(return_value=None))
+
+    class DummyCat:
+        async def get_domain_services(self, domain):
+            return {}
+
+    monkeypatch.setattr(main, "service_catalog", DummyCat())
 
     resp = client.post("/process-request", json={"user_message": "Hány fok van a nappaliban?"})
     assert resp.status_code == 200
