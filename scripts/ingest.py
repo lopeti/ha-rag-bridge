@@ -142,6 +142,21 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     }
 
 
+def upsert_edge(col, _from: str, _to: str, label: str) -> None:
+    """Create or update an edge document."""
+
+    key_raw = f"{label}:{_from}->{_to}"
+    key = hashlib.sha1(key_raw.encode()).hexdigest()
+    doc = {
+        "_key": key,
+        "_from": _from,
+        "_to": _to,
+        "label": label,
+        "ts_created": int(time.time()),
+    }
+    col.insert_many([doc], overwrite=True, overwrite_mode="update")
+
+
 def ingest(entity_id: Optional[str] = None) -> None:
     """Run the ingestion process."""
 
@@ -160,8 +175,15 @@ def ingest(entity_id: Optional[str] = None) -> None:
 
     arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
     db_name = os.getenv("ARANGO_DB", "_system")
-    db = arango.db(db_name, username=os.environ["ARANGO_USER"], password=os.environ["ARANGO_PASS"])
+    db = arango.db(
+        db_name,
+        username=os.environ["ARANGO_USER"],
+        password=os.environ["ARANGO_PASS"],
+    )
     col = db.collection("entity")
+    edge_col = db.collection("edge")
+    area_col = db.collection("area")
+    device_col = db.collection("device")
 
     batch_size = 100
     for i in range(0, len(states), batch_size):
@@ -174,15 +196,27 @@ def ingest(entity_id: Optional[str] = None) -> None:
             continue
 
         docs = []
+        ents_for_docs = []
         for ent, emb, text in zip(batch, embeddings, texts):
             if not emb:
                 logger.warning("Skipping entity %s", ent.get("entity_id"))
                 continue
             docs.append(build_doc(ent, emb, text))
+            ents_for_docs.append(ent)
 
         if docs:
             col.insert_many(docs, overwrite=True, overwrite_mode="update")
-            for d in docs:
+            for ent, d in zip(ents_for_docs, docs):
+                eid = d["_key"]
+                attrs = ent.get("attributes", {})
+                area_id = attrs.get("area") or attrs.get("area_id")
+                device_id = ent.get("device_id")
+                if area_id:
+                    area_col.insert({"_key": area_id, "name": area_id}, overwrite=True, overwrite_mode="update")
+                    upsert_edge(edge_col, f"area/{area_id}", f"entity/{eid}", "area_contains")
+                if device_id:
+                    device_col.insert({"_key": device_id, "name": device_id}, overwrite=True, overwrite_mode="update")
+                    upsert_edge(edge_col, f"device/{device_id}", f"entity/{eid}", "device_hosts")
                 logger.info("Upserted %s", d["entity_id"])
 
 
