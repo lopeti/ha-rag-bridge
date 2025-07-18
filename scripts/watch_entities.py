@@ -5,7 +5,10 @@ import logging
 import argparse
 import websockets
 
-from .ingest import ingest
+try:
+    from .ingest import ingest        # package run
+except ImportError:                    # direct run
+    from ingest import ingest
 
 logger = logging.getLogger(__name__)
 
