@@ -22,16 +22,16 @@ async def add_edge(edge: schemas.EdgeCreate, request: Request) -> schemas.EdgeRe
     arango = ArangoClient(hosts=os.environ['ARANGO_URL'])
     db_name = os.getenv('ARANGO_DB', '_system')
     db = arango.db(db_name, username=os.environ['ARANGO_USER'], password=os.environ['ARANGO_PASS'])
-    if not _doc_exists(db, edge._from):
+    if not _doc_exists(db, edge.from_):
         raise HTTPException(status_code=422, detail='_from not found')
-    if not _doc_exists(db, edge._to):
+    if not _doc_exists(db, edge.to):
         raise HTTPException(status_code=422, detail='_to not found')
 
-    edge_key = f"{edge._from.replace('/', '_')}-{edge._to.replace('/', '_')}-{edge.label}"
+    edge_key = f"{edge.from_.replace('/', '_')}-{edge.to.replace('/', '_')}-{edge.label}"
     edge_doc = {
         '_key': edge_key,
-        '_from': edge._from,
-        '_to': edge._to,
+        '_from': edge.from_,
+        '_to': edge.to,
         'label': edge.label,
         'weight': edge.weight,
         'source': edge.source or request.headers.get('X-Caller', 'api'),

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict, Field
 from typing import List, Dict
 
 
@@ -47,8 +47,9 @@ class ExecResult(BaseModel):
     message: str
 
 class EdgeCreate(BaseModel):
-    _from: str
-    _to: str
+    model_config = ConfigDict(populate_by_name=True)
+    from_: str = Field(alias="_from")
+    to: str = Field(alias="_to")
     label: str
     weight: float = 1.0
     source: str | None = None
