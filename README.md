@@ -28,6 +28,14 @@ Example usage:
 curl -X POST /process-request -d '{"user_message":"Kapcsold fel a nappali lámpát"}'
 ```
 
+## Process responses
+
+Execute the returned tool-calls:
+
+```bash
+curl -X POST /process-response -d '{"id":"1","choices":[{"message":{"role":"assistant","content":"Felkapcsoltam a lámpát.","tool_calls":[{"id":"c1","type":"function","function":{"name":"homeassistant.turn_on","arguments":"{\"entity_id\":\"light.kitchen\"}"}}]}}]}'
+```
+
 ## InfluxDB integration
 
 Enable the official *InfluxDB* addon in Home Assistant and create a read-only token.

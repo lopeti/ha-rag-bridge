@@ -1,7 +1,9 @@
 import os
 import re
+import json
 from typing import List, Sequence
 from fastapi import FastAPI, APIRouter, HTTPException
+import httpx
 
 from arango import ArangoClient
 
@@ -147,6 +149,42 @@ async def process_request(payload: schemas.Request):
         ],
         "tools": tools,
     }
+
+
+@router.post("/process-response", response_model=schemas.ExecResult)
+async def process_response(payload: schemas.LLMResponse):
+    """Execute tool-calls returned by the LLM and respond with a summary."""
+    ha_url = os.getenv("HA_URL")
+    token = os.getenv("HA_TOKEN")
+    if not ha_url or not token:
+        raise HTTPException(status_code=500, detail="Missing HA configuration")
+
+    message = payload.choices[0].message
+    tool_calls = message.tool_calls or []
+    headers = {"Authorization": f"Bearer {token}"}
+    errors: List[str] = []
+
+    async with httpx.AsyncClient(base_url=ha_url, headers=headers, timeout=5.0) as client:
+        for call in tool_calls:
+            func = call.function
+            try:
+                args = json.loads(func.arguments)
+            except Exception:
+                errors.append(func.arguments)
+                continue
+            domain, service = func.name.split(".", 1)
+            ent = args.get("entity_id", func.name)
+            try:
+                resp = await client.post(f"/api/services/{domain}/{service}", json=args)
+                if resp.status_code != 200:
+                    errors.append(ent)
+            except Exception:
+                errors.append(ent)
+
+    if errors:
+        ids = ",".join(errors)
+        return {"status": "error", "message": f"Nem sikerült végrehajtani: {ids}"}
+    return {"status": "ok", "message": message.content}
 
 
 app.include_router(router)
