@@ -1,4 +1,6 @@
 import os
+import re
+from typing import List, Sequence
 from fastapi import FastAPI, APIRouter, HTTPException
 
 from arango import ArangoClient
@@ -8,6 +10,77 @@ from scripts.ingest import LocalBackend, OpenAIBackend, EmbeddingBackend
 
 app = FastAPI()
 router = APIRouter()
+
+CONTROL_DOMAINS = {"light", "switch", "media_player"}
+
+CONTROL_RE = re.compile(r"\b(kapcsold|ind\xEDtsd|\xE1ll\xEDtsd|turn\s+on|turn\s+off)\b", re.IGNORECASE)
+READ_RE = re.compile(r"\b(mennyi|h\xE1ny|milyen|fok|temperature|status)\b", re.IGNORECASE)
+
+TURN_ON_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "homeassistant.turn_on",
+        "parameters": {
+            "type": "object",
+            "properties": {"entity_id": {"type": "string"}},
+            "required": ["entity_id"],
+        },
+    },
+}
+
+TURN_OFF_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "homeassistant.turn_off",
+        "parameters": {
+            "type": "object",
+            "properties": {"entity_id": {"type": "string"}},
+            "required": ["entity_id"],
+        },
+    },
+}
+
+
+def detect_intent(text: str) -> str:
+    """Return simple intent based on regex patterns."""
+    if CONTROL_RE.search(text):
+        return "control"
+    return "read"
+
+
+def query_arango(db, q_vec: Sequence[float], q_text: str, k: int) -> List[dict]:
+    aql = (
+        "FOR e IN v_meta "
+        "SEARCH ANALYZER("
+        "SIMILARITY(e.embedding, @qv) > 0.7 "
+        "OR PHRASE(e.text, @msg, 'text_en')"
+        ", 'text_en') "
+        "SORT BM25(e) DESC "
+        f"LIMIT {k} "
+        "RETURN e"
+    )
+    cursor = db.aql.execute(aql, bind_vars={"qv": q_vec, "msg": q_text})
+    return list(cursor)
+
+
+def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
+    aql = (
+        "FOR e IN v_meta "
+        "SEARCH ANALYZER(PHRASE(e.text, @msg, 'text_en'), 'text_en') "
+        "SORT BM25(e) DESC "
+        f"LIMIT {k} "
+        "RETURN e"
+    )
+    cursor = db.aql.execute(aql, bind_vars={"msg": q_text})
+    return list(cursor)
+
+
+def retrieve_entities(db, q_vec: Sequence[float], q_text: str, k_list=(5, 15)) -> List[dict]:
+    for k in k_list:
+        ents = query_arango(db, q_vec, q_text, k)
+        if len(ents) >= 2:
+            return ents
+    return query_arango_text_only(db, q_text, 10)
 
 
 @router.get("/health")
@@ -36,36 +109,26 @@ async def process_request(payload: schemas.Request):
         password=os.environ["ARANGO_PASS"],
     )
 
-    aql = (
-        "FOR e IN v_meta "
-        "SEARCH ANALYZER("
-        "SIMILARITY(e.embedding, @qv) > 0.7 "
-        "OR PHRASE(e.text, @msg, \"text_en\")"
-        ", \"text_en\") "
-        "SORT BM25(e) DESC "
-        "LIMIT 5 "
-        "RETURN e"
-    )
+    intent = detect_intent(payload.user_message)
+
     try:
-        cursor = db.aql.execute(aql, bind_vars={"qv": query_vector, "msg": payload.user_message})
-        results = list(cursor)
+        results = retrieve_entities(db, query_vector, payload.user_message)
     except Exception as exc:  # pragma: no cover - db errors
         raise HTTPException(status_code=500, detail=str(exc))
 
     ids = [doc.get("entity_id") for doc in results]
     comma_sep = ",".join(ids)
-    system_prompt = "You are a Home Assistant agent.\n" f"Relevant entities: {comma_sep}\n"
-    tools = [{
-        "type": "function",
-        "function": {
-            "name": "homeassistant.turn_on",
-            "parameters": {
-                "type": "object",
-                "properties": {"entity_id": {"type": "string"}},
-                "required": ["entity_id"],
-            },
-        },
-    }]
+    domains = ",".join(sorted({doc.get("domain") for doc in results if doc.get("domain")}))
+    system_prompt = (
+        "You are a Home Assistant agent.\n"
+        f"Relevant entities: {comma_sep}\n"
+        f"Relevant domains: {domains}\n"
+    )
+
+    if intent == "control" and any(d.get("domain") in CONTROL_DOMAINS for d in results):
+        tools = [TURN_ON_TOOL, TURN_OFF_TOOL]
+    else:
+        tools = []
 
     return {
         "messages": [
