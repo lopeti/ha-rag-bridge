@@ -19,3 +19,13 @@ Run the realtime watcher to ingest entity metadata whenever it changes:
 python scripts/watch_entities.py
 # add --debug for verbose output
 ```
+
+## Process requests
+
+Example usage:
+
+```bash
+curl -X POST http://localhost:8000/process-request \
+    -H 'Content-Type: application/json' \
+    -d '{"user_message":"Kapcsold le a nappali lámpát!"}'
+```
