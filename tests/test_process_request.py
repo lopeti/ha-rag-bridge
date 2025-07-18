@@ -32,6 +32,7 @@ def test_process_request(monkeypatch):
     mock_arango = MagicMock()
     mock_arango.db.return_value = mock_db
     monkeypatch.setattr(main, "ArangoClient", MagicMock(return_value=mock_arango))
+    monkeypatch.setattr(main, "get_last_state", MagicMock(return_value=None))
 
     resp = client.post("/process-request", json={"user_message": "Kapcsold le a nappali lámpát!"})
     assert resp.status_code == 200

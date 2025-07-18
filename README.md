@@ -32,3 +32,8 @@ curl -X POST /process-request -d '{"user_message":"Kapcsold fel a nappali lámp�
 
 Enable the official *InfluxDB* addon in Home Assistant and create a read-only token.
 Add the connection details to your `.env` file (see `.env.sample`) and run `docker-compose up -d influxdb` to start a local instance.
+
+### Influx config & caching
+
+- `INFLUX_MEASUREMENT=""`  # üres, ha a HA addon üres measurementre ír
+- Cache TTL: 30 s (változtatható az env-ben)

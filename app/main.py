@@ -128,10 +128,12 @@ async def process_request(payload: schemas.Request):
 
     if results:
         top = results[0]
-        if top.get("domain") == "sensor" and top.get("unit_of_measurement"):
+        if top.get("domain") == "sensor":
             last = get_last_state(top.get("entity_id"))
             if last is not None:
-                system_prompt += f"Current value of {top['entity_id']}: {last}\n"
+                system_prompt += (
+                    f"Current value of {top['entity_id'].lower()}: {last}\n"
+                )
 
     if intent == "control" and any(d.get("domain") in CONTROL_DOMAINS for d in results):
         tools = [TURN_ON_TOOL, TURN_OFF_TOOL]

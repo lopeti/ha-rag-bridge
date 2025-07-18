@@ -49,6 +49,7 @@ def test_adaptive_read_no_tools(monkeypatch):
     monkeypatch.setattr(main, "ArangoClient", MagicMock())
     ents = [{"entity_id": "sensor.temp", "domain": "sensor"}]
     monkeypatch.setattr(main, "retrieve_entities", MagicMock(return_value=ents))
+    monkeypatch.setattr(main, "get_last_state", MagicMock(return_value=None))
 
     resp = client.post("/process-request", json={"user_message": "Hány fok van a nappaliban?"})
     assert resp.status_code == 200
