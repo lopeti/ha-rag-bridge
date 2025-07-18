@@ -27,3 +27,8 @@ Example usage:
 ```bash
 curl -X POST /process-request -d '{"user_message":"Kapcsold fel a nappali lámpát"}'
 ```
+
+## InfluxDB integration
+
+Enable the official *InfluxDB* addon in Home Assistant and create a read-only token.
+Add the connection details to your `.env` file (see `.env.sample`) and run `docker-compose up -d influxdb` to start a local instance.
