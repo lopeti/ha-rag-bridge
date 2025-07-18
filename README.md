@@ -10,3 +10,12 @@ Set `EMBEDDING_PROVIDER` to choose how text embeddings are created. Valid values
 - `openai` – uses the OpenAI API with your `OPENAI_API_KEY`.
 
 Run `make migrate` to set up the database.
+
+## Watch entity updates
+
+Run the realtime watcher to ingest entity metadata whenever it changes:
+
+```bash
+python scripts/watch_entities.py
+# add --debug for verbose output
+```
