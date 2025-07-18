@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "ha-rag-bridge"        # bármi lehet, de legyen slug-formátumú
-version = "0.1.0"             # semver
+name = "ha-rag-bridge"
+version = "0.1.0"
 description = "Home-Assistant RAG bridge"
 authors = ["lopeti <lovas.peter.hu@gmail.com>"]
 packages = [
