@@ -60,3 +60,20 @@ The catalog of `/api/services` is fetched on first request and cached for 6 h
 
 ### Quick demo
 poetry run python demo.py "Hány fok van a nappaliban?"
+
+## Architecture
+![Architecture diagram](docs/architecture.svg)
+
+- LiteLLM proxy forwards requests from OpenWebUI or the HA Conversation agent.
+- `ha-rag-bridge` FastAPI exposes `/process-request` and `/process-response`.
+- ArangoDB stores entity metadata and graph edges.
+- InfluxDB keeps the latest state values.
+- Home Assistant is accessed via REST and WebSocket APIs.
+
+## Live demo
+
+Run the demo locally (requires HA token and running services):
+
+```bash
+poetry run python demo.py "Kapcsold fel a nappali lámpát"
+```

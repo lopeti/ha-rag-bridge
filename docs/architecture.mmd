@@ -1,0 +1,15 @@
+flowchart LR
+    A["OpenWebUI / HA Conversation"]
+    B["LiteLLM proxy"]
+    C["ha-rag-bridge FastAPI"]
+    D["ArangoDB (meta & edge)"]
+    E["InfluxDB (state)"]
+    F["Home Assistant\nREST / WS"]
+
+    A --> B --> C
+    C -->|process-request| F
+    F -->|state| E
+    F -->|metadata| D
+    C --> D
+    C --> E
+    F -.->|event stream| C
