@@ -1,0 +1,74 @@
+'use strict';
+const db = require('@arangodb').db;
+
+function ensureDocumentCollection(name) {
+  if (!db._collection(name)) {
+    db._createDocumentCollection(name);
+  }
+  return db._collection(name);
+}
+
+function ensureEdgeCollection(name) {
+  if (!db._collection(name)) {
+    db._createEdgeCollection(name);
+  }
+  return db._collection(name);
+}
+
+// Document collections
+const docCols = ['area','device','entity','automation','scene','person','event','knowledge'];
+for (const col of docCols) {
+  ensureDocumentCollection(col);
+}
+
+// Edge collection
+ensureEdgeCollection('edge');
+
+// Indexes
+const entity = db._collection('entity');
+if (!entity.getIndexes().some(i => i.type === 'hash' && i.fields[0] === 'entity_id')) {
+  entity.ensureIndex({ type: 'hash', fields: ['entity_id'], unique: true });
+}
+if (!entity.getIndexes().some(i => i.type === 'hnsw' && i.fields[0] === 'embedding')) {
+  entity.ensureIndex({ type: 'hnsw', fields: ['embedding'], dimensions: 1536, metric: 'cosine' });
+}
+
+const edge = db._collection('edge');
+if (!edge.getIndexes().some(i => i.type === 'hash' && i.fields[0] === 'label')) {
+  edge.ensureIndex({ type: 'hash', fields: ['label'] });
+}
+
+const event = db._collection('event');
+if (!event.getIndexes().some(i => i.type === 'ttl' && i.fields[0] === 'ts')) {
+  event.ensureIndex({ type: 'ttl', fields: ['ts'], expireAfter: 30 * 24 * 3600 });
+}
+
+// ArangoSearch view
+const viewProps = {
+  links: {
+    entity: {
+      includeAllFields: false,
+      storeValues: 'none',
+      fields: {
+        text: { analyzers: ['text_en'] },
+        embedding: { analyzers: ['vector'], vector: { dimension: 1536, metric: 'cosine' } }
+      },
+      features: ['frequency', 'norm', 'position']
+    },
+    area: {
+      fields: {
+        name: { analyzers: ['text_en'] },
+        synonyms: { analyzers: ['text_en'] }
+      }
+    }
+  }
+};
+
+if (!db._view('v_meta')) {
+  db._createView('v_meta', 'arangosearch', viewProps);
+} else {
+  db._view('v_meta').properties(viewProps, true);
+}
+
+console.log('Migration 001 completed');
+
