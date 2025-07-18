@@ -36,6 +36,14 @@ Execute the returned tool-calls:
 curl -X POST /process-response -d '{"id":"1","choices":[{"message":{"role":"assistant","content":"Felkapcsoltam a lámpát.","tool_calls":[{"id":"c1","type":"function","function":{"name":"homeassistant.turn_on","arguments":"{\"entity_id\":\"light.kitchen\"}"}}]}}]}'
 ```
 
+## Add graph edge
+
+```bash
+curl -X POST :8000/graph/edge \
+  -H 'Content-Type: application/json' \
+  -d '{"_from":"area/nappali","_to":"area/etkezo","label":"area_adjacent"}'
+```
+
 ## InfluxDB integration
 
 Enable the official *InfluxDB* addon in Home Assistant and create a read-only token.

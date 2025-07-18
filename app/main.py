@@ -3,6 +3,8 @@ import re
 import json
 from typing import List, Sequence
 from fastapi import FastAPI, APIRouter, HTTPException
+
+from .routers.graph import router as graph_router
 import httpx
 
 from arango import ArangoClient
@@ -188,3 +190,4 @@ async def process_response(payload: schemas.LLMResponse):
 
 
 app.include_router(router)
+app.include_router(graph_router)
