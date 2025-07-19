@@ -8,6 +8,28 @@ Set `EMBEDDING_PROVIDER` to choose how text embeddings are created. Valid values
 
 - `local` – runs on CPU using the MiniLM model from the `sentence-transformers` package.
 - `openai` – uses the OpenAI API with your `OPENAI_API_KEY`.
+- `gemini` – uses Google's Gemini API via `GEMINI_API_KEY`.
+
+### Gemini beágyazás (1 536 dim)
+
+```
+curl -X POST \ \
+  -H "Authorization: Bearer $GEMINI_API_KEY" \
+  "$GEMINI_BASE_URL/v1beta/models/gemini-embedding-001:embedText" \
+  -d '{"texts":["hello"],"task_type":"RETRIEVAL_DOCUMENT","output_dimensionality":1536}'
+```
+
+Python:
+
+```python
+from scripts.embedding_backends import GeminiBackend
+
+os.environ["GEMINI_API_KEY"] = "key"
+backend = GeminiBackend()
+vec = backend.embed(["hello"])[0]
+```
+
+The `GEMINI_OUTPUT_DIM` env can be set to 768 or 3072 to change the vector size.
 
 Run `make migrate` to set up the database.
 

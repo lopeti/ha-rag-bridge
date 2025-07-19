@@ -1,5 +1,6 @@
 'use strict';
 const db = require('@arangodb').db;
+const DIM = parseInt(ENV.EMBED_DIM || '1536');
 
 function ensureDocumentCollection(name) {
   if (!db._collection(name)) {
@@ -10,7 +11,7 @@ function ensureDocumentCollection(name) {
 
 const manual = ensureDocumentCollection('document');
 if (!manual.getIndexes().some(i => i.type === 'hnsw')) {
-  manual.ensureIndex({type:'hnsw', fields:['embedding'], dimensions:1536, metric:'cosine'});
+  manual.ensureIndex({type:'hnsw', fields:['embedding'], dimensions:DIM, metric:'cosine'});
 }
 
 const viewProps = {
@@ -20,7 +21,7 @@ const viewProps = {
       storeValues: 'none',
       fields: {
         text: { analyzers: ['text_en'] },
-        embedding: { analyzers: ['vector'], vector: { dimension: 1536, metric: 'cosine' } }
+        embedding: { analyzers: ['vector'], vector: { dimension: DIM, metric: 'cosine' } }
       },
       features: ['frequency','norm','position']
     }

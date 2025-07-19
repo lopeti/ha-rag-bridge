@@ -8,7 +8,12 @@ from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextContainer
 from arango import ArangoClient
 
-from .ingest import EmbeddingBackend, LocalBackend, OpenAIBackend
+from .embedding_backends import (
+    BaseEmbeddingBackend as EmbeddingBackend,
+    LocalBackend,
+    OpenAIBackend,
+    get_backend,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +43,13 @@ def chunk_tokens(text: str, size: int = 500, overlap: int = 50) -> Iterable[str]
 
 def ingest(file: str, device_id: str) -> None:
     logging.basicConfig(level=logging.INFO)
-    backend = os.getenv("EMBEDDING_BACKEND", "local").lower()
-    if backend == "openai":
+    backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+    if backend_name == "openai":  # keep for backward compat in tests
         emb_backend: EmbeddingBackend = OpenAIBackend()
-    else:
+    elif backend_name == "local":
         emb_backend = LocalBackend()
+    else:
+        emb_backend = get_backend(backend_name)
 
     arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
     db_name = os.getenv("ARANGO_DB", "_system")
@@ -82,7 +89,9 @@ def ingest(file: str, device_id: str) -> None:
         )
 
     doc_col.insert_many(docs, overwrite=True, overwrite_mode="update")
-    doc_col.insert({"_key": f"{base_id}_manual"}, overwrite=True, overwrite_mode="update")
+    doc_col.insert(
+        {"_key": f"{base_id}_manual"}, overwrite=True, overwrite_mode="update"
+    )
 
     edge = {
         "_from": f"device/{device_id}",

@@ -4,7 +4,7 @@ import os
 import time
 import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict
 
 import httpx
 
@@ -31,7 +31,9 @@ class ServiceCatalog:
             return
 
         headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=5.0) as client:
+        async with httpx.AsyncClient(
+            base_url=base_url, headers=headers, timeout=5.0
+        ) as client:
             resp = await client.get("/api/services")
             resp.raise_for_status()
             data = resp.json()
