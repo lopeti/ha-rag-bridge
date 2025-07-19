@@ -5,8 +5,9 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # 🔧 Install system dependencies needed for building Python packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev curl && \
+RUN apt-get update --allow-releaseinfo-change && \
+    apt-get install -y --no-install-recommends \
+        build-essential libpq-dev curl gnupg && \
     rm -rf /var/lib/apt/lists/*
 
 # 🔧 Install a stable version of Poetry
