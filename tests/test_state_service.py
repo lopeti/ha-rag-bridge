@@ -1,19 +1,19 @@
 import os
 from unittest.mock import MagicMock
 
-import pytest
-
 import app.services.state_service as ss
 
 
 def setup_env():
-    os.environ.update({
-        "HA_URL": "http://ha",
-        "HA_TOKEN": "token",
-        "INFLUX_URL": "http://db:8086",
-        "INFLUX_TOKEN": "tok",
-        "STATE_CACHE_TTL": "30",
-    })
+    os.environ.update(
+        {
+            "HA_URL": "http://ha",
+            "HA_TOKEN": "token",
+            "INFLUX_URL": "http://db:8086",
+            "INFLUX_TOKEN": "tok",
+            "STATE_CACHE_TTL": "30",
+        }
+    )
 
 
 def test_influx_success(monkeypatch):
@@ -39,7 +39,10 @@ def test_fallback_to_ha(monkeypatch):
     ss.get_last_state.cache.clear()
     monkeypatch.setattr(ss, "InfluxDBClient", MagicMock(side_effect=Exception))
     resp = MagicMock(status_code=200)
-    resp.json.return_value = {"state": "22", "attributes": {"unit_of_measurement": "°C"}}
+    resp.json.return_value = {
+        "state": "22",
+        "attributes": {"unit_of_measurement": "°C"},
+    }
     resp.raise_for_status.return_value = None
     client = MagicMock()
     client.get.return_value = resp

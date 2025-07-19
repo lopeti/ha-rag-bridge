@@ -19,64 +19,18 @@ from typing import List, Optional
 import hashlib
 
 import httpx
-import openai
 from arango import ArangoClient
+
+from .embedding_backends import (
+    BaseEmbeddingBackend as EmbeddingBackend,
+    LocalBackend,  # noqa: F401 - used in tests
+    OpenAIBackend,  # noqa: F401 - used in tests
+    get_backend,
+)
 
 
 logger = logging.getLogger(__name__)
 
-
-class EmbeddingBackend:
-    """Abstract embedding backend interface."""
-
-    def embed(self, texts: List[str]) -> List[List[float]]:
-        """Return embeddings for the given texts."""
-        raise NotImplementedError
-
-
-class LocalBackend(EmbeddingBackend):
-    """Embed texts locally using SentenceTransformers."""
-
-    def __init__(self) -> None:
-        from sentence_transformers import SentenceTransformer
-
-        self.model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
-
-    def embed(self, texts: List[str]) -> List[List[float]]:
-        embeddings = self.model.encode(
-            texts,
-            show_progress_bar=False,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-        )
-        return [e.tolist() for e in embeddings]
-
-
-class OpenAIBackend(EmbeddingBackend):
-    """Embed texts using the OpenAI API."""
-
-    def __init__(self) -> None:
-        self.client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-    def embed(self, texts: List[str]) -> List[List[float]]:
-        model = "text-embedding-3-large"
-        for attempt in range(3):
-            try:
-                resp = self.client.embeddings.create(model=model, input=texts)
-                return [item.embedding for item in resp.data]  # type: ignore[index]
-            except Exception as exc:  # pragma: no cover - network errors
-                if "quota" in str(exc).lower() and model != "text-embedding-3-small":
-                    logger.warning("Quota exceeded, falling back to small model")
-                    model = "text-embedding-3-small"
-                    continue
-
-                if attempt == 2:
-                    raise
-                wait = 2**attempt
-                logger.warning("Embedding retry in %ss due to %s", wait, exc)
-                time.sleep(wait)
-
-        return [[] for _ in texts]
 
 def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
     """GET with up to three retries and exponential backoff."""
@@ -123,8 +77,6 @@ def build_text(entity: dict) -> str:
     return f"{friendly_name}. {area}. {domain}. {synonyms}. {extra_synonyms}".strip()
 
 
-
-
 def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     """Construct the ArangoDB document for an entity."""
 
@@ -152,12 +104,14 @@ def ingest(entity_id: Optional[str] = None) -> None:
     if not states:
         return
 
-    backend = os.getenv("EMBEDDING_BACKEND", "local").lower()
-    logger.info("Using embedding backend: %s", backend)
-    if backend == "openai":
+    backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+    logger.info("Using embedding backend: %s", backend_name)
+    if backend_name == "openai":
         emb_backend: EmbeddingBackend = OpenAIBackend()
-    else:
+    elif backend_name == "local":
         emb_backend = LocalBackend()
+    else:
+        emb_backend = get_backend(backend_name)
 
     arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
     db_name = os.getenv("ARANGO_DB", "_system")
@@ -200,28 +154,40 @@ def ingest(entity_id: Optional[str] = None) -> None:
                 device_id = attrs.get("device_id")
                 edge_count = 0
                 if area_id:
-                    area_col.insert({"_key": area_id, "name": area_id}, overwrite=True, overwrite_mode="update")
+                    area_col.insert(
+                        {"_key": area_id, "name": area_id},
+                        overwrite=True,
+                        overwrite_mode="update",
+                    )
                     key_raw = f"area_contains:area/{area_id}->entity/{eid}"
-                    edges.append({
-                        "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
-                        "_from": f"area/{area_id}",
-                        "_to": f"entity/{eid}",
-                        "label": "area_contains",
-                        "created_by": "ingest",
-                        "ts_created": datetime.utcnow().isoformat(),
-                    })
+                    edges.append(
+                        {
+                            "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
+                            "_from": f"area/{area_id}",
+                            "_to": f"entity/{eid}",
+                            "label": "area_contains",
+                            "created_by": "ingest",
+                            "ts_created": datetime.utcnow().isoformat(),
+                        }
+                    )
                     edge_count += 1
                 if device_id:
-                    device_col.insert({"_key": device_id, "name": device_id}, overwrite=True, overwrite_mode="update")
+                    device_col.insert(
+                        {"_key": device_id, "name": device_id},
+                        overwrite=True,
+                        overwrite_mode="update",
+                    )
                     key_raw = f"device_hosts:device/{device_id}->entity/{eid}"
-                    edges.append({
-                        "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
-                        "_from": f"device/{device_id}",
-                        "_to": f"entity/{eid}",
-                        "label": "device_hosts",
-                        "created_by": "ingest",
-                        "ts_created": datetime.utcnow().isoformat(),
-                    })
+                    edges.append(
+                        {
+                            "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
+                            "_from": f"device/{device_id}",
+                            "_to": f"entity/{eid}",
+                            "label": "device_hosts",
+                            "created_by": "ingest",
+                            "ts_created": datetime.utcnow().isoformat(),
+                        }
+                    )
                     edge_count += 1
                 logger.info("Upserted %s (doc) +%d edges", d["entity_id"], edge_count)
             if edges:

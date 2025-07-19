@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 from typing import List, Sequence, Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException
 
@@ -10,17 +11,70 @@ import httpx
 from arango import ArangoClient
 
 from . import schemas
-from scripts.ingest import LocalBackend, OpenAIBackend, EmbeddingBackend
+from scripts.embedding_backends import (
+    BaseEmbeddingBackend as EmbeddingBackend,
+    LocalBackend,
+    OpenAIBackend,
+    GeminiBackend,
+    get_backend,
+)
 from .services.state_service import get_last_state
 from .services.service_catalog import ServiceCatalog
 
 app = FastAPI()
 router = APIRouter()
 
-service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6*3600))))
+service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
 
-CONTROL_RE = re.compile(r"\b(kapcsold|ind\xEDtsd|\xE1ll\xEDtsd|turn\s+on|turn\s+off)\b", re.IGNORECASE)
-READ_RE = re.compile(r"\b(mennyi|h\xE1ny|milyen|fok|temperature|status)\b", re.IGNORECASE)
+backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+if backend_name == "gemini":
+    backend_dim = GeminiBackend.DIMENSION
+elif backend_name == "openai":
+    backend_dim = OpenAIBackend.DIMENSION
+else:
+    backend_dim = LocalBackend.DIMENSION
+HEALTH_ERROR: str | None = None
+
+try:
+    arango_url = os.environ["ARANGO_URL"]
+    arango_user = os.environ["ARANGO_USER"]
+    arango_pass = os.environ["ARANGO_PASS"]
+
+    arango = ArangoClient(hosts=arango_url)
+    db_name = os.getenv("ARANGO_DB", "_system")
+    db = arango.db(
+        db_name,
+        username=arango_user,
+        password=arango_pass,
+    )
+    col = db.collection("entity")
+    idx = next(
+        (
+            i
+            for i in col.indexes()
+            if i["type"] == "hnsw" and i["fields"][0] == "embedding"
+        ),
+        None,
+    )
+    if idx and idx.get("dimensions") != backend_dim:
+        logging.getLogger(__name__).warning(
+            "Embedding dimension mismatch: backend=%d index=%d",
+            backend_dim,
+            idx.get("dimensions"),
+        )
+        HEALTH_ERROR = "dimension mismatch"
+except KeyError:
+    pass
+except Exception as exc:  # pragma: no cover - db errors
+    logging.getLogger(__name__).warning("Health check init failed: %s", exc)
+    HEALTH_ERROR = "dimension check failed"
+
+CONTROL_RE = re.compile(
+    r"\b(kapcsold|ind\xEDtsd|\xE1ll\xEDtsd|turn\s+on|turn\s+off)\b", re.IGNORECASE
+)
+READ_RE = re.compile(
+    r"\b(mennyi|h\xE1ny|milyen|fok|temperature|status)\b", re.IGNORECASE
+)
 
 
 def detect_intent(text: str) -> str:
@@ -57,11 +111,13 @@ def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
     return list(cursor)
 
 
-def query_manual(db, doc_id: str, q_vec: Sequence[float], q_text: str, k: int = 2) -> List[str]:
+def query_manual(
+    db, doc_id: str, q_vec: Sequence[float], q_text: str, k: int = 2
+) -> List[str]:
     aql = (
         "FOR d IN v_manual "
         "SEARCH d.document_id == @doc AND ANALYZER("
-        "SIMILARITY(d.embedding, @qv) > 0.7 OR PHRASE(d.text, @msg, 'text_en')" 
+        "SIMILARITY(d.embedding, @qv) > 0.7 OR PHRASE(d.text, @msg, 'text_en')"
         ", 'text_en') "
         "SORT BM25(d) DESC "
         "LIMIT @k "
@@ -83,13 +139,17 @@ def service_to_tool(domain: str, name: str, spec: Dict[str, Any]) -> Dict[str, A
             "parameters": {
                 "type": "object",
                 "properties": spec.get("fields", {}),
-                "required": [k for k, v in spec.get("fields", {}).items() if v.get("required")],
+                "required": [
+                    k for k, v in spec.get("fields", {}).items() if v.get("required")
+                ],
             },
         },
     }
 
 
-def retrieve_entities(db, q_vec: Sequence[float], q_text: str, k_list=(5, 15)) -> List[dict]:
+def retrieve_entities(
+    db, q_vec: Sequence[float], q_text: str, k_list=(5, 15)
+) -> List[dict]:
     for k in k_list:
         ents = query_arango(db, q_vec, q_text, k)
         if len(ents) >= 2:
@@ -99,16 +159,20 @@ def retrieve_entities(db, q_vec: Sequence[float], q_text: str, k_list=(5, 15)) -
 
 @router.get("/health")
 async def health():
+    if HEALTH_ERROR:
+        raise HTTPException(status_code=500, detail=HEALTH_ERROR)
     return {"status": "ok"}
 
 
 @router.post("/process-request", response_model=schemas.ProcessResponse)
 async def process_request(payload: schemas.Request):
-    backend = os.getenv("EMBEDDING_BACKEND", "local").lower()
-    if backend == "openai":
+    backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+    if backend_name == "openai":
         emb_backend: EmbeddingBackend = OpenAIBackend()
-    else:
+    elif backend_name == "local":
         emb_backend = LocalBackend()
+    else:
+        emb_backend = get_backend(backend_name)
 
     try:
         query_vector = emb_backend.embed([payload.user_message])[0]
@@ -157,7 +221,9 @@ async def process_request(payload: schemas.Request):
                 )
                 manual_id = next(iter(cur), None)
                 if manual_id:
-                    hints = query_manual(db, manual_id, query_vector, payload.user_message)
+                    hints = query_manual(
+                        db, manual_id, query_vector, payload.user_message
+                    )
                     if hints:
                         system_prompt += "Manual hints:\n"
                         for h in hints:
@@ -194,7 +260,9 @@ async def process_response(payload: schemas.LLMResponse):
     headers = {"Authorization": f"Bearer {token}"}
     errors: List[str] = []
 
-    async with httpx.AsyncClient(base_url=ha_url, headers=headers, timeout=5.0) as client:
+    async with httpx.AsyncClient(
+        base_url=ha_url, headers=headers, timeout=5.0
+    ) as client:
         for call in tool_calls:
             func = call.function
             try:
@@ -219,4 +287,3 @@ async def process_response(payload: schemas.LLMResponse):
 
 app.include_router(router)
 app.include_router(graph_router)
-

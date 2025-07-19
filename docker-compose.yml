@@ -6,3 +6,10 @@ services:
       - "8086:8086"
     environment:
       - INFLUXD_REPORTING_DISABLED=true
+  bridge:
+    build: .
+    environment:
+      - EMBEDDING_BACKEND=gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_OUTPUT_DIM=1536
+      - EMBED_DIM=1536
