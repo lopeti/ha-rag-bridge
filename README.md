@@ -89,3 +89,11 @@ Run the demo locally (requires HA token and running services):
 ```bash
 poetry run python demo.py "Kapcsold fel a nappali lámpát"
 ```
+
+## Docker
+
+```
+# Lokális build tesztelése:
+docker build -t ha-rag-bridge .
+docker run -p 8000:8000 ha-rag-bridge
+```
