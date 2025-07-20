@@ -26,4 +26,4 @@ RUN poetry install --no-root
 COPY . .
 
 # 🚀 Run the FastAPI application with Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/bin/sh", "-c", "python -m ha_rag_bridge.bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
