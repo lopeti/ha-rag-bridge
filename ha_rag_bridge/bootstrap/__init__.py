@@ -12,12 +12,29 @@ SCHEMA_LATEST = 2
 logger = get_logger(__name__)
 
 
-def bootstrap() -> None:
+def run(plan, *, dry_run: bool = False, force: bool = False) -> int:
     """Ensure database collections and indexes exist."""
     if not env_true("AUTO_BOOTSTRAP", True):
         logger.info("bootstrap disabled")
-        return
+        return 0
 
+    if dry_run:
+        logger.info("dry run - no changes")
+        return 0
+
+    try:
+        _bootstrap_impl(force=force)
+    except Exception as exc:  # pragma: no cover - unexpected
+        logger.error("bootstrap failed", error=str(exc))
+        return 1
+    return 0
+
+
+def bootstrap() -> None:
+    run(None)
+
+
+def _bootstrap_impl(*, force: bool = False) -> None:
     try:
         arango_url = os.environ["ARANGO_URL"]
         user = os.environ["ARANGO_USER"]
@@ -138,7 +155,4 @@ def bootstrap() -> None:
 
     meta_col.insert({"_key": "schema_version", "value": SCHEMA_LATEST}, overwrite=True)
     logger.info("bootstrap finished")
-
-if __name__ == "__main__":
-    bootstrap()
 

@@ -6,6 +6,7 @@ authors = ["lopeti <lovas.peter.hu@gmail.com>"]
 packages = [
     { include = "app" }
     ,{ include = "scripts" }
+    ,{ include = "ha_rag_bridge" }
 ]
 
 [tool.poetry.dependencies]
@@ -22,6 +23,9 @@ cachetools = "^5.3"
 colorama = "^0.4"
 "pdfminer.six" = "^20221105"
 structlog = "^24"
+
+[tool.poetry.scripts]
+ha-rag-bootstrap = "ha_rag_bridge.bootstrap.cli:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1"

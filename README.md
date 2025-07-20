@@ -11,6 +11,22 @@ docker compose up -d
 ```
 The container automatically bootstraps the database on start.
 
+## Bootstrap CLI
+
+After installing via Poetry or pulling the Docker image you can run the
+bootstrap process directly:
+
+```bash
+docker run --rm ghcr.io/…/ha-rag-bridge:latest ha-rag-bootstrap --dry-run
+```
+
+Flags:
+
+- `--dry-run` – only analyse and do not modify the database
+- `--force` – drop and recreate indexes on dimension mismatch
+- `--reindex [collection]` – rebuild vector indexes (all when omitted)
+- `--quiet` – suppress info messages
+
 ## Embedding Provider
 
 Set `EMBEDDING_PROVIDER` to choose how text embeddings are created. Valid values:
