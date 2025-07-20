@@ -48,7 +48,7 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
             idx = None
         if not idx:
             if not dry_run:
-                col.add_index({
+                col._add_index({
                     "type": "hnsw",
                     "fields": ["embedding"],
                     "dimensions": embed_dim,

@@ -101,7 +101,7 @@ def _bootstrap_impl(*, force: bool = False) -> None:
         entity.delete_index(idx["id"])
         idx = None
     if not idx:
-        entity.add_index({
+        entity._add_index({
             "type": "hnsw",
             "fields": ["embedding"],
             "dimensions": embed_dim,
