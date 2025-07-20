@@ -13,7 +13,7 @@ jobs:
         ports:
           - 8529:8529
         options: >-
-          --name arangodb \
+          --name arangodb
           --health-cmd="arangosh --server.endpoint tcp://localhost:8529 \
           --server.username root --server.password pass \
           --javascript.execute-string '1'"
