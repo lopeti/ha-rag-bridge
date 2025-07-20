@@ -1,9 +1,12 @@
 import os
 import re
 import json
-import logging
 from typing import List, Sequence, Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from ha_rag_bridge.logging import get_logger
+from app.middleware.request_id import request_id_middleware
 
 from .routers.graph import router as graph_router
 from .routers.admin import router as admin_router
@@ -25,6 +28,8 @@ from .services.service_catalog import ServiceCatalog
 
 app = FastAPI()
 router = APIRouter()
+logger = get_logger(__name__)
+app.add_middleware(BaseHTTPMiddleware, dispatch=request_id_middleware)
 
 service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
 
@@ -64,16 +69,16 @@ try:
         None,
     )
     if idx and idx.get("dimensions") != backend_dim:
-        logging.getLogger(__name__).warning(
-            "Embedding dimension mismatch: backend=%d index=%d",
-            backend_dim,
-            idx.get("dimensions"),
+        logger.warning(
+            "embedding dimension mismatch",
+            backend=backend_dim,
+            index=idx.get("dimensions"),
         )
         HEALTH_ERROR = "dimension mismatch"
 except KeyError:
     pass
 except Exception as exc:  # pragma: no cover - db errors
-    logging.getLogger(__name__).warning("Health check init failed: %s", exc)
+    logger.warning("Health check init failed", error=str(exc))
     HEALTH_ERROR = "dimension check failed"
 
 CONTROL_RE = re.compile(

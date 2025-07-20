@@ -154,3 +154,29 @@ poetry run python demo.py "Kapcsold fel a nappali lámpát"
 docker build -t ha-rag-bridge .
 docker run -p 8000:8000 ha-rag-bridge
 ```
+
+## Logging
+
+Structured JSON logs are emitted to stdout. Example line:
+
+```json
+{"level": "info", "msg": "upserted entity", "entity": "sensor.test", "ts": "2024-01-01T00:00:00Z"}
+```
+
+Environment variables:
+
+- `LOG_LEVEL` – default `INFO`
+- `DEBUG=true` enables admin endpoints without token
+- `LOG_FILE` – optional path for rotating file logs
+
+Example Grafana Loki scrape:
+
+```yaml
+  scrape_configs:
+    - job_name: bridge
+      static_configs:
+        - targets: [localhost]
+          labels:
+            job: ha-rag-bridge
+            __path__: /var/log/bridge*.log
+```

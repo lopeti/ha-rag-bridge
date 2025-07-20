@@ -1,21 +1,21 @@
 import os
-import logging
 import glob
 import importlib.util
 from time import perf_counter
 from arango import ArangoClient
 
 from ha_rag_bridge.utils.env import env_true
+from ha_rag_bridge.logging import get_logger
 
 SCHEMA_LATEST = 2
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def bootstrap() -> None:
     """Ensure database collections and indexes exist."""
     if not env_true("AUTO_BOOTSTRAP", True):
-        logger.info("Bootstrap disabled")
+        logger.info("bootstrap disabled")
         return
 
     try:
@@ -23,7 +23,7 @@ def bootstrap() -> None:
         user = os.environ["ARANGO_USER"]
         password = os.environ["ARANGO_PASS"]
     except KeyError as exc:  # pragma: no cover - missing env
-        logger.warning("Bootstrap skipped, missing env: %s", exc)
+        logger.warning("bootstrap skipped", missing=str(exc))
         return
 
     db_name = os.getenv("ARANGO_DB", "ha_graph")
@@ -137,7 +137,7 @@ def bootstrap() -> None:
         )
 
     meta_col.insert({"_key": "schema_version", "value": SCHEMA_LATEST}, overwrite=True)
-    logger.info("Bootstrap finished")
+    logger.info("bootstrap finished")
 
 if __name__ == "__main__":
     bootstrap()
