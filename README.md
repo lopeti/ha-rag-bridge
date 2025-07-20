@@ -9,8 +9,7 @@ git clone <repo>
 cp .env.sample .env
 docker compose up -d
 ```
-
-On first start you should see `Bootstrap finished` in the logs.
+The container automatically bootstraps the database on start.
 
 ## Embedding Provider
 
@@ -119,7 +118,17 @@ Endpoints:
 | ------ | ---- | ----------- |
 | POST | `/admin/migrate` | run bootstrap plan |
 | POST | `/admin/reindex` | rebuild indexes |
+| POST | `/admin/vacuum` | delete old sensor/event docs |
+| GET  | `/admin/export` | download ZIP backup |
 | GET  | `/admin/status` | current schema info |
+
+Example backup command:
+
+```bash
+curl -H "X-Admin-Token:$ADMIN_TOKEN" \
+     -o backup_$(date +%Y%m%d).zip \
+     http://localhost:8000/admin/export
+```
 
 ## Architecture
 ![Architecture diagram](docs/architecture.svg)

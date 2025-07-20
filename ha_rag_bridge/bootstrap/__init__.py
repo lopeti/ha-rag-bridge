@@ -1,14 +1,23 @@
 import os
 import logging
+import glob
+import importlib.util
+from time import perf_counter
 from arango import ArangoClient
 
-SCHEMA_LATEST = 1
+from ha_rag_bridge.utils.env import env_true
+
+SCHEMA_LATEST = 2
 
 logger = logging.getLogger(__name__)
 
 
 def bootstrap() -> None:
     """Ensure database collections and indexes exist."""
+    if not env_true("AUTO_BOOTSTRAP", True):
+        logger.info("Bootstrap disabled")
+        return
+
     try:
         arango_url = os.environ["ARANGO_URL"]
         user = os.environ["ARANGO_USER"]
@@ -26,6 +35,28 @@ def bootstrap() -> None:
         sys_db.create_database(db_name)
 
     db = client.db(db_name, username=user, password=password)
+
+    # Run pending migrations based on stored schema version
+    version = 0
+    if db.has_collection("_meta"):
+        meta_col = db.collection("_meta")
+        doc = meta_col.get("schema_version")
+        if doc:
+            version = int(doc.get("value", 0))
+    else:
+        db.create_collection("_meta")
+        meta_col = db.collection("_meta")
+
+    if version < SCHEMA_LATEST:
+        for num in range(version + 1, SCHEMA_LATEST + 1):
+            for path in sorted(glob.glob(f"migrations/{num:02d}__*.py")):
+                spec = importlib.util.spec_from_file_location("migration", path)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    if hasattr(mod, "run"):
+                        mod.run(db)
+        version = SCHEMA_LATEST
 
     doc_cols = [
         "area",
@@ -105,6 +136,7 @@ def bootstrap() -> None:
             },
         )
 
+    meta_col.insert({"_key": "schema_version", "value": SCHEMA_LATEST}, overwrite=True)
     logger.info("Bootstrap finished")
 
 if __name__ == "__main__":

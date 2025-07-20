@@ -7,6 +7,7 @@ from fastapi import FastAPI, APIRouter, HTTPException
 
 from .routers.graph import router as graph_router
 from .routers.admin import router as admin_router
+from ha_rag_bridge.utils.env import env_true
 import httpx
 
 from arango import ArangoClient
@@ -27,7 +28,7 @@ router = APIRouter()
 
 service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
 
-if os.getenv("AUTO_BOOTSTRAP") == "1":
+if env_true("AUTO_BOOTSTRAP", True):
     from ha_rag_bridge.bootstrap import bootstrap
 
     bootstrap()
