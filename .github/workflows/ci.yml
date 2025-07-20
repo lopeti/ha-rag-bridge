@@ -18,9 +18,9 @@ jobs:
           --server.username root --server.password pass \
           --javascript.execute-string '1'"
           --health-interval=10s --health-timeout=5s --health-retries=5
-          --experimental-vector-index
         env:
           ARANGO_ROOT_PASSWORD: pass
+        command: --experimental-vector-index
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v5
