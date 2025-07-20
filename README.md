@@ -9,7 +9,9 @@ git clone <repo>
 cp .env.sample .env
 docker compose up -d
 ```
-The container automatically bootstraps the database on start.
+The container automatically bootstraps the database on start. Make sure your
+ArangoDB instance runs with the `--experimental-vector-index` flag enabled so
+vector search works correctly.
 
 ## Bootstrap CLI
 
