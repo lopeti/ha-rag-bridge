@@ -51,7 +51,7 @@ async def reindex(request: Request) -> dict:
     start = perf_counter()
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes() if i["type"] == "hnsw"), None)
+        idx = next((i for i in col.indexes() if i["type"] == "vector"), None)
         if idx and (force or idx.get("dimensions") != embed_dim):
             col.delete_index(idx["id"])
             logger.warning(
@@ -60,7 +60,7 @@ async def reindex(request: Request) -> dict:
             dropped += 1
             idx = None
         if not idx:
-            col.add_index({"type": "hnsw", "fields": ["embedding"], "dimensions": embed_dim, "metric": "cosine"})
+            col.add_index({"type": "vector", "fields": ["embedding"], "dimensions": embed_dim, "metric": "cosine"})
             created += 1
     took_ms = int((perf_counter() - start) * 1000)
     logger.info(

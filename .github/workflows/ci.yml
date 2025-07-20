@@ -7,6 +7,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      arangodb:
+        image: arangodb/arangodb:latest
+        ports:
+          - 8529:8529
+        options: >-
+          --name arangodb
+          --health-cmd="arangosh --server.endpoint tcp://localhost:8529 \
+          --server.username root --server.password pass \
+          --javascript.execute-string '1'"
+          --health-interval=10s --health-timeout=5s --health-retries=5
+        env:
+          ARANGO_ROOT_PASSWORD: pass
+        command: --experimental-vector-index
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v5
@@ -17,3 +31,6 @@ jobs:
           virtualenvs-create: false
       - run: poetry install
       - run: poetry run pytest
+      - run: docker build -t ha-rag-bridge .
+      - run: docker exec arangodb arangosh --server.endpoint tcp://localhost:8529 --server.username root --server.password pass --javascript.execute-string 'db._create("embeddings")'
+      - run: docker run --network host -e ARANGO_URL=http://localhost:8529 -e ARANGO_USER=root -e ARANGO_PASS=pass ha-rag-bridge ha-rag-bootstrap --reindex embeddings

@@ -34,3 +34,17 @@ def test_bootstrap_idempotent(monkeypatch):
     meta_col.get.return_value = {'value': boot.SCHEMA_LATEST}
     boot.bootstrap()
     assert meta_col.insert.call_count == 2
+
+
+def test_run_dry_run(monkeypatch):
+    setup_env()
+    called = False
+
+    def fake_impl(*a, **k):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(boot, "_bootstrap_impl", fake_impl)
+    code = boot.run(None, dry_run=True)
+    assert code == 0
+    assert not called
