@@ -28,6 +28,19 @@ Flags:
 - `--force` – drop and recreate indexes on dimension mismatch
 - `--reindex [collection]` – rebuild vector indexes (all when omitted)
 - `--quiet` – suppress info messages
+- `--skip-invalid` – skip collections with illegal names
+- `--rename-invalid` – attempt to auto-fix illegal names
+
+### Collection naming rules & auto-fix flags
+
+Collection names must start with a letter and may contain letters, digits,
+hyphen or underscore up to 255 characters. Names beginning with `arango` are
+reserved. When the bootstrap encounters an invalid name you can either skip it
+with `--skip-invalid` or automatically rename it using:
+
+```bash
+ha-rag-bootstrap --rename-invalid
+```
 
 ## Embedding Provider
 

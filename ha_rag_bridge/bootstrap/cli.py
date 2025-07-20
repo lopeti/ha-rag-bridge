@@ -71,6 +71,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--force", action="store_true", help="drop+recreate on dim mismatch")
     parser.add_argument("--reindex", nargs="?", const="all", metavar="collection", help="rebuild HNSW index")
     parser.add_argument("--quiet", action="store_true", help="only WARN and ERROR logs")
+    parser.add_argument("--skip-invalid", action="store_true", help="skip invalid collection names")
+    parser.add_argument("--rename-invalid", action="store_true", help="auto rename invalid collection names")
     return parser.parse_args(argv)
 
 
@@ -82,11 +84,24 @@ def main(argv: list[str] | None = None) -> None:
         os.environ["LOG_LEVEL"] = "WARNING"
 
     start = perf_counter()
-    if args.reindex is not None:
-        collection = None if args.reindex == "all" else args.reindex
-        code = _reindex(collection, force=args.force, dry_run=args.dry_run)
-    else:
-        code = bootstrap_run(None, dry_run=args.dry_run, force=args.force)
+    try:
+        if args.reindex is not None:
+            collection = None if args.reindex == "all" else args.reindex
+            code = _reindex(collection, force=args.force, dry_run=args.dry_run)
+        else:
+            code = bootstrap_run(
+                None,
+                dry_run=args.dry_run,
+                force=args.force,
+                skip_invalid=args.skip_invalid,
+                rename_invalid=args.rename_invalid,
+            )
+    except ValueError as e:
+        from ha_rag_bridge.logging import get_logger
+
+        logger = get_logger(__name__)
+        logger.critical("bootstrap abort", error=str(e))
+        raise SystemExit(2)
     took = int((perf_counter() - start) * 1000)
     dim = int(os.getenv("EMBED_DIM", "1536"))
 
