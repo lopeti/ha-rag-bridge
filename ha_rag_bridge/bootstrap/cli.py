@@ -39,7 +39,7 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
     dropped = created = 0
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes() if i["type"] == "hnsw"), None)
+        idx = next((i for i in col.indexes() if i["type"] == "vector"), None)
         if idx and (force or idx.get("dimensions") != embed_dim):
             if not dry_run:
                 col.delete_index(idx["id"])
@@ -49,7 +49,7 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
         if not idx:
             if not dry_run:
                 col._add_index({
-                    "type": "hnsw",
+                    "type": "vector",
                     "fields": ["embedding"],
                     "dimensions": embed_dim,
                     "metric": "cosine",

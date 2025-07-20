@@ -30,8 +30,8 @@ const entity = db._collection('entity');
 if (!entity.getIndexes().some(i => i.type === 'hash' && i.fields[0] === 'entity_id')) {
   entity.ensureIndex({ type: 'hash', fields: ['entity_id'], unique: true });
 }
-if (!entity.getIndexes().some(i => i.type === 'hnsw' && i.fields[0] === 'embedding')) {
-  entity.ensureIndex({ type: 'hnsw', fields: ['embedding'], dimensions: DIM, metric: 'cosine' });
+if (!entity.getIndexes().some(i => i.type === 'vector' && i.fields[0] === 'embedding')) {
+  entity.ensureIndex({ type: 'vector', fields: ['embedding'], dimensions: DIM, metric: 'cosine' });
 }
 
 const edge = db._collection('edge');

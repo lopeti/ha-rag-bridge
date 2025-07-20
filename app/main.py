@@ -64,7 +64,7 @@ try:
         (
             i
             for i in col.indexes()
-            if i["type"] == "hnsw" and i["fields"][0] == "embedding"
+            if i["type"] == "vector" and i["fields"][0] == "embedding"
         ),
         None,
     )

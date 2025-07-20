@@ -94,7 +94,7 @@ def _bootstrap_impl(*, force: bool = False) -> None:
 
     entity = db.collection("entity")
     idx = next(
-        (i for i in entity.indexes() if i["type"] == "hnsw" and i["fields"] == ["embedding"]),
+        (i for i in entity.indexes() if i["type"] == "vector" and i["fields"] == ["embedding"]),
         None,
     )
     if idx and idx.get("dimensions") != embed_dim:
@@ -102,7 +102,7 @@ def _bootstrap_impl(*, force: bool = False) -> None:
         idx = None
     if not idx:
         entity._add_index({
-            "type": "hnsw",
+            "type": "vector",
             "fields": ["embedding"],
             "dimensions": embed_dim,
             "metric": "cosine",

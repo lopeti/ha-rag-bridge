@@ -10,8 +10,8 @@ function ensureDocumentCollection(name) {
 }
 
 const manual = ensureDocumentCollection('document');
-if (!manual.getIndexes().some(i => i.type === 'hnsw')) {
-  manual.ensureIndex({type:'hnsw', fields:['embedding'], dimensions:DIM, metric:'cosine'});
+if (!manual.getIndexes().some(i => i.type === 'vector')) {
+  manual.ensureIndex({type:'vector', fields:['embedding'], dimensions:DIM, metric:'cosine'});
 }
 
 const viewProps = {
