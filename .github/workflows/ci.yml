@@ -13,7 +13,9 @@ jobs:
         ports:
           - 8529:8529
         options: >-
-          --health-cmd="curl -f -u root:pass http://localhost:8529/_api/version || exit 1"
+          --health-cmd="arangosh --server.endpoint tcp://localhost:8529 \
+          --server.username root --server.password pass \
+          --javascript.execute-string '1'"
           --health-interval=10s --health-timeout=5s --health-retries=5
         env:
           ARANGO_ROOT_PASSWORD: pass
