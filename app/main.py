@@ -6,6 +6,7 @@ from typing import List, Sequence, Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException
 
 from .routers.graph import router as graph_router
+from .routers.admin import router as admin_router
 import httpx
 
 from arango import ArangoClient
@@ -25,6 +26,11 @@ app = FastAPI()
 router = APIRouter()
 
 service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
+
+if os.getenv("AUTO_BOOTSTRAP") == "1":
+    from ha_rag_bridge.bootstrap import bootstrap
+
+    bootstrap()
 
 backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
 if backend_name == "gemini":
@@ -287,3 +293,4 @@ async def process_response(payload: schemas.LLMResponse):
 
 app.include_router(router)
 app.include_router(graph_router)
+app.include_router(admin_router)

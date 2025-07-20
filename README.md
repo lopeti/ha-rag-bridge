@@ -2,6 +2,16 @@
 
 This project syncs Home Assistant metadata into ArangoDB and provides a simple FastAPI service.
 
+## Quick Start
+
+```bash
+git clone <repo>
+cp .env.sample .env
+docker compose up -d
+```
+
+On first start you should see `Bootstrap finished` in the logs.
+
 ## Embedding Provider
 
 Set `EMBEDDING_PROVIDER` to choose how text embeddings are created. Valid values:
@@ -94,6 +104,22 @@ The catalog of `/api/services` is fetched on first request and cached for 6 h
 
 ### Quick demo
 poetry run python demo.py "Hány fok van a nappaliban?"
+
+## Admin API
+
+All maintenance endpoints require the `X-Admin-Token` header:
+
+```bash
+curl -H "X-Admin-Token: $ADMIN_TOKEN" http://localhost:8000/admin/status
+```
+
+Endpoints:
+
+| method | path | description |
+| ------ | ---- | ----------- |
+| POST | `/admin/migrate` | run bootstrap plan |
+| POST | `/admin/reindex` | rebuild indexes |
+| GET  | `/admin/status` | current schema info |
 
 ## Architecture
 ![Architecture diagram](docs/architecture.svg)
