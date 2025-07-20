@@ -21,6 +21,7 @@ influxdb-client = "^1.40"
 cachetools = "^5.3"
 colorama = "^0.4"
 "pdfminer.six" = "^20221105"
+structlog = "^24"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1"

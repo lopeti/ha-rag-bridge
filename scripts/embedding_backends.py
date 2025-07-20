@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import time
 from typing import List
@@ -8,7 +7,9 @@ from typing import List
 import httpx
 import openai
 
-logger = logging.getLogger(__name__)
+from ha_rag_bridge.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseEmbeddingBackend:
@@ -56,14 +57,18 @@ class OpenAIBackend(BaseEmbeddingBackend):
                 return [item.embedding for item in resp.data]  # type: ignore[index]
             except Exception as exc:  # pragma: no cover - network errors
                 if "quota" in str(exc).lower() and model != "text-embedding-3-small":
-                    logger.warning("Quota exceeded, falling back to small model")
+                    logger.warning(
+                        "quota exceeded", action="fallback", model="small"
+                    )
                     model = "text-embedding-3-small"
                     continue
 
                 if attempt == 2:
                     raise
                 wait = 2**attempt
-                logger.warning("Embedding retry in %ss due to %s", wait, exc)
+                logger.warning(
+                    "embedding retry", wait_s=wait, error=str(exc)
+                )
                 time.sleep(wait)
 
         return [[] for _ in texts]

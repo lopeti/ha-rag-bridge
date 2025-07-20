@@ -3,12 +3,13 @@ from __future__ import annotations
 import os
 import time
 import asyncio
-import logging
 from typing import Dict
+
+from ha_rag_bridge.logging import get_logger
 
 import httpx
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ServiceCatalog:
@@ -25,7 +26,9 @@ class ServiceCatalog:
         base_url = os.environ.get("HA_URL")
         token = os.environ.get("HA_TOKEN")
         if not base_url or not token:
-            logger.warning("Missing HA_URL or HA_TOKEN; service catalog empty")
+            logger.warning(
+                "service catalog empty", missing_url=not bool(base_url), missing_token=not bool(token)
+            )
             self._cache = {}
             self._ts = time.time()
             return
@@ -52,7 +55,7 @@ class ServiceCatalog:
 
         self._cache = catalog
         self._ts = time.time()
-        logger.debug("Service catalog refreshed with %d domains", len(catalog))
+        logger.debug("service catalog refreshed", domains=len(catalog))
 
     async def _ensure_fresh(self) -> None:
         if time.time() - self._ts > self.ttl:

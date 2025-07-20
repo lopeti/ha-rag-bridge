@@ -1,12 +1,13 @@
 from __future__ import annotations
 import os
 import argparse
-import logging
 from typing import List, Iterable, Tuple
 
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextContainer
 from arango import ArangoClient
+
+from ha_rag_bridge.logging import get_logger
 
 from .embedding_backends import (
     BaseEmbeddingBackend as EmbeddingBackend,
@@ -15,7 +16,7 @@ from .embedding_backends import (
     get_backend,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def extract_pages_text(path: str) -> List[Tuple[int, str]]:
@@ -42,7 +43,6 @@ def chunk_tokens(text: str, size: int = 500, overlap: int = 50) -> Iterable[str]
 
 
 def ingest(file: str, device_id: str) -> None:
-    logging.basicConfig(level=logging.INFO)
     backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
     if backend_name == "openai":  # keep for backward compat in tests
         emb_backend: EmbeddingBackend = OpenAIBackend()
@@ -68,7 +68,7 @@ def ingest(file: str, device_id: str) -> None:
             chunks.append((page_num, idx, chunk))
 
     if not chunks:
-        logger.warning("No text extracted from %s", file)
+        logger.warning("no text extracted", file=file)
         return
 
     texts = [c[2] for c in chunks]
@@ -102,7 +102,7 @@ def ingest(file: str, device_id: str) -> None:
     }
     edge_col.insert(edge, overwrite=True, overwrite_mode="update")
 
-    logger.info("Inserted %d manual chunks for %s", len(docs), device_id)
+    logger.info("inserted manual chunks", chunks=len(docs), device=device_id)
 
 
 def cli() -> None:

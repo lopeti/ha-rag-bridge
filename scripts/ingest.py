@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import argparse
-import logging
 import time
 from datetime import datetime
 from typing import List, Optional
@@ -20,6 +19,8 @@ import hashlib
 
 import httpx
 from arango import ArangoClient
+
+from ha_rag_bridge.logging import get_logger
 
 from .embedding_backends import (
     BaseEmbeddingBackend as EmbeddingBackend,
@@ -29,7 +30,7 @@ from .embedding_backends import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
@@ -44,7 +45,7 @@ def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
             if attempt == 2:
                 raise
             wait = 2**attempt
-            logger.warning("Retrying %s in %ss due to %s", url, wait, exc)
+            logger.warning("http retry", url=url, wait_s=wait, error=str(exc))
             time.sleep(wait)
 
 
@@ -98,14 +99,12 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
 def ingest(entity_id: Optional[str] = None) -> None:
     """Run the ingestion process."""
 
-    logging.basicConfig(level=logging.INFO)
-
     states = fetch_states(entity_id)
     if not states:
         return
 
     backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
-    logger.info("Using embedding backend: %s", backend_name)
+    logger.info("embedding backend", backend=backend_name)
     if backend_name == "openai":
         emb_backend: EmbeddingBackend = OpenAIBackend()
     elif backend_name == "local":
@@ -132,14 +131,14 @@ def ingest(entity_id: Optional[str] = None) -> None:
         try:
             embeddings = emb_backend.embed(texts)
         except Exception as exc:  # pragma: no cover - network errors
-            logger.warning("Skipping batch due to embedding error: %s", exc)
+            logger.warning("embedding error", error=str(exc))
             continue
 
         docs = []
         ents_for_docs = []
         for ent, emb, text in zip(batch, embeddings, texts):
             if not emb:
-                logger.warning("Skipping entity %s", ent.get("entity_id"))
+                logger.warning("missing embedding", entity=ent.get("entity_id"))
                 continue
             docs.append(build_doc(ent, emb, text))
             ents_for_docs.append(ent)
@@ -189,7 +188,7 @@ def ingest(entity_id: Optional[str] = None) -> None:
                         }
                     )
                     edge_count += 1
-                logger.info("Upserted %s (doc) +%d edges", d["entity_id"], edge_count)
+                logger.info("upserted entity", entity=d["entity_id"], edges=edge_count)
             if edges:
                 edge_col.insert_many(edges, overwrite=True, overwrite_mode="ignore")
 

@@ -1,7 +1,6 @@
 import os
 import asyncio
 import json
-import logging
 import argparse
 import websockets
 
@@ -10,7 +9,9 @@ try:
 except ImportError:                    # direct run
     from ingest import ingest
 
-logger = logging.getLogger(__name__)
+from ha_rag_bridge.logging import get_logger
+
+logger = get_logger(__name__)
 
 WS_PATH = "/api/websocket"
 
@@ -43,7 +44,7 @@ async def _handle_messages(ws: websockets.WebSocketClientProtocol) -> None:
             continue
         action = e_data.get("action")
         ingest(entity_id)
-        logger.info("Updated entity %s (event=%s)", entity_id, action)
+        logger.info("entity updated", entity_id=entity_id, action=action)
 
 
 async def watch() -> None:
@@ -62,7 +63,7 @@ async def watch() -> None:
             break
         except Exception as exc:  # pragma: no cover - reconnect
             wait = backoffs[min(attempt, len(backoffs) - 1)]
-            logger.warning("WebSocket error: %s - reconnect in %ss", exc, wait)
+            logger.warning("websocket error", error=str(exc), wait_s=wait)
             attempt += 1
             await asyncio.sleep(wait)
             continue

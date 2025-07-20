@@ -18,5 +18,5 @@ services:
     command: >
       sh -c '
         python -m ha_rag_bridge.bootstrap || exit 1
-        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini
       '

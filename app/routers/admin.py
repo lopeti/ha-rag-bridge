@@ -5,13 +5,16 @@ import json
 import io
 import zipfile
 from datetime import datetime, timedelta
+from time import perf_counter
 from fastapi import APIRouter, Request, HTTPException, status, Response
 from fastapi.responses import StreamingResponse
 from arango import ArangoClient
 from ha_rag_bridge.bootstrap import bootstrap, SCHEMA_LATEST
 from ha_rag_bridge.utils.env import env_true
+from ha_rag_bridge.logging import get_logger
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = get_logger(__name__)
 
 
 def _check_token(request: Request) -> None:
@@ -51,12 +54,23 @@ async def reindex(request: Request) -> dict:
         idx = next((i for i in col.indexes() if i["type"] == "hnsw"), None)
         if idx and (force or idx.get("dimensions") != embed_dim):
             col.delete_index(idx["id"])
+            logger.warning(
+                "vector index recreated", collection=name, force=force
+            )
             dropped += 1
             idx = None
         if not idx:
             col.add_index({"type": "hnsw", "fields": ["embedding"], "dimensions": embed_dim, "metric": "cosine"})
             created += 1
     took_ms = int((perf_counter() - start) * 1000)
+    logger.info(
+        "reindex finished",
+        collection=target or "all",
+        dropped=dropped,
+        created=created,
+        dimensions=embed_dim,
+        elapsed_ms=took_ms,
+    )
     return {
         "collection": target or "all",
         "dropped": dropped,

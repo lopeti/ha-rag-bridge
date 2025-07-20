@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import logging
 from typing import Optional, Any
 
 from cachetools import TTLCache, cached
@@ -9,7 +8,9 @@ from cachetools import TTLCache, cached
 import httpx
 from influxdb_client import InfluxDBClient
 
-logger = logging.getLogger(__name__)
+from ha_rag_bridge.logging import get_logger
+
+logger = get_logger(__name__)
 
 _CACHE = TTLCache(maxsize=1024, ttl=int(os.getenv("STATE_CACHE_TTL", "30")))
 
@@ -40,7 +41,7 @@ def _query_influx(entity_id: str) -> Optional[Any]:
                     unit = record.values.get("unit_of_measurement")
                     return f"{value} {unit}".strip() if unit else value
     except Exception as exc:
-        logger.warning("Influx query failed for %s: %s", entity_id, exc)
+        logger.warning("influx query failed", entity_id=entity_id, error=str(exc))
         return None
     return None
 
