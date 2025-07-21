@@ -20,8 +20,7 @@ class IndexManager:
                 raise ValueError("Database object must be provided to use ensure_vector.")
             self.db._execute(
                 "post",
-                "/_api/index",
-                params={"collection": self.coll.name},
+                f"/_api/index?collection={self.coll.name}",
                 data={
                     "type": "vector",
                     "fields": [field],
