@@ -1,7 +1,6 @@
 import os
 import glob
 import importlib.util
-from time import perf_counter
 from arango import ArangoClient
 from ha_rag_bridge.db import BridgeDB
 from ha_rag_bridge.db.index import IndexManager
@@ -130,13 +129,13 @@ def _bootstrap_impl(
     idx = next(
         (
             i
-            for i in entity.indexes().indexes
-            if i.type == "vector" and i.fields == ["embedding"]
+            for i in entity.indexes()
+            if i["type"] == "vector" and i["fields"] == ["embedding"]
         ),
         None,
     )
-    if idx and getattr(idx, "dimensions", None) != embed_dim:
-        entity.delete_index(idx.id)
+    if idx and idx.get("dimensions") != embed_dim:
+        entity.delete_index(idx["id"])
         idx = None
     mgr = IndexManager(entity, db)
     if not idx:
