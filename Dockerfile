@@ -1,38 +1,31 @@
-
-# Stage 0 - download tini
-FROM busybox:1.36 AS tini_download
-ADD https://github.com/krallin/tini/releases/download/v0.19.0/tini-static /tini
-RUN chmod +x /tini
-
-# Stage 1 - application image
+# 🐍 Base image
 FROM python:3.12-slim
 
-# rendszer csomagok + Rust
-RUN apt-get update --allow-releaseinfo-change && \
-    apt-get install -y --no-install-recommends \
-        build-essential rustc cargo curl gnupg && \
-    rm -rf /var/lib/apt/lists/*
+# 📦 Poetry version
+ENV POETRY_VERSION=1.8.3
 
-# tini init wrapper
-COPY --from=tini_download /tini /bin/tini
+# Install system dependencies, tini, and Poetry
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl tini && \
+    pip install --no-cache-dir poetry==$POETRY_VERSION && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# set workdir
+# Set the working directory
 WORKDIR /app
 
-# --- Poetry install ---
-ENV POETRY_VERSION=1.8.3
-RUN pip install --no-cache-dir poetry==$POETRY_VERSION && \
-    poetry config virtualenvs.create false     \
- && poetry config installer.no-binary :none:   \
- && poetry install --no-interaction --no-ansi --only main
-ENV PATH="/usr/local/bin:$PATH"
+# Copy only dependency files first (for better build caching)
+COPY pyproject.toml poetry.lock* ./
 
-# install dependencies
-COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-root --only main
+# Configure Poetry and install dependencies
+RUN poetry config virtualenvs.create false && \
+    poetry config installer.no-binary :none: && \
+    poetry install --no-interaction --no-ansi --only main
 
-# copy application
+# Now copy the rest of the source code
 COPY . .
 
-ENTRYPOINT ["/bin/tini","--"]
-CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8000"]
+# Use tini as PID 1 for proper signal handling
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# Default command: run FastAPI with Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
