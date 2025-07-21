@@ -18,8 +18,10 @@ class IndexManager:
         if not any(i["type"] == "vector" and i["fields"] == [field] for i in self.coll.indexes()):
             if self.db is None:
                 raise ValueError("Database object must be provided to use ensure_vector.")
-            self.db.requests.post(
-                f"/_api/index?collection={self.coll.name}",
+            self.db._execute(
+                method="post",
+                endpoint="/_api/index",
+                params={"collection": self.coll.name},
                 data={
                     "type": "vector",
                     "fields": [field],
