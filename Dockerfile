@@ -9,7 +9,7 @@ FROM python:3.12-slim
 # system packages
 RUN apt-get update --allow-releaseinfo-change && \
     apt-get install -y --no-install-recommends \
-        build-essential libpq-dev curl gnupg && \
+        build-essential rustc cargo cmake && \
     rm -rf /var/lib/apt/lists/*
 
 # tini init wrapper

@@ -10,7 +10,9 @@ from . import run as bootstrap_run
 from ha_rag_bridge.db.index import IndexManager
 
 
-def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = False) -> int:
+def _reindex(
+    collection: str | None, *, force: bool = False, dry_run: bool = False
+) -> int:
     """Rebuild vector index for given collection or all."""
     from arango import ArangoClient
     from ha_rag_bridge.logging import get_logger
@@ -34,16 +36,18 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
             return 2
         collections = [collection]
     else:
-        collections = [c["name"] for c in db.collections() if not c["name"].startswith("_")]
+        collections = [
+            c["name"] for c in db.collections() if not c["name"].startswith("_")
+        ]
 
     embed_dim = int(os.getenv("EMBED_DIM", "1536"))
     dropped = created = 0
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes() if i["type"] == "vector"), None)
-        if idx and (force or idx.get("dimensions") != embed_dim):
+        idx = next((i for i in col.indexes().indexes if i.type == "vector"), None)
+        if idx and (force or getattr(idx, "dimensions", None) != embed_dim):
             if not dry_run:
-                col.delete_index(idx["id"])
+                col.delete_index(idx.id)
             logger.warning("vector index recreated", collection=name, force=force)
             dropped += 1
             idx = None
@@ -64,11 +68,25 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="ha-rag-bootstrap")
     parser.add_argument("--dry-run", action="store_true", help="plan only, no changes")
-    parser.add_argument("--force", action="store_true", help="drop+recreate on dim mismatch")
-    parser.add_argument("--reindex", nargs="?", const="all", metavar="collection", help="rebuild HNSW index")
+    parser.add_argument(
+        "--force", action="store_true", help="drop+recreate on dim mismatch"
+    )
+    parser.add_argument(
+        "--reindex",
+        nargs="?",
+        const="all",
+        metavar="collection",
+        help="rebuild HNSW index",
+    )
     parser.add_argument("--quiet", action="store_true", help="only WARN and ERROR logs")
-    parser.add_argument("--skip-invalid", action="store_true", help="skip invalid collection names")
-    parser.add_argument("--rename-invalid", action="store_true", help="auto rename invalid collection names")
+    parser.add_argument(
+        "--skip-invalid", action="store_true", help="skip invalid collection names"
+    )
+    parser.add_argument(
+        "--rename-invalid",
+        action="store_true",
+        help="auto rename invalid collection names",
+    )
     return parser.parse_args(argv)
 
 
@@ -101,7 +119,10 @@ def main(argv: list[str] | None = None) -> None:
     took = int((perf_counter() - start) * 1000)
     dim = int(os.getenv("EMBED_DIM", "1536"))
 
-    icon = f"{Fore.GREEN}✓{Style.RESET_ALL}" if code == 0 else f"{Fore.RED}✗{Style.RESET_ALL}"
+    icon = (
+        f"{Fore.GREEN}✓{Style.RESET_ALL}"
+        if code == 0
+        else f"{Fore.RED}✗{Style.RESET_ALL}"
+    )
     print(f"{icon} {dim}d {took}ms")
     raise SystemExit(code)
-

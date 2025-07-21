@@ -33,7 +33,11 @@ async def migrate(request: Request) -> Response:
 @router.post("/reindex")
 async def reindex(request: Request) -> dict:
     _check_token(request)
-    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    body = (
+        await request.json()
+        if request.headers.get("content-type", "").startswith("application/json")
+        else {}
+    )
     target = body.get("collection")
     force = bool(body.get("force"))
 
@@ -44,23 +48,27 @@ async def reindex(request: Request) -> dict:
         password=os.environ["ARANGO_PASS"],
     )
 
-    collections = [target] if target else [c["name"] for c in db.collections() if not c["name"].startswith("_")]
+    collections = (
+        [target]
+        if target
+        else [c["name"] for c in db.collections() if not c["name"].startswith("_")]
+    )
     embed_dim = int(os.getenv("EMBED_DIM", "1536"))
 
     dropped = created = 0
     start = perf_counter()
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes() if i["type"] == "vector"), None)
-        if idx and (force or idx.get("dimensions") != embed_dim):
-            col.delete_index(idx["id"])
-            logger.warning(
-                "vector index recreated", collection=name, force=force
-            )
+        idx = next((i for i in col.indexes().indexes if i.type == "vector"), None)
+        if idx and (force or getattr(idx, "dimensions", None) != embed_dim):
+            col.delete_index(idx.id)
+            logger.warning("vector index recreated", collection=name, force=force)
             dropped += 1
             idx = None
         if not idx:
-            col.add_index({"type": "vector", "fields": ["embedding"], "dimensions": embed_dim, "metric": "cosine"})
+            col.indexes.create.hnsw(
+                fields=["embedding"], dimensions=embed_dim, similarity="cosine"
+            )
             created += 1
     took_ms = int((perf_counter() - start) * 1000)
     logger.info(
@@ -93,7 +101,7 @@ async def status_endpoint(request: Request) -> dict:
     if db.has_collection("meta"):
         doc = db.collection("meta").get("schema_version")
         if doc:
-            version = int(doc.get("value", 0))
+            version = int(getattr(doc, "value", 0))
     return {
         "db": os.getenv("ARANGO_DB", "ha_graph"),
         "schema": version,
@@ -105,7 +113,11 @@ async def status_endpoint(request: Request) -> dict:
 @router.post("/vacuum")
 async def vacuum(request: Request) -> dict:
     _check_token(request)
-    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    body = (
+        await request.json()
+        if request.headers.get("content-type", "").startswith("application/json")
+        else {}
+    )
     days = int(body.get("days", 30))
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
 
@@ -118,10 +130,16 @@ async def vacuum(request: Request) -> dict:
 
     deleted_events = deleted_sensors = 0
     if db.has_collection("event"):
-        cur = db.aql.execute("FOR d IN event FILTER d.ts < @ts REMOVE d IN event RETURN 1", bind_vars={"ts": cutoff})
+        cur = db.aql.execute(
+            "FOR d IN event FILTER d.ts < @ts REMOVE d IN event RETURN 1",
+            bind_vars={"ts": cutoff},
+        )
         deleted_events = len(list(cur))
     if db.has_collection("sensor"):
-        cur = db.aql.execute("FOR d IN sensor FILTER d.ts < @ts REMOVE d IN sensor RETURN 1", bind_vars={"ts": cutoff})
+        cur = db.aql.execute(
+            "FOR d IN sensor FILTER d.ts < @ts REMOVE d IN sensor RETURN 1",
+            bind_vars={"ts": cutoff},
+        )
         deleted_sensors = len(list(cur))
 
     return {"deleted_events": deleted_events, "deleted_sensors": deleted_sensors}

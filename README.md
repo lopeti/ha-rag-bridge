@@ -13,6 +13,12 @@ The container automatically bootstraps the database on start. Make sure your
 ArangoDB instance runs with the `--experimental-vector-index` flag enabled so
 vector search works correctly.
 
+### Requirements
+
+- ArangoDB 3.11 or newer
+- python-arango 8.x
+- Rust toolchain for building pydantic-core
+
 ## Bootstrap CLI
 
 After installing via Poetry or pulling the Docker image you can run the
@@ -40,6 +46,8 @@ Persistent index creation now relies solely on python-arango; no JavaScript fall
 from ha_rag_bridge.db import BridgeDB
 db = BridgeDB(...)
 db.ensure_col("events")
+mgr = IndexManager(db.collection("events"))
+mgr.ensure_vector("embedding", dimensions=1536)
 ```
 
 ### Collection naming rules & auto-fix flags
