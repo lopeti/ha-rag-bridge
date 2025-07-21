@@ -7,7 +7,7 @@ from time import perf_counter
 from colorama import Fore, Style, init
 
 from . import run as bootstrap_run
-from ha_rag_bridge.db.index import IndexManager
+from ha_rag_bridge.db.index import IndexManager, _idx
 
 
 def _reindex(
@@ -44,7 +44,7 @@ def _reindex(
     dropped = created = 0
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes().indexes if i.type == "vector"), None)
+        idx = next((i for i in _idx(col) if i.type == "vector"), None)
         if idx and (force or getattr(idx, "dimensions", None) != embed_dim):
             if not dry_run:
                 col.delete_index(idx.id)

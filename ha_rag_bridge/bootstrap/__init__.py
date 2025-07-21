@@ -4,7 +4,7 @@ import importlib.util
 from time import perf_counter
 from arango import ArangoClient
 from ha_rag_bridge.db import BridgeDB
-from ha_rag_bridge.db.index import IndexManager
+from ha_rag_bridge.db.index import IndexManager, _idx
 
 from .naming import safe_create_collection, is_valid, to_valid_name
 
@@ -130,7 +130,7 @@ def _bootstrap_impl(
     idx = next(
         (
             i
-            for i in entity.indexes().indexes
+            for i in _idx(entity)
             if i.type == "vector" and i.fields == ["embedding"]
         ),
         None,

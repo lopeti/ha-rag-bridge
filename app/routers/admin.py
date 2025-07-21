@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Response
 from fastapi.responses import StreamingResponse
 from arango import ArangoClient
 from ha_rag_bridge.bootstrap import bootstrap, SCHEMA_LATEST
+from ha_rag_bridge.db.index import _idx
 from ha_rag_bridge.utils.env import env_true
 from ha_rag_bridge.logging import get_logger
 
@@ -59,14 +60,14 @@ async def reindex(request: Request) -> dict:
     start = perf_counter()
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes().indexes if i.type == "vector"), None)
+        idx = next((i for i in _idx(col) if i.type == "vector"), None)
         if idx and (force or getattr(idx, "dimensions", None) != embed_dim):
             col.delete_index(idx.id)
             logger.warning("vector index recreated", collection=name, force=force)
             dropped += 1
             idx = None
         if not idx:
-            col.indexes.create.hnsw(
+            col.add_hnsw_index(
                 fields=["embedding"], dimensions=embed_dim, similarity="cosine"
             )
             created += 1

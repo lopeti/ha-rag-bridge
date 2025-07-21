@@ -6,6 +6,7 @@ import os
 from arango import ArangoClient
 
 from ha_rag_bridge.db import BridgeDB
+from ha_rag_bridge.db.index import _idx
 
 
 def main() -> None:
@@ -19,9 +20,9 @@ def main() -> None:
 
     coll = db.collection("events")
     if not any(
-        i.type == "persistent" and i.fields == ["time"] for i in coll.indexes().indexes
+        i.type == "persistent" and i.fields == ["time"] for i in _idx(coll)
     ):
-        coll.indexes.create.persistent(fields=["time"])
+        coll.add_persistent_index(fields=["time"])
 
 
 if __name__ == "__main__":

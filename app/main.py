@@ -7,6 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
+from ha_rag_bridge.db.index import _idx
 from app.middleware.request_id import request_id_middleware
 
 from .routers.graph import router as graph_router
@@ -64,7 +65,7 @@ try:
     idx = next(
         (
             i
-            for i in col.indexes().indexes
+            for i in _idx(col)
             if i.type == "vector" and i.fields[0] == "embedding"
         ),
         None,
