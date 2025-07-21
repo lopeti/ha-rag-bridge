@@ -47,7 +47,7 @@ def _reindex(
         idx = next((i for i in col.indexes() if i["type"] == "vector"), None)
         if idx and (force or idx.get("dimensions") != embed_dim):
             if not dry_run:
-                col.delete_index(idx["id"]) 
+                col.delete_index(idx["id"])
             logger.warning("vector index recreated", collection=name, force=force)
             dropped += 1
             idx = None
