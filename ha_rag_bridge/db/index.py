@@ -21,7 +21,7 @@ class IndexManager:
             self.db._execute(
                 "post",
                 f"/_api/index?collection={self.coll.name}",
-                {
+                data={
                     "type": "vector",
                     "fields": [field],
                     "inBackground": True,
