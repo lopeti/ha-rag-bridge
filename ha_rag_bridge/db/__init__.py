@@ -5,8 +5,20 @@ from ha_rag_bridge.logging import get_logger
 
 
 class BridgeDB(StandardDatabase):
-    """Thin wrapper adding helpers compatible with arangosh prose."""
+    """
+    A thin wrapper around StandardDatabase that provides utility methods for 
+    working with collections in a simplified manner.
 
+    This class adds helper methods to streamline common operations, such as 
+    retrieving or ensuring the existence of collections. These methods are 
+    designed to be compatible with workflows inspired by ArangoDB's arangosh 
+    (ArangoDB shell) but are adapted for Python usage.
+
+    Helper methods:
+        - get_col(name): Returns a collection handle if it exists, otherwise None.
+        - ensure_col(name, edge=False): Ensures a collection exists, creating it 
+          if necessary. Supports both document and edge collections.
+    """
     def get_col(self, name: str):
         """Return collection handle if exists else None."""
         return self.collection(name) if self.has_collection(name) else None
