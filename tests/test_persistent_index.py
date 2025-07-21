@@ -29,5 +29,7 @@ def arango_db():
 def test_persistent_index_created(arango_db):
     coll = arango_db.create_collection("events_test")
     IndexManager(coll).ensure_persistent(["time"])
-    idx = [i for i in coll.indexes() if i["type"] == "persistent"][0]
+    persistent_indexes = [i for i in coll.indexes() if i["type"] == "persistent"]
+    assert persistent_indexes, "No persistent index was created."
+    idx = persistent_indexes[0]
     assert idx["fields"] == ["time"]
