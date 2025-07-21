@@ -19,8 +19,8 @@ class IndexManager:
             if self.db is None:
                 raise ValueError("Database object must be provided to use ensure_vector.")
             self.db._execute(
-                method="post",
-                endpoint="/_api/index",
+                "post",
+                "/_api/index",
                 params={"collection": self.coll.name},
                 data={
                     "type": "vector",
