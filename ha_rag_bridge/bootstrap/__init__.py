@@ -78,8 +78,8 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
     meta_col = db.ensure_col("meta")
     doc = meta_col.get("schema_version")
     if doc is None:
-        meta_col.insert({"_key": "schema_version", "value": SCHEMA_LATEST})
-        version = SCHEMA_LATEST
+        meta_col.insert({"_key": "schema_version", "value": 0})
+        version = 0
     else:
         version = int(doc.get("value", 0))
 
