@@ -1,8 +1,9 @@
 class IndexManager:
     """Helper for creating ArangoDB indexes idempotently."""
 
-    def __init__(self, collection):
+    def __init__(self, collection, database=None):
         self.coll = collection
+        self.db = database
 
     def ensure_hash(self, fields, *, unique=False, sparse=True):
         if not any(i["type"] == "hash" and i["fields"] == fields for i in self.coll.indexes()):
@@ -15,8 +16,9 @@ class IndexManager:
     def ensure_vector(self, field, *, dimensions: int, metric: str = "cosine"):
         # Vector (HNSW) index is not supported by python-arango 7.x SDK, must use REST fallback
         if not any(i["type"] == "vector" and i["fields"] == [field] for i in self.coll.indexes()):
-            db = self.coll.database
-            db._execute(
+            if self.db is None:
+                raise ValueError("Database object must be provided to use ensure_vector.")
+            self.db._execute(
                 method="post",
                 endpoint=f"/_api/index#collection={self.coll.name}",
                 data={
