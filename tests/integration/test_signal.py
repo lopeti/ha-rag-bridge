@@ -25,8 +25,8 @@ def test_graceful_shutdown(tmp_path):
         "docker", "run", "-d", image
     ]).decode().strip()
 
-    # give uvicorn time to start
-    time.sleep(5)
+    # wait for uvicorn to start
+    _wait_for_service("localhost", 8000, timeout=10)
 
     subprocess.run(["docker", "kill", "-s", "SIGTERM", container_id], check=True)
     # wait for container to exit
