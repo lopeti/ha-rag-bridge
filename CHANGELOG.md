@@ -6,6 +6,7 @@
 - New CLI flags `--skip-invalid` and `--rename-invalid` to handle illegal names.
 - Breaking change: `_meta` collection renamed to `meta` and auto-migrated.
 - Breaking internal: JS-API calls replaced with Python client; no arangosh binary needed in v12.5.
+- feat: tini PID-1 init wrapper; graceful shutdown in Docker.
 
 ## v12.6
 
