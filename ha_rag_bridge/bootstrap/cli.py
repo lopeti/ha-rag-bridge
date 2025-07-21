@@ -49,7 +49,7 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
             idx = None
         if not idx:
             if not dry_run:
-                IndexManager(col).ensure_vector("embedding", dimensions=embed_dim)
+                IndexManager(col, db).ensure_vector("embedding", dimensions=embed_dim)
             created += 1
     logger.info(
         "reindex finished",

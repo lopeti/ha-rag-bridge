@@ -132,14 +132,14 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
     if idx and idx.get("dimensions") != embed_dim:
         entity.delete_index(idx["id"])
         idx = None
-    mgr = IndexManager(entity)
+    mgr = IndexManager(entity, db)
     if not idx:
         mgr.ensure_vector("embedding", dimensions=embed_dim)
 
     mgr.ensure_hash(["entity_id"], unique=True)
 
     events = db.collection("event")
-    ev_mgr = IndexManager(events)
+    ev_mgr = IndexManager(events, db)
     ev_mgr.ensure_persistent(["time"])
     ev_mgr.ensure_ttl("ts", 30 * 24 * 3600)
 
