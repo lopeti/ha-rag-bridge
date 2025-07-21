@@ -1,4 +1,5 @@
 """Minimal migration helper for older installations."""
+
 from __future__ import annotations
 
 import os
@@ -17,8 +18,10 @@ def main() -> None:
     db.__class__ = BridgeDB
 
     coll = db.collection("events")
-    if not any(i["type"] == "persistent" and i["fields"] == ["time"] for i in coll.indexes()):
-        coll.add_persistent_index(fields=["time"])
+    if not any(
+        i.type == "persistent" and i.fields == ["time"] for i in coll.indexes().indexes
+    ):
+        coll.indexes.create.persistent(fields=["time"])
 
 
 if __name__ == "__main__":

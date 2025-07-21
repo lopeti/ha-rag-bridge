@@ -8,6 +8,7 @@
 - Breaking internal: JS-API calls replaced with Python client; no arangosh binary needed in v12.5.
 - feat: tini PID-1 init wrapper; graceful shutdown in Docker.
 - Persistent index creation rewritten with python-arango API; no JavaScript fallback calls remain.
+- Minimum requirements bumped to ArangoDB 3.11 and python-arango 8.x. Rust is required for building pydantic-core.
 
 ## v12.6
 

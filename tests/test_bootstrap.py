@@ -5,10 +5,10 @@ import ha_rag_bridge.bootstrap as boot
 
 
 def setup_env():
-    os.environ['ARANGO_URL'] = 'http://db'
-    os.environ['ARANGO_USER'] = 'root'
-    os.environ['ARANGO_PASS'] = 'pass'
-    os.environ['AUTO_BOOTSTRAP'] = '1'
+    os.environ["ARANGO_URL"] = "http://db"
+    os.environ["ARANGO_USER"] = "root"
+    os.environ["ARANGO_PASS"] = "pass"
+    os.environ["AUTO_BOOTSTRAP"] = "1"
 
 
 def test_bootstrap_idempotent(monkeypatch):
@@ -22,14 +22,16 @@ def test_bootstrap_idempotent(monkeypatch):
     sys_db = MagicMock()
     sys_db.has_database.return_value = True
     client = MagicMock()
+
     def db_side(name, **kw):
         return sys_db if name == "_system" else db
+
     client.db.side_effect = db_side
-    monkeypatch.setattr(boot, 'ArangoClient', MagicMock(return_value=client))
+    monkeypatch.setattr(boot, "ArangoClient", MagicMock(return_value=client))
 
     boot.bootstrap()
     assert meta_col.insert.called
-    meta_col.get.return_value = {'value': boot.SCHEMA_LATEST}
+    meta_col.get.return_value = type("Doc", (), {"value": boot.SCHEMA_LATEST})()
     boot.bootstrap()
     assert meta_col.insert.call_count == 3
 

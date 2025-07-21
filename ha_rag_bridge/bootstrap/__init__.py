@@ -55,7 +55,9 @@ def bootstrap() -> None:
     run(None)
 
 
-def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_invalid: bool = False) -> None:
+def _bootstrap_impl(
+    *, force: bool = False, skip_invalid: bool = False, rename_invalid: bool = False
+) -> None:
     try:
         arango_url = os.environ["ARANGO_URL"]
         user = os.environ["ARANGO_USER"]
@@ -82,7 +84,7 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
         meta_col.insert({"_key": "schema_version", "value": 0})
         version = 0
     else:
-        version = int(doc.get("value", 0))
+        version = int(getattr(doc, "value", 0))
 
     if version < SCHEMA_LATEST:
         for num in range(version + 1, SCHEMA_LATEST + 1):
@@ -126,11 +128,15 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
 
     entity = db.collection("entity")
     idx = next(
-        (i for i in entity.indexes() if i["type"] == "vector" and i["fields"] == ["embedding"]),
+        (
+            i
+            for i in entity.indexes().indexes
+            if i.type == "vector" and i.fields == ["embedding"]
+        ),
         None,
     )
-    if idx and idx.get("dimensions") != embed_dim:
-        entity.delete_index(idx["id"])
+    if idx and getattr(idx, "dimensions", None) != embed_dim:
+        entity.delete_index(idx.id)
         idx = None
     mgr = IndexManager(entity, db)
     if not idx:
@@ -187,4 +193,3 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
 
     meta_col.insert({"_key": "schema_version", "value": SCHEMA_LATEST}, overwrite=True)
     logger.info("bootstrap finished")
-
