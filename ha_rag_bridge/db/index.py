@@ -14,7 +14,7 @@ class IndexManager:
 
     def ensure_vector(self, field, *, dimensions: int, metric: str = "cosine"):
         if not any(i["type"] == "vector" and i["fields"] == [field] for i in self.coll.indexes()):
-            getattr(self.coll, "add_" + "index")({
+            self.coll.add_index({
                 "type": "vector",
                 "fields": [field],
                 "dimensions": dimensions,
