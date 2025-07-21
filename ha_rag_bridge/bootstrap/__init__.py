@@ -9,7 +9,7 @@ from .naming import safe_create_collection, is_valid, to_valid_name
 from ha_rag_bridge.utils.env import env_true
 from ha_rag_bridge.logging import get_logger
 
-SCHEMA_LATEST = 2
+SCHEMA_LATEST = 3
 
 logger = get_logger(__name__)
 
@@ -23,6 +23,10 @@ def run(
     rename_invalid: bool = False,
 ) -> int:
     """Ensure database collections and indexes exist."""
+    from .plan_validator import validate_plan
+
+    if plan is not None:
+        validate_plan(plan)
     if not env_true("AUTO_BOOTSTRAP", True):
         logger.info("bootstrap disabled")
         return 0
@@ -70,13 +74,13 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
 
     # Run pending migrations based on stored schema version
     version = 0
-    if db.has_collection("_meta"):
-        meta_col = db.collection("_meta")
+    if db.has_collection("meta"):
+        meta_col = db.collection("meta")
         doc = meta_col.get("schema_version")
         if doc:
             version = int(doc.get("value", 0))
     else:
-        meta_col = safe_create_collection(db, "_meta")
+        meta_col = safe_create_collection(db, "meta")
 
     if version < SCHEMA_LATEST:
         for num in range(version + 1, SCHEMA_LATEST + 1):

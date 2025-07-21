@@ -1,11 +1,20 @@
 import re
 from typing import Iterable
 
+RESERVED_PREFIXES = {"_"}
+INVALID_CHARS = r"[^a-zA-Z0-9_-]"
+
 VALID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,254}$")
 
 
 def is_valid(name: str) -> bool:
     """Return True if collection name is valid."""
+    if not name:
+        return False
+    if name[0] in RESERVED_PREFIXES:
+        return False
+    if re.search(INVALID_CHARS, name):
+        return False
     return bool(VALID_RE.match(name)) and not name.lower().startswith("arango")
 
 
@@ -56,3 +65,8 @@ def safe_create_collection(db, name: str, *, edge: bool = False, force: bool = F
     except Exception as exc:
         logger.error("create collection failed", name=name, edge=edge, error=str(exc))
         raise
+
+
+def safe_rename(col, new_name: str) -> None:
+    if col.name != new_name and not col.database.has_collection(new_name):
+        col.rename(new_name)

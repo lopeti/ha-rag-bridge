@@ -31,12 +31,21 @@ Flags:
 - `--skip-invalid` – skip collections with illegal names
 - `--rename-invalid` – attempt to auto-fix illegal names
 
+Breaking change in v12.4: the internal collection `_meta` was renamed to `meta`.
+Existing installations are migrated automatically during bootstrap.
+
 ### Collection naming rules & auto-fix flags
 
 Collection names must start with a letter and may contain letters, digits,
 hyphen or underscore up to 255 characters. Names beginning with `arango` are
 reserved. When the bootstrap encounters an invalid name you can either skip it
 with `--skip-invalid` or automatically rename it using:
+
+| Rule | Example |
+|------|--------|
+| Must not start with `_` | `_foo` → invalid |
+| Allowed characters | `a-z`, `A-Z`, `0-9`, `-`, `_` |
+| Reserved prefix | `arango*` |
 
 ```bash
 ha-rag-bootstrap --rename-invalid

@@ -16,7 +16,7 @@ def test_bootstrap_idempotent(monkeypatch):
     meta_col = MagicMock()
     meta_col.get.return_value = None
     db = MagicMock()
-    db.has_collection.side_effect = lambda name: name == '_meta'
+    db.has_collection.side_effect = lambda name: name == 'meta'
     db.collection.return_value = meta_col
     db.collections.return_value = []
     db.has_view.return_value = True
