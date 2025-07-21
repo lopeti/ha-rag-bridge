@@ -59,9 +59,9 @@ async def reindex(request: Request) -> dict:
     start = perf_counter()
     for name in collections:
         col = db.collection(name)
-        idx = next((i for i in col.indexes().indexes if i.type == "vector"), None)
-        if idx and (force or getattr(idx, "dimensions", None) != embed_dim):
-            col.delete_index(idx.id)
+        idx = next((i for i in col.indexes() if i["type"] == "vector"), None)
+        if idx and (force or idx.get("dimensions") != embed_dim):
+            col.delete_index(idx["id"])
             logger.warning("vector index recreated", collection=name, force=force)
             dropped += 1
             idx = None

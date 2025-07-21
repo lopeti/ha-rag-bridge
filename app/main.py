@@ -64,16 +64,16 @@ try:
     idx = next(
         (
             i
-            for i in col.indexes().indexes
-            if i.type == "vector" and i.fields[0] == "embedding"
+            for i in col.indexes()
+            if i["type"] == "vector" and i["fields"][0] == "embedding"
         ),
         None,
     )
-    if idx and getattr(idx, "dimensions", None) != backend_dim:
+    if idx and idx.get("dimensions") != backend_dim:
         logger.warning(
             "embedding dimension mismatch",
             backend=backend_dim,
-            index=getattr(idx, "dimensions", None),
+            index=idx.get("dimensions"),
         )
         HEALTH_ERROR = "dimension mismatch"
 except KeyError:

@@ -19,7 +19,7 @@ def main() -> None:
 
     coll = db.collection("events")
     if not any(
-        i.type == "persistent" and i.fields == ["time"] for i in coll.indexes().indexes
+        i["type"] == "persistent" and i["fields"] == ["time"] for i in coll.indexes()
     ):
         coll.indexes.create.persistent(fields=["time"])
 

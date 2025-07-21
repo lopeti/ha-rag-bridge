@@ -1,5 +1,6 @@
 import subprocess
 import time
+import socket
 import shutil
 import pytest
 
@@ -7,6 +8,17 @@ import pytest
 def _docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
+
+
+def _wait_for_service(host: str, port: int, timeout: int = 10) -> None:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return
+        except OSError:
+            time.sleep(0.1)
+    raise RuntimeError("service not available")
     try:
         subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         return True

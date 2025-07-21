@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 import argparse
+import logging
 import websockets
 
 try:

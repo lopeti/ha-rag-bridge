@@ -4,9 +4,10 @@ from unittest.mock import MagicMock
 
 def test_hnsw_created():
     coll = MagicMock()
-    coll.indexes.return_value = MagicMock(indexes=[])
+    coll.indexes.return_value = []
+    coll.indexes.create.hnsw = MagicMock()
     mgr = IndexManager(coll)
     mgr.ensure_vector("vec", dimensions=3)
-    coll.add_hnsw_index.assert_called_once_with(
+    coll.indexes.create.hnsw.assert_called_once_with(
         fields=["vec"], dimensions=3, similarity="cosine"
     )
