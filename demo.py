@@ -5,6 +5,7 @@ import os
 from typing import List, Dict
 
 import httpx
+from ha_rag_bridge.settings import HTTP_TIMEOUT
 try:
     from colorama import Fore, Style
     _COLOR = True
@@ -62,7 +63,7 @@ def stub_llm(messages: List[Dict], tools: List[Dict]) -> Dict:
 
 async def run_demo(question: str, llm: str = "stub") -> str:
     print(_color(f"> USER: {question}", Fore.GREEN))
-    async with httpx.AsyncClient(base_url=API_URL, timeout=10.0) as client:
+    async with httpx.AsyncClient(base_url=API_URL, timeout=HTTP_TIMEOUT) as client:
         r1 = await client.post("/process-request", json={"user_message": question})
     print(_color(f"\u2192 /process-request: {r1.status_code} {r1.reason_phrase}", Fore.CYAN))
     data = r1.json()
@@ -81,7 +82,7 @@ async def run_demo(question: str, llm: str = "stub") -> str:
         assistant = {"role": "assistant", "content": messages[-1]["content"], "tool_calls": None}
 
     payload = {"id": "1", "choices": [{"message": assistant}]}
-    async with httpx.AsyncClient(base_url=API_URL, timeout=10.0) as client:
+    async with httpx.AsyncClient(base_url=API_URL, timeout=HTTP_TIMEOUT) as client:
         r2 = await client.post("/process-response", json=payload)
     print(_color(f"\u2192 /process-response: {r2.status_code} {r2.reason_phrase}", Fore.CYAN))
     result = r2.json()

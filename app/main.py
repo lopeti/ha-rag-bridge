@@ -6,6 +6,7 @@ from fastapi import FastAPI, APIRouter, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
+from ha_rag_bridge.settings import HTTP_TIMEOUT
 from app.middleware.request_id import request_id_middleware
 
 from .routers.graph import router as graph_router
@@ -273,7 +274,7 @@ async def process_response(payload: schemas.LLMResponse):
     errors: List[str] = []
 
     async with httpx.AsyncClient(
-        base_url=ha_url, headers=headers, timeout=5.0
+        base_url=ha_url, headers=headers, timeout=HTTP_TIMEOUT
     ) as client:
         for call in tool_calls:
             func = call.function

@@ -1,5 +1,8 @@
 # 🐍 Base Python slim image
+FROM busybox:1.36 as tini
+
 FROM python:3.12-slim
+COPY --from=tini /bin/tini /tini
 
 # 📁 Set working directory
 WORKDIR /app
@@ -28,4 +31,5 @@ COPY . .
 RUN poetry install --only-root
 
 # 🚀 Run the FastAPI application with Uvicorn
-CMD ["/bin/sh", "-c", "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini"]
+ENTRYPOINT ["/tini","--"]
+CMD ["sh", "-c", "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini"]

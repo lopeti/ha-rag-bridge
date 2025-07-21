@@ -6,6 +6,7 @@ from typing import Optional, Any
 from cachetools import TTLCache, cached
 
 import httpx
+from ha_rag_bridge.settings import HTTP_TIMEOUT
 from influxdb_client import InfluxDBClient
 
 from ha_rag_bridge.logging import get_logger
@@ -55,7 +56,7 @@ def _query_ha_state(entity_id: str) -> Optional[Any]:
     headers = {"Authorization": f"Bearer {token}"}
     for attempt in range(2):
         try:
-            with httpx.Client(base_url=base_url, headers=headers, timeout=5.0) as client:
+            with httpx.Client(base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT) as client:
                 resp = client.get(f"/api/states/{entity_id}")
                 if resp.status_code == 404:
                     return None
