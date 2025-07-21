@@ -33,6 +33,13 @@ Flags:
 
 Breaking change in v12.4: the internal collection `_meta` was renamed to `meta`.
 Existing installations are migrated automatically during bootstrap.
+Breaking internal: JS-API calls were replaced with Python client usage. Upgrading to v12.5 no longer requires the `arangosh` binary.
+
+```python
+from ha_rag_bridge.db import BridgeDB
+db = BridgeDB(...)
+db.ensure_col("events")
+```
 
 ### Collection naming rules & auto-fix flags
 

@@ -16,11 +16,9 @@ def test_bootstrap_idempotent(monkeypatch):
     meta_col = MagicMock()
     meta_col.get.return_value = None
     db = MagicMock()
-    db.has_collection.side_effect = lambda name: name == 'meta'
-    db.collection.return_value = meta_col
+    db.ensure_col.return_value = meta_col
     db.collections.return_value = []
     db.has_view.return_value = True
-    meta_col.get.return_value = None
     sys_db = MagicMock()
     sys_db.has_database.return_value = True
     client = MagicMock()
@@ -33,7 +31,7 @@ def test_bootstrap_idempotent(monkeypatch):
     assert meta_col.insert.called
     meta_col.get.return_value = {'value': boot.SCHEMA_LATEST}
     boot.bootstrap()
-    assert meta_col.insert.call_count == 2
+    assert meta_col.insert.call_count == 3
 
 
 def test_run_dry_run(monkeypatch):
