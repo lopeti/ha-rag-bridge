@@ -90,8 +90,8 @@ async def status_endpoint(request: Request) -> dict:
         password=os.environ["ARANGO_PASS"],
     )
     version = SCHEMA_LATEST
-    if db.has_collection("_meta"):
-        doc = db.collection("_meta").get("schema_version")
+    if db.has_collection("meta"):
+        doc = db.collection("meta").get("schema_version")
         if doc:
             version = int(doc.get("value", 0))
     return {
