@@ -4,6 +4,7 @@ import importlib.util
 from time import perf_counter
 from arango import ArangoClient
 from ha_rag_bridge.db import BridgeDB
+from ha_rag_bridge.db.index import IndexManager
 
 from .naming import safe_create_collection, is_valid, to_valid_name
 
@@ -131,16 +132,16 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
     if idx and idx.get("dimensions") != embed_dim:
         entity.delete_index(idx["id"])
         idx = None
+    mgr = IndexManager(entity)
     if not idx:
-        entity.add_index({
-            "type": "vector",
-            "fields": ["embedding"],
-            "dimensions": embed_dim,
-            "metric": "cosine",
-        })
+        mgr.ensure_vector("embedding", dimensions=embed_dim)
 
-    if not any(i["type"] == "hash" and i["fields"] == ["entity_id"] for i in entity.indexes()):
-        entity.add_hash_index(fields=["entity_id"], unique=True)
+    mgr.ensure_hash(["entity_id"], unique=True)
+
+    events = db.collection("event")
+    ev_mgr = IndexManager(events)
+    ev_mgr.ensure_persistent(["time"])
+    ev_mgr.ensure_ttl("ts", 30 * 24 * 3600)
 
     if not db.has_view("v_meta"):
         db.create_arangosearch_view(

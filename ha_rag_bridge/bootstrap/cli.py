@@ -7,6 +7,7 @@ from time import perf_counter
 from colorama import Fore, Style, init
 
 from . import run as bootstrap_run
+from ha_rag_bridge.db.index import IndexManager
 
 
 def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = False) -> int:
@@ -48,12 +49,7 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
             idx = None
         if not idx:
             if not dry_run:
-                col.add_index({
-                    "type": "vector",
-                    "fields": ["embedding"],
-                    "dimensions": embed_dim,
-                    "metric": "cosine",
-                })
+                IndexManager(col).ensure_vector("embedding", dimensions=embed_dim)
             created += 1
     logger.info(
         "reindex finished",
