@@ -48,7 +48,7 @@ def _reindex(collection: str | None, *, force: bool = False, dry_run: bool = Fal
             idx = None
         if not idx:
             if not dry_run:
-                col._add_index({
+                col.add_index({
                     "type": "vector",
                     "fields": ["embedding"],
                     "dimensions": embed_dim,

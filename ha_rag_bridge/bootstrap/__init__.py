@@ -3,6 +3,7 @@ import glob
 import importlib.util
 from time import perf_counter
 from arango import ArangoClient
+from ha_rag_bridge.db import BridgeDB
 
 from .naming import safe_create_collection, is_valid, to_valid_name
 
@@ -71,16 +72,16 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
         sys_db.create_database(db_name)
 
     db = client.db(db_name, username=user, password=password)
+    db.__class__ = BridgeDB
 
     # Run pending migrations based on stored schema version
-    version = 0
-    if db.has_collection("meta"):
-        meta_col = db.collection("meta")
-        doc = meta_col.get("schema_version")
-        if doc:
-            version = int(doc.get("value", 0))
+    meta_col = db.ensure_col("meta")
+    doc = meta_col.get("schema_version")
+    if doc is None:
+        meta_col.insert({"_key": "schema_version", "value": 0})
+        version = 0
     else:
-        meta_col = safe_create_collection(db, "meta")
+        version = int(doc.get("value", 0))
 
     if version < SCHEMA_LATEST:
         for num in range(version + 1, SCHEMA_LATEST + 1):
@@ -131,7 +132,7 @@ def _bootstrap_impl(*, force: bool = False, skip_invalid: bool = False, rename_i
         entity.delete_index(idx["id"])
         idx = None
     if not idx:
-        entity._add_index({
+        entity.add_index({
             "type": "vector",
             "fields": ["embedding"],
             "dimensions": embed_dim,
