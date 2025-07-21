@@ -13,13 +13,19 @@ class IndexManager:
             self.coll.add_ttl_index(field=field, expire_after=expire_after)
 
     def ensure_vector(self, field, *, dimensions: int, metric: str = "cosine"):
+        # Vector (HNSW) index is not supported by python-arango 7.x SDK, must use REST fallback
         if not any(i["type"] == "vector" and i["fields"] == [field] for i in self.coll.indexes()):
-            self.coll.add_index({
-                "type": "vector",
-                "fields": [field],
-                "dimensions": dimensions,
-                "metric": metric,
-            })
+            db = self.coll.database
+            db._execute(
+                method="post",
+                endpoint=f"/_api/index#collection={self.coll.name}",
+                data={
+                    "type": "vector",
+                    "fields": [field],
+                    "inBackground": True,
+                    "options": {"dimensions": dimensions, "similarity": metric}
+                }
+            )
 
     # --- Persistent (skiplist) ---
     def ensure_persistent(self, fields, unique=False, sparse=True):
