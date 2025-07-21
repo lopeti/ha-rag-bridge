@@ -38,3 +38,5 @@ class BridgeDB(StandardDatabase):
             raise SystemExit(4)
         except ValueError as exc:  # invalid name
             raise SystemExit(2) from exc
+
+from .index import IndexManager
