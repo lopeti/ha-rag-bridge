@@ -21,6 +21,7 @@ import httpx
 from arango import ArangoClient
 
 from ha_rag_bridge.logging import get_logger
+from ha_rag_bridge.settings import HTTP_TIMEOUT
 
 from .embedding_backends import (
     BaseEmbeddingBackend as EmbeddingBackend,
@@ -56,7 +57,7 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
     token = os.environ["HA_TOKEN"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    with httpx.Client(base_url=base_url, headers=headers, timeout=10.0) as client:
+    with httpx.Client(base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT) as client:
         url = f"/api/states/{entity_id}" if entity_id else "/api/states"
         resp = _retry_get(client, url)
         data = resp.json()

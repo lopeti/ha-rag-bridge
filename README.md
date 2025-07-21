@@ -215,6 +215,7 @@ Environment variables:
 - `LOG_LEVEL` – default `INFO`
 - `DEBUG=true` enables admin endpoints without token
 - `LOG_FILE` – optional path for rotating file logs
+- `HTTP_TIMEOUT` – default timeout in seconds for outbound HTTP requests
 
 Example Grafana Loki scrape:
 
@@ -227,3 +228,9 @@ Example Grafana Loki scrape:
             job: ha-rag-bridge
             __path__: /var/log/bridge*.log
 ```
+
+### Safety & Ops
+
+- `HTTP_TIMEOUT` sets the default timeout for all outbound HTTP requests (default `30s`).
+- Index creation retries with exponential backoff for robustness.
+- Admin tokens in logs are masked by a logging filter.
