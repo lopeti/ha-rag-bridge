@@ -202,6 +202,12 @@ docker build -t ha-rag-bridge .
 docker run -p 8000:8000 ha-rag-bridge
 ```
 
+## Runtime
+
+The container starts with **tini** as PID 1. Tini forwards `SIGTERM` and
+`SIGINT` to the application and reaps zombie processes. This ensures a clean
+shutdown when the container stops in Kubernetes or Docker Swarm.
+
 ## Logging
 
 Structured JSON logs are emitted to stdout. Example line:
