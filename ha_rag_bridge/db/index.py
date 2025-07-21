@@ -18,7 +18,7 @@ class IndexManager:
     def ensure_vector(self, field, *, dimensions: int, metric: str = "cosine"):
         indexes = self.coll.indexes().indexes
         if not any(i.type == "vector" and i.fields == [field] for i in indexes):
-            self.coll.add_hnsw_index(
+            self.coll.indexes.create.hnsw(
                 fields=[field], dimensions=dimensions, similarity=metric
             )
 
