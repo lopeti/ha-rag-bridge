@@ -1,3 +1,9 @@
+from ha_rag_bridge.logging import get_logger
+
+
+logger = get_logger(__name__)
+
+
 class IndexManager:
     """Helper for creating ArangoDB indexes idempotently."""
 
@@ -31,20 +37,25 @@ class IndexManager:
         metric: str = "cosine",
         n_lists: int | None = None,
         default_nprobe: int | None = None,
-    ) -> None:
+    ) -> bool:
         indexes = self.coll.indexes()
         if any(i["type"] == "vector" and i["fields"] == [field] for i in indexes):
-            return
+            return False
 
-        if n_lists is None:
-            try:
-                count = int(getattr(self.coll, "count", lambda: 0)())
-            except (AttributeError, TypeError):
-                count = 0
-            n_lists = max(1, count // 15) or self.DEFAULT_N_LISTS
+        try:
+            doc_cnt = int(getattr(self.coll, "count", lambda: 0)())
+        except (AttributeError, TypeError):
+            doc_cnt = 0
 
-        if default_nprobe is None:
-            default_nprobe = self.DEFAULT_N_PROBE
+        if doc_cnt < 1:
+            logger.info("Skip vector index – collection empty (%s)", self.coll.name)
+            return False
+
+        n_lists = n_lists or max(1, doc_cnt // 15, self.DEFAULT_N_LISTS)
+        n_lists = min(n_lists, doc_cnt)
+
+        default_nprobe = default_nprobe or self.DEFAULT_N_PROBE
+        default_nprobe = min(default_nprobe, n_lists)
 
         self.coll.add_index(
             {
@@ -58,6 +69,7 @@ class IndexManager:
                 },
             }
         )
+        return True
 
     # --- Persistent (skiplist) ---
     def ensure_persistent(self, fields, unique=False, sparse=True):
