@@ -37,7 +37,7 @@ class IndexManager:
             try:
                 count = int(getattr(self.coll, "count", lambda: 0)())
                 n_lists = max(1, count // self.DOCUMENTS_PER_LIST)
-            except Exception:
+            except (AttributeError, TypeError):
                 n_lists = self.DEFAULT_N_LISTS
 
         self.coll.add_index(
