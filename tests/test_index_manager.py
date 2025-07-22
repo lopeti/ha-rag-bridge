@@ -9,5 +9,9 @@ def test_hnsw_created():
     mgr = IndexManager(coll)
     mgr.ensure_vector("vec", dimensions=3)
     coll.add_index.assert_called_once_with(
-        {"type": "vector", "fields": ["vec"], "dimension": 3, "metric": "cosine"}
+        {
+            "type": "vector",
+            "fields": ["vec"],
+            "params": {"dimension": 3, "metric": "cosine"},
+        }
     )
