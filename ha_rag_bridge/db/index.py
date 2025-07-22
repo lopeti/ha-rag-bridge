@@ -8,7 +8,8 @@ class IndexManager:
     def ensure_hash(self, fields, *, unique=False, sparse=True):
         indexes = self.coll.indexes()
         if not any(
-            i["type"] == "persistent" and i["fields"] == fields for i in indexes
+            i["type"] in ("hash", "persistent") and i["fields"] == fields
+            for i in indexes
         ):
             self.coll.add_persistent_index(
                 fields=fields, unique=unique, sparse=sparse
@@ -26,8 +27,7 @@ class IndexManager:
                 {
                     "type": "vector",
                     "fields": [field],
-                    "dimension": dimensions,
-                    "metric": metric,
+                    "params": {"dimension": dimensions, "metric": metric},
                 }
             )
 
@@ -35,7 +35,8 @@ class IndexManager:
     def ensure_persistent(self, fields, unique=False, sparse=True):
         indexes = self.coll.indexes()
         if not any(
-            idx["type"] == "persistent" and idx["fields"] == fields for idx in indexes
+            idx["type"] in ("hash", "persistent") and idx["fields"] == fields
+            for idx in indexes
         ):
             self.coll.add_persistent_index(
                 fields=fields, unique=unique, sparse=sparse
