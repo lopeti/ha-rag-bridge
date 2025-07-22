@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 def test_hnsw_created():
     coll = MagicMock()
     coll.indexes.return_value = []
-    coll.indexes.create.hnsw = MagicMock()
+    coll.add_index = MagicMock()
     mgr = IndexManager(coll)
     mgr.ensure_vector("vec", dimensions=3)
-    coll.indexes.create.hnsw.assert_called_once_with(
-        fields=["vec"], dimensions=3, similarity="cosine"
+    coll.add_index.assert_called_once_with(
+        {"type": "vector", "fields": ["vec"], "dimension": 3, "metric": "cosine"}
     )
