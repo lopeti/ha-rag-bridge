@@ -17,7 +17,7 @@ def test_hnsw_created():
                 "metric": "cosine",
                 "dimension": 3,
                 "nLists": 1,
-                "defaultNProbe": 1,
+                "defaultNProbe": 4,
             },
         }
     )

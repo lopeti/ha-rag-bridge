@@ -1,6 +1,9 @@
 class IndexManager:
     """Helper for creating ArangoDB indexes idempotently."""
 
+    DEFAULT_N_LISTS: int = 100
+    DEFAULT_N_PROBE: int = 4
+
     def __init__(self, collection, database=None):
         self.coll = collection
         self.db = database
@@ -27,7 +30,7 @@ class IndexManager:
         dimensions: int,
         metric: str = "cosine",
         n_lists: int | None = None,
-        default_nprobe: int = 1,
+        default_nprobe: int | None = None,
     ) -> None:
         indexes = self.coll.indexes()
         if any(i["type"] == "vector" and i["fields"] == [field] for i in indexes):
@@ -36,9 +39,12 @@ class IndexManager:
         if n_lists is None:
             try:
                 count = int(getattr(self.coll, "count", lambda: 0)())
-                n_lists = max(1, count // self.DOCUMENTS_PER_LIST)
             except (AttributeError, TypeError):
-                n_lists = self.DEFAULT_N_LISTS
+                count = 0
+            n_lists = max(1, count // 15) or self.DEFAULT_N_LISTS
+
+        if default_nprobe is None:
+            default_nprobe = self.DEFAULT_N_PROBE
 
         self.coll.add_index(
             {
