@@ -36,7 +36,7 @@ class IndexManager:
         if n_lists is None:
             try:
                 count = int(getattr(self.coll, "count", lambda: 0)())
-                n_lists = max(1, count // 15)
+                n_lists = max(1, count // self.DOCUMENTS_PER_LIST)
             except Exception:
                 n_lists = 100
 
