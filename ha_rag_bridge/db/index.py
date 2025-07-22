@@ -5,7 +5,7 @@ class IndexManager:
         self.coll = collection
         self.db = database
 
-    def ensure_hash(self, fields, *, unique=False, sparse=True):
+    def ensure_hash(self, fields, *, unique: bool = False, sparse: bool = True):
         indexes = self.coll.indexes()
         if not any(
             i["type"] in ("hash", "persistent") and i["fields"] == fields
@@ -20,16 +20,38 @@ class IndexManager:
         if not any(i["type"] == "ttl" and i["fields"] == [field] for i in indexes):
             self.coll.add_ttl_index(fields=[field], expiry_time=expire_after)
 
-    def ensure_vector(self, field, *, dimensions: int, metric: str = "cosine"):
+    def ensure_vector(
+        self,
+        field,
+        *,
+        dimensions: int,
+        metric: str = "cosine",
+        n_lists: int | None = None,
+        default_nprobe: int = 1,
+    ) -> None:
         indexes = self.coll.indexes()
-        if not any(i["type"] == "vector" and i["fields"] == [field] for i in indexes):
-            self.coll.add_index(
-                {
-                    "type": "vector",
-                    "fields": [field],
-                    "params": {"dimension": dimensions, "metric": metric},
-                }
-            )
+        if any(i["type"] == "vector" and i["fields"] == [field] for i in indexes):
+            return
+
+        if n_lists is None:
+            try:
+                count = int(getattr(self.coll, "count", lambda: 0)())
+                n_lists = max(1, count // 15)
+            except Exception:
+                n_lists = 100
+
+        self.coll.add_index(
+            {
+                "type": "vector",
+                "fields": [field],
+                "params": {
+                    "metric": metric,
+                    "dimension": dimensions,
+                    "nLists": n_lists,
+                    "defaultNProbe": default_nprobe,
+                },
+            }
+        )
 
     # --- Persistent (skiplist) ---
     def ensure_persistent(self, fields, unique=False, sparse=True):
