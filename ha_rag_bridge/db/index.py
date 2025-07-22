@@ -13,7 +13,7 @@ class IndexManager:
     def ensure_ttl(self, field, expire_after):
         indexes = self.coll.indexes()
         if not any(i["type"] == "ttl" and i["fields"] == [field] for i in indexes):
-            self.coll.add_ttl_index(field=field, expire_after=expire_after)
+            self.coll.add_ttl_index(fields=[field], expiry_time=expire_after)
 
     def ensure_vector(self, field, *, dimensions: int, metric: str = "cosine"):
         indexes = self.coll.indexes()
