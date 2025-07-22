@@ -7,8 +7,12 @@ class IndexManager:
 
     def ensure_hash(self, fields, *, unique=False, sparse=True):
         indexes = self.coll.indexes()
-        if not any(i["type"] == "hash" and i["fields"] == fields for i in indexes):
-            self.coll.add_hash_index(fields=fields, unique=unique, sparse=sparse)
+        if not any(
+            i["type"] == "persistent" and i["fields"] == fields for i in indexes
+        ):
+            self.coll.add_persistent_index(
+                fields=fields, unique=unique, sparse=sparse
+            )
 
     def ensure_ttl(self, field, expire_after):
         indexes = self.coll.indexes()
