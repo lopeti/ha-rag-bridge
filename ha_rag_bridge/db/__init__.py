@@ -1,5 +1,9 @@
 from arango.database import StandardDatabase
-from arango.exceptions import ArangoServerError
+from arango.exceptions import ArangoServerError, DocumentParseError
+try:  # python-arango >=8.2
+    from arango.exceptions import ViewNotFoundError
+except ImportError:  # pragma: no cover - older versions
+    from arango.exceptions import ViewGetError as ViewNotFoundError
 
 from ha_rag_bridge.logging import get_logger
 
@@ -32,6 +36,37 @@ class BridgeDB(StandardDatabase):
             logger = get_logger(__name__)
             logger.error(
                 "create collection failed",
+                error_code=exc.error_code,
+                error_message=exc.error_message,
+            )
+            raise SystemExit(4)
+        except ValueError as exc:  # invalid name
+            raise SystemExit(2) from exc
+
+    def has_view(self, name: str) -> bool:
+        """Return True if the view exists."""
+        try:
+            self.view(name)
+            return True
+        except ViewNotFoundError:
+            return False
+        except DocumentParseError:  # pragma: no cover - malformed response
+            return False
+
+    def create_arangosearch_view(self, name: str, *, links: dict | None = None):
+        """Return an existing ArangoSearch view or create one."""
+        if self.has_view(name):
+            return self.view(name)
+        try:
+            return self.create_view(
+                name,
+                view_type="arangosearch",
+                properties={"links": links or {}},
+            )
+        except ArangoServerError as exc:  # pragma: no cover - connection errors
+            logger = get_logger(__name__)
+            logger.error(
+                "create view failed",
                 error_code=exc.error_code,
                 error_message=exc.error_message,
             )
