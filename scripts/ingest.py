@@ -98,7 +98,15 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
 
 
 def ingest(entity_id: Optional[str] = None) -> None:
-    """Run the ingestion process."""
+    """Run the ingestion process. Only changed or new entities are embedded unless full=True."""
+
+    import hashlib
+
+    def get_existing_meta_hash(entity_id: str, col) -> Optional[str]:
+        doc = col.get(entity_id)
+        if doc:
+            return doc.get("meta_hash")
+        return None
 
     states = fetch_states(entity_id)
     if not states:
@@ -125,21 +133,61 @@ def ingest(entity_id: Optional[str] = None) -> None:
     area_col = db.collection("area")
     device_col = db.collection("device")
 
+    # Determine if full ingest is requested
+    import inspect
+    frame = inspect.currentframe()
+    full = False
+    if frame is not None:
+        outer = inspect.getouterframes(frame)
+        for record in outer:
+            if "full=True" in str(record.code_context):
+                full = True
+                break
+
     batch_size = 100
+    unchanged_count = 0
+    changed_count = 0
+    new_count = 0
+    failed_count = 0
+    total_processed = 0
     for i in range(0, len(states), batch_size):
         batch = states[i : i + batch_size]
         texts = [build_text(e) for e in batch]
+
+        # Skip unchanged entities unless full ingest
+        filtered_batch = []
+        filtered_texts = []
+        for ent, text in zip(batch, texts):
+            meta_hash = hashlib.sha256(text.encode()).hexdigest()
+            existing_hash = get_existing_meta_hash(ent["entity_id"], col)
+            if not full:
+                if existing_hash == meta_hash:
+                    unchanged_count += 1
+                    logger.info("skip unchanged entity", entity=ent["entity_id"])
+                    continue
+            if existing_hash is None:
+                new_count += 1
+            else:
+                changed_count += 1
+            filtered_batch.append(ent)
+            filtered_texts.append(text)
+            total_processed += 1
+
+        if not filtered_batch:
+            continue
+
         try:
-            embeddings = emb_backend.embed(texts)
+            embeddings = emb_backend.embed(filtered_texts)
         except Exception as exc:  # pragma: no cover - network errors
             logger.warning("embedding error", error=str(exc))
             continue
 
         docs = []
         ents_for_docs = []
-        for ent, emb, text in zip(batch, embeddings, texts):
+        for ent, emb, text in zip(filtered_batch, embeddings, filtered_texts):
             if not emb:
                 logger.warning("missing embedding", entity=ent.get("entity_id"))
+                failed_count += 1
                 continue
             docs.append(build_doc(ent, emb, text))
             ents_for_docs.append(ent)
@@ -158,6 +206,14 @@ def ingest(entity_id: Optional[str] = None) -> None:
                         {"_key": area_id, "name": area_id},
                         overwrite=True,
                         overwrite_mode="update",
+    logger.info(
+        event="ingest summary",
+        unchanged=unchanged_count,
+        changed=changed_count,
+        new=new_count,
+        failed=failed_count,
+        total=len(states)
+    )
                     )
                     key_raw = f"area_contains:area/{area_id}->entity/{eid}"
                     edges.append(
@@ -197,10 +253,13 @@ def ingest(entity_id: Optional[str] = None) -> None:
 def cli() -> None:
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--full", action="store_true", help="Full ingest of all states")
+    group.add_argument("--full", action="store_true", help="Full ingest of all states (re-embed everything)")
     group.add_argument("--entity", help="Single entity id")
     args = parser.parse_args()
-    ingest(None if args.full else args.entity)
+    if args.full:
+        ingest(None)
+    else:
+        ingest(args.entity)
 
 
 if __name__ == "__main__":
