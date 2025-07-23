@@ -96,6 +96,20 @@ def _bootstrap_impl(
                         mod.run(db)
         version = SCHEMA_LATEST
 
+    # Ensure vector analyzer exists before creating views
+    analyzer_name = f"{db_name}::vector"
+    analyzers = [a["name"] for a in db.analyzers()]
+    if analyzer_name not in analyzers:
+        try:
+            db.create_analyzer(
+                name="vector",
+                analyzer_type="vector",
+                properties={"dimension": embed_dim, "metric": "cosine"},
+            )
+            logger.info(f"Created analyzer: {analyzer_name}")
+        except Exception as exc:
+            logger.error("Failed to create vector analyzer", error=str(exc))
+
     doc_cols = [
         "area",
         "device",
@@ -159,7 +173,7 @@ def _bootstrap_impl(
                         "fields": {
                             "text": {"analyzers": ["text_en"]},
                             "embedding": {
-                                "analyzers": ["vector"],
+                                "analyzers": [analyzer_name],
                                 "vector": {"dimension": embed_dim, "metric": "cosine"},
                             },
                         },
@@ -180,7 +194,7 @@ def _bootstrap_impl(
                         "fields": {
                             "text": {"analyzers": ["text_en"]},
                             "embedding": {
-                                "analyzers": ["vector"],
+                                "analyzers": [analyzer_name],
                                 "vector": {"dimension": embed_dim, "metric": "cosine"},
                             },
                         },
