@@ -85,13 +85,14 @@ class GeminiBackend(BaseEmbeddingBackend):
         self.model = genai.GenerativeModel(self.MODEL_NAME)
 
     def embed(self, texts: List[str]) -> List[List[float]]:
-        logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION)
+        logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts)
         try:
             result = self.model.embed_content(
                 contents=texts
             )
+            logger.info("Gemini embedding raw response", response=str(result))
             # result.embeddings: List[Embedding]
-            return [embedding.values for embedding in result.embeddings]
+            return [embedding.values for embedding in getattr(result, 'embeddings', [])]
         except Exception as exc:
             logger.error("Gemini embedding error", error=str(exc))
             return [[] for _ in texts]
