@@ -14,7 +14,15 @@ from ha_rag_bridge.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 WS_PATH = "/api/websocket"
+
+def to_websocket_url(http_url: str) -> str:
+    if http_url.startswith("https://"):
+        return "wss://" + http_url[len("https://"):]
+    elif http_url.startswith("http://"):
+        return "ws://" + http_url[len("http://"):]
+    return http_url
 
 
 async def _handle_messages(ws: websockets.WebSocketClientProtocol) -> None:
@@ -54,7 +62,7 @@ async def _handle_messages(ws: websockets.WebSocketClientProtocol) -> None:
 
 
 async def watch() -> None:
-    url = os.environ["HA_URL"].rstrip("/") + WS_PATH
+    url = to_websocket_url(os.environ["HA_URL"].rstrip("/")) + WS_PATH
     token = os.environ["HA_TOKEN"]
 
     backoffs = [1, 2, 5]
