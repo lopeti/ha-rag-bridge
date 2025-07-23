@@ -96,19 +96,31 @@ def _bootstrap_impl(
                         mod.run(db)
         version = SCHEMA_LATEST
 
-    # Ensure vector analyzer exists before creating views
-    analyzer_name = f"{db_name}::vector"
-    analyzers = [a["name"] for a in db.analyzers()]
-    if analyzer_name not in analyzers:
+    # Ensure vector index exists on the entity collection
+    entity = db.collection("entity")
+    idx = next(
+        (
+            i
+            for i in entity.indexes()
+            if i["type"] == "vector" and i["fields"] == ["embedding"]
+        ),
+        None,
+    )
+    if idx and idx.get("dimensions") != embed_dim:
+        entity.delete_index(idx["id"])
+        idx = None
+    if not idx:
         try:
-            db.create_analyzer(
-                name="vector",
-                analyzer_type="vector",
-                properties={"dimension": embed_dim, "metric": "cosine"},
+            entity.add_index(
+                {
+                    "type": "vector",
+                    "fields": ["embedding"],
+                    "params": {"dimension": embed_dim, "metric": "cosine"},
+                }
             )
-            logger.info(f"Created analyzer: {analyzer_name}")
+            logger.info("Created vector index on entity.embedding")
         except Exception as exc:
-            logger.error("Failed to create vector analyzer", error=str(exc))
+            logger.error("Failed to create vector index", error=str(exc))
 
     doc_cols = [
         "area",
@@ -139,22 +151,7 @@ def _bootstrap_impl(
     if not db.has_collection("edge"):
         safe_create_collection(db, "edge", edge=True)
 
-    entity = db.collection("entity")
-    idx = next(
-        (
-            i
-            for i in entity.indexes()
-            if i["type"] == "vector" and i["fields"] == ["embedding"]
-        ),
-        None,
-    )
-    if idx and idx.get("dimensions") != embed_dim:
-        entity.delete_index(idx["id"])
-        idx = None
     mgr = IndexManager(entity, db)
-    if not idx:
-        mgr.ensure_vector("embedding", dimensions=embed_dim)
-
     mgr.ensure_hash(["entity_id"], unique=True)
 
     events = db.collection("event")
@@ -171,11 +168,7 @@ def _bootstrap_impl(
                         "includeAllFields": False,
                         "storeValues": "none",
                         "fields": {
-                            "text": {"analyzers": ["text_en"]},
-                            "embedding": {
-                                "analyzers": [analyzer_name],
-                                "vector": {"dimension": embed_dim, "metric": "cosine"},
-                            },
+                            "text": {"analyzers": ["text_en"]}
                         },
                         "features": ["frequency", "norm", "position"],
                     }
@@ -192,11 +185,7 @@ def _bootstrap_impl(
                         "includeAllFields": False,
                         "storeValues": "none",
                         "fields": {
-                            "text": {"analyzers": ["text_en"]},
-                            "embedding": {
-                                "analyzers": [analyzer_name],
-                                "vector": {"dimension": embed_dim, "metric": "cosine"},
-                            },
+                            "text": {"analyzers": ["text_en"]}
                         },
                         "features": ["frequency", "norm", "position"],
                     }
