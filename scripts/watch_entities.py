@@ -31,7 +31,12 @@ async def _handle_messages(ws: websockets.WebSocketClientProtocol) -> None:
             raise RuntimeError("Authentication failed")
 
     # Subscribe to entity registry updates
-    await ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "entity_registry_updated"}))
+    try:
+        await ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "entity_registry_updated"}))
+        logger.info("Subscribed to entity registry updates")
+    except Exception as exc:
+        logger.error("Failed to subscribe to entity registry updates", error=str(exc))
+        raise
 
     while True:
         msg = await ws.recv()
