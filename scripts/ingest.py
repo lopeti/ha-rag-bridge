@@ -97,10 +97,11 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     }
 
 
-def ingest(entity_id: Optional[str] = None) -> None:
-    """Run the ingestion process. Only changed or new entities are embedded unless full=True."""
+def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
+    """Run the ingestion process. Only changed or new entities are embedded unless full=True. Batch delay is configurable."""
 
     import hashlib
+    import time
 
     def get_existing_meta_hash(entity_id: str, col) -> Optional[str]:
         doc = col.get(entity_id)
@@ -241,6 +242,10 @@ def ingest(entity_id: Optional[str] = None) -> None:
             if edges:
                 edge_col.insert_many(edges, overwrite=True, overwrite_mode="ignore")
 
+        # Delay between batches
+        if delay_sec > 0:
+            logger.info("batch delay", seconds=delay_sec)
+            time.sleep(delay_sec)
 
     logger.info(
         event="ingest summary",
@@ -257,11 +262,12 @@ def cli() -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--full", action="store_true", help="Full ingest of all states (re-embed everything)")
     group.add_argument("--entity", help="Single entity id")
+    parser.add_argument("--delay", type=int, default=5, help="Delay in seconds between embedding batches (default: 5)")
     args = parser.parse_args()
     if args.full:
-        ingest(None)
+        ingest(None, delay_sec=args.delay)
     else:
-        ingest(args.entity)
+        ingest(args.entity, delay_sec=args.delay)
 
 
 if __name__ == "__main__":
