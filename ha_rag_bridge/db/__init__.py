@@ -53,15 +53,18 @@ class BridgeDB(StandardDatabase):
         except DocumentParseError:  # pragma: no cover - malformed response
             return False
 
-    def create_arangosearch_view(self, name: str, *, links: dict | None = None):
-        """Return an existing ArangoSearch view or create one."""
+    def create_arangosearch_view(self, name: str, properties: dict = None):
+        """
+        Return an existing ArangoSearch view or create one.
+        Signature and behavior now matches python-arango driver for compatibility.
+        """
         if self.has_view(name):
             return self.view(name)
         try:
             return self.create_view(
                 name,
                 view_type="arangosearch",
-                properties={"links": links or {}},
+                properties=properties or {},
             )
         except ArangoServerError as exc:  # pragma: no cover - connection errors
             logger = get_logger(__name__)
