@@ -88,9 +88,7 @@ class GeminiBackend(BaseEmbeddingBackend):
         logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION)
         payload = {
             "model": f"models/{self.MODEL_NAME}",
-            "content": [
-                {"parts": [{"text": t}]} for t in texts
-            ],
+            "contents": texts,
             # "parameters": {"taskType": "SEMANTIC_SIMILARITY"},  # opcionális
         }
         response = httpx.post(
