@@ -81,7 +81,7 @@ class GeminiBackend(BaseEmbeddingBackend):
 
     def __init__(self) -> None:
         from google import genai
-        self.client = genai.Client()
+        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts)
