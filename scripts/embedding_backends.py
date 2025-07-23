@@ -86,14 +86,17 @@ class GeminiBackend(BaseEmbeddingBackend):
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION)
+        payload = {
+            "model": f"models/{self.MODEL_NAME}",
+            "content": [
+                {"parts": [{"text": t}]} for t in texts
+            ],
+            # "parameters": {"taskType": "SEMANTIC_SIMILARITY"},  # opcionális
+        }
         response = httpx.post(
-            f"{self.base_url}/v1beta/models/{self.MODEL_NAME}:embedText",
+            f"{self.base_url}/v1beta/models/{self.MODEL_NAME}:embedContent",
             headers={"x-goog-api-key": self.api_key},
-            json={
-                "texts": texts,
-                "task_type": "RETRIEVAL_DOCUMENT",
-                "output_dimensionality": self.DIMENSION,
-            },
+            json=payload,
             timeout=30,
         )
         logger.info("Gemini embedding response", status_code=response.status_code, text=response.text[:500])
