@@ -6,7 +6,7 @@ from typing import List
 
 
 import openai
-import google.generativeai as genai
+
 
 from ha_rag_bridge.logging import get_logger
 
@@ -80,19 +80,18 @@ class GeminiBackend(BaseEmbeddingBackend):
     DIMENSION = int(os.getenv("GEMINI_OUTPUT_DIM", 1536))
 
     def __init__(self) -> None:
-        api_key = os.environ["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(self.MODEL_NAME)
+        from google import genai
+        self.client = genai.Client()
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts)
         try:
-            result = self.model.embed_content(
+            result = self.client.models.embed_content(
+                model=self.MODEL_NAME,
                 contents=texts
             )
             logger.info("Gemini embedding raw response", response=str(result))
-            # result.embeddings: List[Embedding]
-            return [embedding.values for embedding in getattr(result, 'embeddings', [])]
+            return [emb.values for emb in getattr(result, 'embeddings', [])]
         except Exception as exc:
             logger.error("Gemini embedding error", error=str(exc))
             return [[] for _ in texts]
