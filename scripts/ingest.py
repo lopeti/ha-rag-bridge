@@ -206,14 +206,6 @@ def ingest(entity_id: Optional[str] = None) -> None:
                         {"_key": area_id, "name": area_id},
                         overwrite=True,
                         overwrite_mode="update",
-    logger.info(
-        event="ingest summary",
-        unchanged=unchanged_count,
-        changed=changed_count,
-        new=new_count,
-        failed=failed_count,
-        total=len(states)
-    )
                     )
                     key_raw = f"area_contains:area/{area_id}->entity/{eid}"
                     edges.append(
@@ -248,6 +240,16 @@ def ingest(entity_id: Optional[str] = None) -> None:
                 logger.info("upserted entity", entity=d["entity_id"], edges=edge_count)
             if edges:
                 edge_col.insert_many(edges, overwrite=True, overwrite_mode="ignore")
+
+
+    logger.info(
+        event="ingest summary",
+        unchanged=unchanged_count,
+        changed=changed_count,
+        new=new_count,
+        failed=failed_count,
+        total=len(states)
+    )
 
 
 def cli() -> None:
