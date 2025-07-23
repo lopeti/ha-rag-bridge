@@ -111,14 +111,16 @@ def _bootstrap_impl(
         idx = None
     if not idx:
         try:
+            # nLists should be N/15, but use 100 as a safe default for small/empty collections
+            nLists = 100
             entity.add_index(
                 {
                     "type": "vector",
                     "fields": ["embedding"],
-                    "params": {"dimension": embed_dim, "metric": "cosine"},
+                    "params": {"dimension": embed_dim, "metric": "cosine", "nLists": nLists},
                 }
             )
-            logger.info("Created vector index on entity.embedding")
+            logger.info(f"Created vector index on entity.embedding with nLists={nLists}")
         except Exception as exc:
             logger.error("Failed to create vector index", error=str(exc))
 
