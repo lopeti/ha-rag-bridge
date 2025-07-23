@@ -85,7 +85,8 @@ class GeminiBackend(BaseEmbeddingBackend):
         )
 
     def embed(self, texts: List[str]) -> List[List[float]]:
-        rsp = httpx.post(
+        logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION)
+        response = httpx.post(
             f"{self.base_url}/v1beta/models/{self.MODEL_NAME}:embedText",
             headers={"x-goog-api-key": self.api_key},
             json={
@@ -94,7 +95,12 @@ class GeminiBackend(BaseEmbeddingBackend):
                 "output_dimensionality": self.DIMENSION,
             },
             timeout=30,
-        ).json()
+        )
+        logger.info("Gemini embedding response", status_code=response.status_code, text=response.text[:500])
+        rsp = response.json()
+        if "embeddings" not in rsp:
+            logger.error("Gemini response missing 'embeddings'", response=rsp)
+            raise RuntimeError(f"Gemini API error: {rsp}")
         return [row["values"] for row in rsp["embeddings"]]
 
 
