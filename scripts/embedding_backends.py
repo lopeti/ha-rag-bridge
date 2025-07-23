@@ -4,8 +4,9 @@ import os
 import time
 from typing import List
 
-import httpx
+
 import openai
+import google.generativeai as genai
 
 from ha_rag_bridge.logging import get_logger
 
@@ -79,30 +80,21 @@ class GeminiBackend(BaseEmbeddingBackend):
     DIMENSION = int(os.getenv("GEMINI_OUTPUT_DIM", 1536))
 
     def __init__(self) -> None:
-        self.api_key = os.environ["GEMINI_API_KEY"]
-        self.base_url = os.getenv(
-            "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"
-        )
+        api_key = os.environ["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(self.MODEL_NAME)
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION)
-        payload = {
-            "model": f"models/{self.MODEL_NAME}",
-            "contents": texts,
-            # "parameters": {"taskType": "SEMANTIC_SIMILARITY"},  # opcionális
-        }
-        response = httpx.post(
-            f"{self.base_url}/v1beta/models/{self.MODEL_NAME}:embedContent",
-            headers={"x-goog-api-key": self.api_key},
-            json=payload,
-            timeout=30,
-        )
-        logger.info("Gemini embedding response", status_code=response.status_code, text=response.text[:500])
-        rsp = response.json()
-        if "embeddings" not in rsp:
-            logger.error("Gemini response missing 'embeddings'", response=rsp)
-            raise RuntimeError(f"Gemini API error: {rsp}")
-        return [row["values"] for row in rsp["embeddings"]]
+        try:
+            result = self.model.embed_content(
+                contents=texts
+            )
+            # result.embeddings: List[Embedding]
+            return [embedding.values for embedding in result.embeddings]
+        except Exception as exc:
+            logger.error("Gemini embedding error", error=str(exc))
+            return [[] for _ in texts]
 
 
 def get_backend(name: str) -> BaseEmbeddingBackend:

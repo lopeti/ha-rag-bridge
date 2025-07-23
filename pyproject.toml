@@ -24,6 +24,7 @@ colorama = "^0.4"
 "pdfminer.six" = "^20221105"
 structlog = "^24"
 pydantic = "^2.7"
+google-generativeai = "^0.5.4"
 
 [tool.poetry.scripts]
 ha-rag-bootstrap = "ha_rag_bridge.bootstrap.cli:main"
