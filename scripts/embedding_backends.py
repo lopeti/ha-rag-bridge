@@ -6,7 +6,7 @@ from typing import List
 
 
 import openai
-
+from openai import RateLimitError  # correct import
 
 from ha_rag_bridge.logging import get_logger
 
@@ -52,27 +52,36 @@ class OpenAIBackend(BaseEmbeddingBackend):
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         model = "text-embedding-3-large"
-        for attempt in range(3):
+        # Retry indefinitely on rate limits or quota errors, sleeping based on Retry-After or fixed 60s
+        while True:
             try:
                 resp = self.client.embeddings.create(model=model, input=texts)
                 return [item.embedding for item in resp.data]  # type: ignore[index]
-            except Exception as exc:  # pragma: no cover - network errors
-                if "quota" in str(exc).lower() and model != "text-embedding-3-small":
-                    logger.warning(
-                        "quota exceeded", action="fallback", model="small"
-                    )
-                    model = "text-embedding-3-small"
+            except RateLimitError as exc:
+                retry_after = 60
+                if hasattr(exc, 'headers') and exc.headers.get('Retry-After'):
+                    try:
+                        retry_after = int(exc.headers['Retry-After'])
+                    except ValueError:
+                        pass
+                logger.warning("rate limit exceeded, sleeping", retry_after=retry_after)
+                time.sleep(retry_after)
+            except Exception as exc:
+                msg = str(exc).lower()
+                if 'quota' in msg:
+                    retry_after = 60
+                    headers = getattr(exc, 'headers', {}) or {}
+                    if headers.get('Retry-After'):
+                        try:
+                            retry_after = int(headers['Retry-After'])
+                        except ValueError:
+                            pass
+                    logger.warning("quota exceeded, sleeping", retry_after=retry_after)
+                    time.sleep(retry_after)
                     continue
-
-                if attempt == 2:
-                    raise
-                wait = 2**attempt
-                logger.warning(
-                    "embedding retry", wait_s=wait, error=str(exc)
-                )
-                time.sleep(wait)
-
-        return [[] for _ in texts]
+                # Other errors are fatal
+                logger.error("embedding error", error=str(exc))
+                raise
 
 
 class GeminiBackend(BaseEmbeddingBackend):
@@ -85,16 +94,33 @@ class GeminiBackend(BaseEmbeddingBackend):
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts)
-        try:
-            result = self.client.models.embed_content(
-                model=self.MODEL_NAME,
-                contents=texts
-            )
-            logger.info("Gemini embedding raw response", response=str(result))
-            return [emb.values for emb in getattr(result, 'embeddings', [])]
-        except Exception as exc:
-            logger.error("Gemini embedding error", error=str(exc))
-            return [[] for _ in texts]
+        # Retry indefinitely on rate limits or quota errors, sleeping based on Retry-After or fixed 60s
+        while True:
+            try:
+                result = self.client.models.embed_content(
+                    model=self.MODEL_NAME,
+                    contents=texts
+                )
+                logger.info("Gemini embedding raw response", response=str(result))
+                return [emb.values for emb in getattr(result, 'embeddings', [])]
+            except Exception as exc:
+                # Determine retry delay
+                retry_after = 60
+                headers = getattr(exc, 'headers', {}) or {}
+                if headers.get('Retry-After'):
+                    try:
+                        retry_after = int(headers['Retry-After'])
+                    except ValueError:
+                        pass
+                msg = str(exc).lower()
+                # Retry on rate limit or quota errors
+                if 'rate limit' in msg or 'quota' in msg or getattr(exc, 'code', None) == 429:
+                    logger.warning("Gemini rate/quota limit exceeded, sleeping", retry_after=retry_after, error=str(exc))
+                    time.sleep(retry_after)
+                    continue
+                # Other errors are fatal, return empty embeddings
+                logger.error("Gemini embedding error", error=str(exc))
+                return [[] for _ in texts]
 
 
 def get_backend(name: str) -> BaseEmbeddingBackend:
