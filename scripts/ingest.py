@@ -64,6 +64,33 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
         return [data] if entity_id else data
 
 
+def fetch_exposed_entity_ids() -> Optional[set]:
+    """Fetch the set of entity_ids exposed by the Home Assistant voice assistant integration."""
+    import httpx
+    base_url = os.environ["HA_URL"]
+    token = os.environ["HA_TOKEN"]
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        with httpx.Client(base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT) as client:
+            resp = client.get("/api/config/voice-assistants/expose")
+            resp.raise_for_status()
+            data = resp.json()
+            # Find the entry for our integration (by name or entry_id)
+            integration_name = os.getenv("HA_VOICE_ASSISTANT_NAME", "Home Assistant")
+            chosen = None
+            for entry in data:
+                if entry.get("name") == integration_name or entry.get("entry_id") == integration_name:
+                    chosen = entry
+                    break
+            if not chosen or "entities" not in chosen:
+                logger.warning("No matching voice assistant entry found or missing entities array", integration=integration_name)
+                return None
+            return {e["entity_id"] for e in chosen["entities"] if "entity_id" in e}
+    except Exception as exc:
+        logger.warning("Failed to fetch or parse exposed entity ids", error=str(exc))
+        return None
+
+
 def build_text(entity: dict) -> str:
     """Return the concatenated text used for embedding."""
 
@@ -99,7 +126,6 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
 
 def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
     """Run the ingestion process. Only changed or new entities are embedded unless full=True. Batch delay is configurable."""
-
     import hashlib
     import time
 
@@ -112,6 +138,18 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
     states = fetch_states(entity_id)
     if not states:
         return
+
+    # --- BEGIN VOICE ASSISTANT EXPOSE FILTER ---
+    exposed_ids = fetch_exposed_entity_ids()
+    if exposed_ids is None:
+        logger.warning("Aborting ingestion: could not fetch exposed entity ids")
+        return
+    filtered_states = [s for s in states if s.get("entity_id") in exposed_ids]
+    if not filtered_states:
+        logger.warning("No states matched exposed entity ids, aborting ingestion")
+        return
+    states = filtered_states
+    # --- END VOICE ASSISTANT EXPOSE FILTER ---
 
     backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
     logger.info("embedding backend", backend=backend_name)
