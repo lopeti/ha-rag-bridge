@@ -5,6 +5,7 @@ import time
 from typing import List
 
 
+import httpx
 import openai
 from openai import RateLimitError  # correct import
 
@@ -89,38 +90,30 @@ class GeminiBackend(BaseEmbeddingBackend):
     DIMENSION = int(os.getenv("GEMINI_OUTPUT_DIM", 1536))
 
     def __init__(self) -> None:
-        from google import genai
-        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        self.api_key = os.environ["GEMINI_API_KEY"]
+
+    def _post(self, payload: dict) -> dict:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.MODEL_NAME}:embedContent?key={self.api_key}"
+        )
+        resp = httpx.post(url, json=payload)
+        return resp.json()
 
     def embed(self, texts: List[str]) -> List[List[float]]:
-        logger.info("Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts)
-        # Retry indefinitely on rate limits or quota errors, sleeping based on Retry-After or fixed 60s
-        while True:
+        logger.info(
+            "Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts
+        )
+        results: List[List[float]] = []
+        for text in texts:
             try:
-                result = self.client.models.embed_content(
-                    model=self.MODEL_NAME,
-                    contents=texts
-                )
-                logger.info("Gemini embedding raw response", response=str(result))
-                return [emb.values for emb in getattr(result, 'embeddings', [])]
-            except Exception as exc:
-                # Determine retry delay
-                retry_after = 60
-                headers = getattr(exc, 'headers', {}) or {}
-                if headers.get('Retry-After'):
-                    try:
-                        retry_after = int(headers['Retry-After'])
-                    except ValueError:
-                        pass
-                msg = str(exc).lower()
-                # Retry on rate limit or quota errors
-                if 'rate limit' in msg or 'quota' in msg or getattr(exc, 'code', None) == 429:
-                    logger.warning("Gemini rate/quota limit exceeded, sleeping", retry_after=retry_after, error=str(exc))
-                    time.sleep(retry_after)
-                    continue
-                # Other errors are fatal, return empty embeddings
+                data = self._post({"content": {"parts": [{"text": text}]}})
+                values = data.get("embeddings", [{}])[0].get("values", [])
+                results.append(values)
+            except Exception as exc:  # pragma: no cover - network errors
                 logger.error("Gemini embedding error", error=str(exc))
-                return [[] for _ in texts]
+                results.append([])
+        return results
 
 
 def get_backend(name: str) -> BaseEmbeddingBackend:
