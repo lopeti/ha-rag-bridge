@@ -20,4 +20,4 @@ dev-down:
 	$(COMPOSE_DEV) down
 
 dev-shell:
-	$(COMPOSE_DEV) exec homeassistant bash
+	$(COMPOSE_DEV) exec bridge bash

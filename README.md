@@ -7,7 +7,10 @@ This project syncs Home Assistant metadata into ArangoDB and provides a simple F
 ```bash
 git clone <repo>
 cp .env.sample .env
-docker compose up -d
+make dev-up # HASS+bridge+Arango dev stack
+code . # VS Code Remote-SSH, majd 'Reopen in Container'
+# Run & Debug → Attach Bridge
+make dev-down # leállítás
 ```
 The container automatically bootstraps the database on start. Make sure your
 ArangoDB instance runs with the `--experimental-vector-index` flag enabled so
@@ -21,7 +24,15 @@ vector search works correctly.
 
 ## Dev container
 
-Run `make dev-up` to launch Home Assistant, the bridge with hot reload and a local ArangoDB instance. VS Code can attach to the running bridge via the **Attach Bridge** debug configuration. Stop all services with `make dev-down`.
+Futtasd a fejlesztői stacket:
+
+```bash
+make dev-up # HASS+bridge+Arango dev stack
+code . # VS Code Remote-SSH, majd 'Reopen in Container'
+# Run & Debug → Attach Bridge
+make dev-down # leállítás
+```
+VS Code-ban csatlakozz a futó bridge-hez a **Run & Debug → Attach Bridge** konfigurációval. Minden szolgáltatás leállításához használd a `make dev-down` parancsot.
 
 ## Bootstrap CLI
 

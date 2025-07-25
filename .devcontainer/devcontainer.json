@@ -1,11 +1,31 @@
 {
-    "name": "ha-rag-bridge",
-    "image": "ghcr.io/home-assistant/devcontainer:stable",
+    "name": "HA RAG Bridge Dev Container",
     "dockerComposeFile": [
         "../docker-compose.yml",
         "../docker-compose.dev.yml"
     ],
-    "service": "homeassistant",
+    "service": "bridge",
     "forwardPorts": [8000, 8123, 5678],
-    "postCreateCommand": "poetry install"
+    "workspaceFolder": "/app",
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
+        }
+    },
+    "postCreateCommand": "pip install poetry && poetry install && pre-commit install",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "editor.formatOnSave": true
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "esbenp.prettier-vscode",
+                "ms-azuretools.vscode-docker"
+            ]
+        }
+    }
 }

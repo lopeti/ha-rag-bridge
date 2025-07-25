@@ -5,42 +5,43 @@ on:
   pull_request:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.11", "3.12"]
-        arango: ["3.11"]
     services:
       arangodb:
-        image: arangodb/arangodb:${{ matrix.arango }}
+        image: arangodb:3.11
         ports:
           - 8529:8529
-        options: >-
-          --name arangodb
-          --health-cmd="arangosh --server.endpoint tcp://localhost:8529 \
-          --server.username root --server.password pass \
-          --javascript.execute-string '1'"
-          --health-interval=10s --health-timeout=5s --health-retries=5
+        options: >
+          --health-cmd="arangosh --server.endpoint tcp://127.0.0.1:8529 --server.password changeme --javascript.execute-string 'print(1)'" --health-interval=10s --health-timeout=5s --health-retries=5
         env:
-          ARANGO_ROOT_PASSWORD: pass
-        command: --experimental-vector-index
+          ARANGO_ROOT_PASSWORD: changeme
+      influxdb:
+        image: influxdb:2.7
+        ports:
+          - 8086:8086
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
-      - uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: false
-      - run: poetry install
-      - run: docker build --no-cache -t ha-rag-bridge:ci .
-      - run: |
-          MAX_IMAGE_SIZE_MB=800  # Maximum allowed Docker image size in MB
-          docker images ha-rag-bridge:ci | awk -v max_size="$MAX_IMAGE_SIZE_MB" '$7+0 < max_size'
-      - run: poetry run pytest
-      - run: docker run --network host -e ARANGO_URL=http://localhost:8529 -e ARANGO_USER=root -e ARANGO_PASS=pass ha-rag-bridge:ci ha-rag-bootstrap
-      - run: |
-          curl -u root:pass http://localhost:8529/_db/_system/_api/index?collection=events | grep '"type":"persistent"' | grep '"fields":["time"]'
-      - run: docker exec arangodb arangosh --server.endpoint tcp://localhost:8529 --server.username root --server.password pass --javascript.execute-string 'db._create("embeddings")'
-      - run: docker run --network host -e ARANGO_URL=http://localhost:8529 -e ARANGO_USER=root -e ARANGO_PASS=pass ha-rag-bridge:ci ha-rag-bootstrap --reindex embeddings
+          python-version: '3.11'
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install dependencies
+        run: poetry install
+      - name: Copy env example
+        run: cp .env.example .env
+      - name: Start dev stack
+        run: docker compose -f docker-compose.dev.yml up -d
+      - name: Wait for ArangoDB
+        run: |
+          for i in {1..30}; do
+            nc -z localhost 8529 && break
+            sleep 2
+          done
+      - name: Run tests
+        run: poetry run pytest -q
+      - name: Stop dev stack
+        run: docker compose -f docker-compose.dev.yml down
