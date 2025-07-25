@@ -141,14 +141,14 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
 
     # --- BEGIN VOICE ASSISTANT EXPOSE FILTER ---
     exposed_ids = fetch_exposed_entity_ids()
-    if exposed_ids is None:
-        logger.warning("Aborting ingestion: could not fetch exposed entity ids")
-        return
-    filtered_states = [s for s in states if s.get("entity_id") in exposed_ids]
-    if not filtered_states:
-        logger.warning("No states matched exposed entity ids, aborting ingestion")
-        return
-    states = filtered_states
+    if exposed_ids is not None:
+        filtered_states = [s for s in states if s.get("entity_id") in exposed_ids]
+        if not filtered_states:
+            logger.warning(
+                "No states matched exposed entity ids, aborting ingestion"
+            )
+            return
+        states = filtered_states
     # --- END VOICE ASSISTANT EXPOSE FILTER ---
 
     backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
