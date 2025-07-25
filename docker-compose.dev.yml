@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
@@ -24,6 +23,8 @@ services:
       - AUTO_BOOTSTRAP=1
     depends_on:
       - arangodb
+    env_file:
+      - .env
   arangodb:
     image: arangodb:3.11
     ports:
@@ -32,6 +33,8 @@ services:
       - ARANGO_NO_AUTH=1
     volumes:
       - arangodb_dev:/var/lib/arangodb3
+    env_file:
+      - .env
 volumes:
   arangodb_dev:
   ha_config:
