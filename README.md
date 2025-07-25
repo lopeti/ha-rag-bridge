@@ -19,6 +19,10 @@ vector search works correctly.
 - python-arango 8.x
 - Rust toolchain for building pydantic-core
 
+## Dev container
+
+Run `make dev-up` to launch Home Assistant, the bridge with hot reload and a local ArangoDB instance. VS Code can attach to the running bridge via the **Attach Bridge** debug configuration. Stop all services with `make dev-down`.
+
 ## Bootstrap CLI
 
 After installing via Poetry or pulling the Docker image you can run the
