@@ -1,8 +1,11 @@
 {
     "name": "ha-rag-bridge",
-    "build": {
-        "dockerfile": "Dockerfile"
-    },
-    "forwardPorts": [8000],
+    "image": "ghcr.io/home-assistant/devcontainer:stable",
+    "dockerComposeFile": [
+        "../docker-compose.yml",
+        "../docker-compose.dev.yml"
+    ],
+    "service": "homeassistant",
+    "forwardPorts": [8000, 8123, 5678],
     "postCreateCommand": "poetry install"
 }
