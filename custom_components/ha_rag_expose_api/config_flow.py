@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 try:
     from homeassistant import config_entries
 except Exception:  # pragma: no cover - Home Assistant not available
@@ -44,7 +46,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return duplicate
         if user_input is not None:
             ConfigFlow._configured = True
-            return await self.async_create_entry(title="HA-RAG Expose API", data={})
+            result = self.async_create_entry(title="HA-RAG Expose API", data={})
+            if inspect.isawaitable(result):
+                result = await result
+            return result
         return self.async_show_form(step_id="user")
 
     async def async_step_import(self, user_input):
@@ -52,4 +57,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if duplicate:
             return duplicate
         ConfigFlow._configured = True
-        return await self.async_create_entry(title="HA-RAG Expose API", data={})
+        result = self.async_create_entry(title="HA-RAG Expose API", data={})
+        if inspect.isawaitable(result):
+            result = await result
+        return result
