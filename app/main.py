@@ -48,39 +48,40 @@ else:
     backend_dim = LocalBackend.DIMENSION
 HEALTH_ERROR: str | None = None
 
-try:
-    arango_url = os.environ["ARANGO_URL"]
-    arango_user = os.environ["ARANGO_USER"]
-    arango_pass = os.environ["ARANGO_PASS"]
+if not os.getenv("SKIP_ARANGO_HEALTHCHECK"):
+    try:
+        arango_url = os.environ["ARANGO_URL"]
+        arango_user = os.environ["ARANGO_USER"]
+        arango_pass = os.environ["ARANGO_PASS"]
 
-    arango = ArangoClient(hosts=arango_url)
-    db_name = os.getenv("ARANGO_DB", "_system")
-    db = arango.db(
-        db_name,
-        username=arango_user,
-        password=arango_pass,
-    )
-    col = db.collection("entity")
-    idx = next(
-        (
-            i
-            for i in col.indexes()
-            if i["type"] == "vector" and i["fields"][0] == "embedding"
-        ),
-        None,
-    )
-    if idx and idx.get("dimensions") != backend_dim:
-        logger.warning(
-            "embedding dimension mismatch",
-            backend=backend_dim,
-            index=idx.get("dimensions"),
+        arango = ArangoClient(hosts=arango_url)
+        db_name = os.getenv("ARANGO_DB", "_system")
+        db = arango.db(
+            db_name,
+            username=arango_user,
+            password=arango_pass,
         )
-        HEALTH_ERROR = "dimension mismatch"
-except KeyError:
-    pass
-except Exception as exc:  # pragma: no cover - db errors
-    logger.warning("Health check init failed", error=str(exc))
-    HEALTH_ERROR = "dimension check failed"
+        col = db.collection("entity")
+        idx = next(
+            (
+                i
+                for i in col.indexes()
+                if i["type"] == "vector" and i["fields"][0] == "embedding"
+            ),
+            None,
+        )
+        if idx and idx.get("dimensions") != backend_dim:
+            logger.warning(
+                "embedding dimension mismatch",
+                backend=backend_dim,
+                index=idx.get("dimensions"),
+            )
+            HEALTH_ERROR = "dimension mismatch"
+    except KeyError:
+        pass
+    except Exception as exc:  # pragma: no cover - db errors
+        logger.warning("Health check init failed", error=str(exc))
+        HEALTH_ERROR = "dimension check failed"
 
 CONTROL_RE = re.compile(
     r"\b(kapcsold|ind\xEDtsd|\xE1ll\xEDtsd|turn\s+on|turn\s+off)\b", re.IGNORECASE
