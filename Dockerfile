@@ -1,6 +1,6 @@
 
 # --- Base stage ---
-FROM python:3.12-slim AS base
+FROM python:3.13-slim AS base
 
 ENV POETRY_VERSION=1.8.3
 
