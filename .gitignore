@@ -5,3 +5,4 @@ __pycache__/
 
 # Poetry virtualenv
 .venv/
+.env
