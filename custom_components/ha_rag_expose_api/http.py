@@ -18,7 +18,8 @@ else:
 try:
     from homeassistant.components.http import HomeAssistantView
 except Exception:  # pragma: no cover - Home Assistant not available
-    class HomeAssistantView:
+
+    class _FallbackView:
         """Fallback class used when Home Assistant is not installed."""
 
         url: str = ""
@@ -30,6 +31,8 @@ except Exception:  # pragma: no cover - Home Assistant not available
 
         def json(self, result: dict, status_code: int = 200):  # type: ignore[override]
             return result
+
+    HomeAssistantView = _FallbackView
 
 
 class StaticEntitiesView(HomeAssistantView):
@@ -87,16 +90,20 @@ def _collect_static(hass: Any) -> dict[str, list[dict[str, Any]]]:
         for device in device_reg.devices.values()
     ]
 
-    entities = [
-        {
-            "entity_id": ent.entity_id,
-            "platform": ent.platform,
-            "device_id": ent.device_id,
-            "area_id": ent.area_id,
-            "domain": ent.domain,
-            "original_name": ent.original_name,
-        }
-        for ent in entity_reg.entities.values()
-    ]
+    entities = []
+    for ent in entity_reg.entities.values():
+        expose = ent.options.get("conversation", {}).get("should_expose", False)
+        if not expose:
+            continue
+        entities.append(
+            {
+                "entity_id": ent.entity_id,
+                "platform": ent.platform,
+                "device_id": ent.device_id,
+                "area_id": ent.area_id,
+                "domain": ent.domain,
+                "original_name": ent.original_name,
+            }
+        )
 
     return {"areas": areas, "devices": devices, "entities": entities}
