@@ -92,7 +92,10 @@ def _collect_static(hass: Any) -> dict[str, list[dict[str, Any]]]:
 
     entities = []
     for ent in entity_reg.entities.values():
-        expose = ent.options.get("conversation", {}).get("should_expose", False)
+        expose = False
+        # Csak akkor szűrjünk, ha van options attribútum, és abban van conversation/should_expose
+        if hasattr(ent, "options") and isinstance(ent.options, dict):
+            expose = ent.options.get("conversation", {}).get("should_expose", False)
         if not expose:
             continue
         entities.append(
