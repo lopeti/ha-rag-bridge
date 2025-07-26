@@ -32,6 +32,8 @@ ha-rag-bootstrap = "ha_rag_bridge.bootstrap.cli:main"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1"
 pytest-asyncio = "^0.23"
+debugpy = "^1.6.0"
+pre-commit = "^2.20.0"
 
 [build-system]
 requires = ["poetry-core"]

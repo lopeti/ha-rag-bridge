@@ -7,7 +7,10 @@ services:
       - ha_config:/config
     privileged: true
   bridge:
-    build: .
+    build:
+        context: .
+        dockerfile: Dockerfile     # <— itt mutass rá biztosan a te Dockerfile-ra
+        target: dev                 # <— így a dev stage-et építi
     command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini
     volumes:
       - .:/app
