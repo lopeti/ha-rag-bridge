@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 from typing import List, Optional
 import hashlib
+import logging
 
 import httpx
 from arango import ArangoClient
@@ -30,6 +31,7 @@ from .embedding_backends import (
     get_backend,
 )
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = get_logger(__name__)
 
@@ -51,7 +53,7 @@ def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
 
 
 def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
-    """Fetch entity states from Home Assistant."""
+    """Fetch entity states from Home Assistant using the RAG API."""
 
     base_url = os.environ["HA_URL"]
     token = os.environ["HA_TOKEN"]
@@ -60,10 +62,18 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
     with httpx.Client(
         base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT
     ) as client:
-        url = f"/api/states/{entity_id}" if entity_id else "/api/states"
-        resp = _retry_get(client, url)
-        data = resp.json()
-        return [data] if entity_id else data
+        if entity_id:
+            # Fallback to original API for specific entity requests
+            url = f"/api/states/{entity_id}"
+            resp = _retry_get(client, url)
+            data = resp.json()
+            return [data]
+        else:
+            # Use the new RAG API endpoint for all entities
+            url = "/api/rag/static/entities"
+            resp = _retry_get(client, url)
+            data = resp.json()
+            return data
 
 
 def fetch_exposed_entity_ids() -> Optional[set]:
