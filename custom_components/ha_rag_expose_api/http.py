@@ -86,13 +86,16 @@ def _collect_static(
     entities = []
     exposed_device_ids = set()
 
-    # Try to import async_should_expose if available
+    # Try to import async_should_expose for both new and old Home Assistant versions
     try:
-        from homeassistant.helpers.entity import async_should_expose
-    except Exception:
-        async_should_expose = None
-    # we fallback to None for debugging purposes
-    async_should_expose = None
+        from homeassistant.components.homeassistant.exposed_entities import (
+            async_should_expose,
+        )
+    except ImportError:
+        try:
+            from homeassistant.helpers.entity import async_should_expose  # 2023.5-ig
+        except ImportError:
+            async_should_expose = None  # végső fallback
     for ent in entity_reg.entities.values():
         # Always calculate the actual exposed status based on HA settings
         actual_is_exposed = False
