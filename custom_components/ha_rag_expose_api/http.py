@@ -91,24 +91,24 @@ def _collect_static(
         from homeassistant.helpers.entity import async_should_expose
     except Exception:
         async_should_expose = None
-
+    # we fallback to None for debugging purposes
+    async_should_expose = None
     for ent in entity_reg.entities.values():
-        is_exposed = False
+        # Always calculate the actual exposed status based on HA settings
+        actual_is_exposed = False
 
-        if include_all:
-            # Include all entities when requested
-            is_exposed = True
-        elif async_should_expose is not None:
+        if async_should_expose is not None:
             # Use Home Assistant's rule system (UI settings + defaults)
-            is_exposed = async_should_expose(hass, "conversation", ent.entity_id)
+            actual_is_exposed = async_should_expose(hass, "conversation", ent.entity_id)
         else:
             # Fallback: only expose if options["conversation"]["should_expose"] is True
             if hasattr(ent, "options") and isinstance(ent.options, dict):
-                is_exposed = ent.options.get("conversation", {}).get(
+                actual_is_exposed = ent.options.get("conversation", {}).get(
                     "should_expose", False
                 )
 
-        if is_exposed or include_all:
+        # Include entity if it's exposed OR if include_all is True
+        if actual_is_exposed or include_all:
             entities.append(
                 {
                     "entity_id": ent.entity_id,
@@ -117,11 +117,11 @@ def _collect_static(
                     "area_id": ent.area_id,
                     "domain": ent.domain,
                     "original_name": ent.original_name,
-                    "exposed": is_exposed,
+                    "exposed": actual_is_exposed,  # Always show the actual HA exposed status
                 }
             )
             # Track devices that have at least one exposed entity
-            if ent.device_id and is_exposed:
+            if ent.device_id and actual_is_exposed:
                 exposed_device_ids.add(ent.device_id)
 
     # Only include devices that have at least one exposed entity (or all if include_all is True)
