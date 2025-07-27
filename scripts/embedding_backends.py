@@ -60,21 +60,21 @@ class OpenAIBackend(BaseEmbeddingBackend):
                 return [item.embedding for item in resp.data]  # type: ignore[index]
             except RateLimitError as exc:
                 retry_after = 60
-                if hasattr(exc, 'headers') and exc.headers.get('Retry-After'):
+                if hasattr(exc, "headers") and exc.headers.get("Retry-After"):
                     try:
-                        retry_after = int(exc.headers['Retry-After'])
+                        retry_after = int(exc.headers["Retry-After"])
                     except ValueError:
                         pass
                 logger.warning("rate limit exceeded, sleeping", retry_after=retry_after)
                 time.sleep(retry_after)
             except Exception as exc:
                 msg = str(exc).lower()
-                if 'quota' in msg:
+                if "quota" in msg:
                     retry_after = 60
-                    headers = getattr(exc, 'headers', {}) or {}
-                    if headers.get('Retry-After'):
+                    headers = getattr(exc, "headers", {}) or {}
+                    if headers.get("Retry-After"):
                         try:
-                            retry_after = int(headers['Retry-After'])
+                            retry_after = int(headers["Retry-After"])
                         except ValueError:
                             pass
                     logger.warning("quota exceeded, sleeping", retry_after=retry_after)
@@ -102,7 +102,7 @@ class GeminiBackend(BaseEmbeddingBackend):
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         logger.info(
-            "Gemini embedding request", count=len(texts), dim=self.DIMENSION, texts=texts
+            f"Gemini embedding request: count={len(texts)}, dim={self.DIMENSION}"
         )
         results: List[List[float]] = []
         for text in texts:
@@ -113,6 +113,7 @@ class GeminiBackend(BaseEmbeddingBackend):
             except Exception as exc:  # pragma: no cover - network errors
                 logger.error("Gemini embedding error", error=str(exc))
                 results.append([])
+        logger.info("Gemini embedding completed successfully")
         return results
 
 
