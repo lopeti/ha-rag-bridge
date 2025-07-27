@@ -91,13 +91,24 @@ def _collect_static(hass: Any) -> dict[str, list[dict[str, Any]]]:
     ]
 
     entities = []
+    # Try to import async_should_expose if available
+    try:
+        from homeassistant.helpers.entity import async_should_expose
+    except Exception:
+        async_should_expose = None
+
     for ent in entity_reg.entities.values():
-        expose = False
-        # Csak akkor szűrjünk, ha van options attribútum, és abban van conversation/should_expose
-        if hasattr(ent, "options") and isinstance(ent.options, dict):
-            expose = ent.options.get("conversation", {}).get("should_expose", False)
-        if not expose:
-            continue
+        if async_should_expose is not None:
+            # Use Home Assistant's rule system (UI settings + defaults)
+            if not async_should_expose(hass, "conversation", ent.entity_id):
+                continue
+        else:
+            # Fallback: only expose if options["conversation"]["should_expose"] is True
+            expose = False
+            if hasattr(ent, "options") and isinstance(ent.options, dict):
+                expose = ent.options.get("conversation", {}).get("should_expose", False)
+            if not expose:
+                continue
         entities.append(
             {
                 "entity_id": ent.entity_id,
