@@ -14,8 +14,6 @@ services:
       - EMBED_DIM=1536
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - AUTO_BOOTSTRAP=1
-    command: >
-      ha-rag-bootstrap &&
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini
+    command:command: /bin/sh -c "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini"
     env_file:
       - .env
