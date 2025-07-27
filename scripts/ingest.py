@@ -65,51 +65,64 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
         if entity_id:
             # Fallback to original API for specific entity requests
             url = f"/api/states/{entity_id}"
-            resp = _retry_get(client, url)
-            data = resp.json()
-            return [data]
+            try:
+                resp = _retry_get(client, url)
+                data = resp.json()
+                logger.info("Successfully fetched data for specific entity", url=url)
+                return [data]
+            except Exception as exc:
+                logger.error("Error fetching entity", url=url, error=str(exc))
+                return []
         else:
-            # Use the new RAG API endpoint for all entities
+            # Use the RAG API endpoint for all entities
             url = "/api/rag/static/entities"
-            resp = _retry_get(client, url)
-            data = resp.json()
-            return data
+            try:
+                resp = _retry_get(client, url)
+                data = resp.json()
+
+                # Extract entities from the response structure
+                if isinstance(data, dict) and "entities" in data:
+                    entities = data["entities"]
+                    logger.info(
+                        "Successfully fetched data from RAG API",
+                        url=url,
+                        entity_count=len(entities),
+                        area_count=len(data.get("areas", [])),
+                        device_count=len(data.get("devices", [])),
+                    )
+
+                    # Convert entity structure to be compatible with the expected format
+                    processed_entities = []
+                    for entity in entities:
+                        # Check if the entity is exposed (we only want exposed entities)
+                        if entity.get("exposed", False):
+                            # Create a structure similar to what the original API returns
+                            processed_entity = {
+                                "entity_id": entity["entity_id"],
+                                "state": "",  # RAG API doesn't provide state
+                                "attributes": {
+                                    "friendly_name": entity.get("original_name", ""),
+                                    "device_id": entity.get("device_id"),
+                                    "area_id": entity.get("area_id"),
+                                },
+                            }
+                            processed_entities.append(processed_entity)
+
+                    return processed_entities
+                else:
+                    logger.warning("Unexpected data structure from RAG API", data=data)
+                    return []
+            except Exception as exc:
+                logger.error("Error fetching from RAG API", url=url, error=str(exc))
+                # Don't fallback, just return empty to signal the error
+                return []
 
 
 def fetch_exposed_entity_ids() -> Optional[set]:
     """Fetch the set of entity_ids exposed by the Home Assistant voice assistant integration."""
-    import httpx
-
-    base_url = os.environ["HA_URL"]
-    token = os.environ["HA_TOKEN"]
-    headers = {"Authorization": f"Bearer {token}"}
-    try:
-        with httpx.Client(
-            base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT
-        ) as client:
-            resp = client.get("/api/config/voice-assistants/expose")
-            resp.raise_for_status()
-            data = resp.json()
-            # Find the entry for our integration (by name or entry_id)
-            integration_name = os.getenv("HA_VOICE_ASSISTANT_NAME", "Home Assistant")
-            chosen = None
-            for entry in data:
-                if (
-                    entry.get("name") == integration_name
-                    or entry.get("entry_id") == integration_name
-                ):
-                    chosen = entry
-                    break
-            if not chosen or "entities" not in chosen:
-                logger.warning(
-                    "No matching voice assistant entry found or missing entities array",
-                    integration=integration_name,
-                )
-                return None
-            return {e["entity_id"] for e in chosen["entities"] if "entity_id" in e}
-    except Exception as exc:
-        logger.warning("Failed to fetch or parse exposed entity ids", error=str(exc))
-        return None
+    # Completely disable voice assistant exposure filter as we're now using the RAG API
+    # which should already provide the correct entities
+    return None
 
 
 def build_text(entity: dict) -> str:
@@ -118,7 +131,8 @@ def build_text(entity: dict) -> str:
     attrs = entity.get("attributes", {})
     friendly_name = attrs.get("friendly_name", "")
     area = attrs.get("area") or attrs.get("area_id", "")
-    domain = entity.get("entity_id", "").split(".")[0]
+    entity_id = entity.get("entity_id", "")
+    domain = entity_id.split(".")[0] if entity_id else ""
     synonyms = " ".join(attrs.get("synonyms", []))
 
     # Add a couple of manual synonyms to help multilingual search
@@ -158,17 +172,13 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
 
     states = fetch_states(entity_id)
     if not states:
+        logger.error("No states returned from fetch_states, aborting ingestion")
         return
 
-    # --- BEGIN VOICE ASSISTANT EXPOSE FILTER ---
-    exposed_ids = fetch_exposed_entity_ids()
-    if exposed_ids is not None:
-        filtered_states = [s for s in states if s.get("entity_id") in exposed_ids]
-        if not filtered_states:
-            logger.warning("No states matched exposed entity ids, aborting ingestion")
-            return
-        states = filtered_states
-    # --- END VOICE ASSISTANT EXPOSE FILTER ---
+    logger.info("Fetched states from RAG API", count=len(states))
+
+    # Voice assistant filtering is disabled as we're using the RAG API
+    # which should already provide the correctly filtered entities
 
     backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
     logger.info("embedding backend", backend=backend_name)
