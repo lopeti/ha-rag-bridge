@@ -112,7 +112,10 @@ class GeminiBackend(BaseEmbeddingBackend):
             f"{self.MODEL_NAME}:embedContent?key={self.api_key}"
         )
         resp = httpx.post(url, json=payload)
-        return resp.json()
+        # Store status code for retry logic
+        resp_json = resp.json()
+        resp_json["_status_code"] = resp.status_code
+        return resp_json
 
     async def _post_async(self, payload: dict) -> dict:
         """Asynchronous post request to Gemini API."""
@@ -122,7 +125,10 @@ class GeminiBackend(BaseEmbeddingBackend):
         )
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=payload)
-            return resp.json()
+            # Store status code for retry logic
+            resp_json = resp.json()
+            resp_json["_status_code"] = resp.status_code
+            return resp_json
 
     def _rate_limit_sync(self) -> None:
         """Apply rate limiting for synchronous calls."""
@@ -181,32 +187,38 @@ class GeminiBackend(BaseEmbeddingBackend):
 
                 try:
                     data = self._post({"content": {"parts": [{"text": text}]}})
+                    # Csak 429 esetén próbálkozzunk újra
+                    status_code = data.pop("_status_code", 200)
+
+                    if status_code == 429 and attempt < self.MAX_RETRIES:
+                        wait_time = 2**attempt
+                        logger.warning(
+                            f"Gemini: Rate limited (idx={idx}, attempt={attempt}), retrying in {wait_time}s"
+                        )
+                        time.sleep(wait_time)
+                        continue
+
                     if "embeddings" in data and data["embeddings"]:
                         values = data["embeddings"][0].get("values", [])
                         results.append(values)
                         success = True
                         break
                     else:
-                        if attempt < self.MAX_RETRIES:
-                            wait_time = 2**attempt
-                            logger.warning(
-                                f"Gemini: No embeddings (idx={idx}, attempt={attempt}), retrying in {wait_time}s"
-                            )
-                            time.sleep(wait_time)
-                        else:
-                            logger.error(
-                                f"Gemini: No embeddings after {self.MAX_RETRIES} attempts (idx={idx})"
-                            )
+                        # Más hibák esetén csak naplózunk és megyünk tovább
+                        logger.error(
+                            f"Gemini: API error (idx={idx}) - {data.get('error', {}).get('message', 'No embeddings in response')}"
+                        )
                 except Exception as exc:
+                    # Hálózati hibák esetén próbálkozzunk újra
                     if attempt < self.MAX_RETRIES:
                         wait_time = 2**attempt
                         logger.warning(
-                            f"Gemini: error (idx={idx}, attempt={attempt}), retrying in {wait_time}s: {exc}"
+                            f"Gemini: network error (idx={idx}, attempt={attempt}), retrying in {wait_time}s: {exc}"
                         )
                         time.sleep(wait_time)
                     else:
                         logger.error(
-                            f"Gemini: failed after {self.MAX_RETRIES} attempts (idx={idx}): {exc}"
+                            f"Gemini: network error after {self.MAX_RETRIES} attempts (idx={idx}): {exc}"
                         )
 
             if not success:
@@ -235,32 +247,38 @@ class GeminiBackend(BaseEmbeddingBackend):
                     data = await self._post_async(
                         {"content": {"parts": [{"text": text}]}}
                     )
+                    # Csak 429 esetén próbálkozzunk újra
+                    status_code = data.pop("_status_code", 200)
+
+                    if status_code == 429 and attempt < self.MAX_RETRIES:
+                        wait_time = 2**attempt
+                        logger.warning(
+                            f"Gemini: Rate limited (idx={idx}, attempt={attempt}), retrying in {wait_time}s"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
                     if "embeddings" in data and data["embeddings"]:
                         values = data["embeddings"][0].get("values", [])
                         results.append(values)
                         success = True
                         break
                     else:
-                        if attempt < self.MAX_RETRIES:
-                            wait_time = 2**attempt
-                            logger.warning(
-                                f"Gemini: No embeddings (idx={idx}, attempt={attempt}), retrying in {wait_time}s"
-                            )
-                            await asyncio.sleep(wait_time)
-                        else:
-                            logger.error(
-                                f"Gemini: No embeddings after {self.MAX_RETRIES} attempts (idx={idx})"
-                            )
+                        # Más hibák esetén csak naplózunk és megyünk tovább
+                        logger.error(
+                            f"Gemini: API error (idx={idx}) - {data.get('error', {}).get('message', 'No embeddings in response')}"
+                        )
                 except Exception as exc:
+                    # Hálózati hibák esetén próbálkozzunk újra
                     if attempt < self.MAX_RETRIES:
                         wait_time = 2**attempt
                         logger.warning(
-                            f"Gemini: error (idx={idx}, attempt={attempt}), retrying in {wait_time}s: {exc}"
+                            f"Gemini: network error (idx={idx}, attempt={attempt}), retrying in {wait_time}s: {exc}"
                         )
                         await asyncio.sleep(wait_time)
                     else:
                         logger.error(
-                            f"Gemini: failed after {self.MAX_RETRIES} attempts (idx={idx}): {exc}"
+                            f"Gemini: network error after {self.MAX_RETRIES} attempts (idx={idx}): {exc}"
                         )
 
             if not success:
