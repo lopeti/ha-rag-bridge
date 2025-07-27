@@ -101,19 +101,46 @@ class GeminiBackend(BaseEmbeddingBackend):
         return resp.json()
 
     def embed(self, texts: List[str]) -> List[List[float]]:
-        logger.info(
-            f"Gemini embedding request: count={len(texts)}, dim={self.DIMENSION}"
-        )
+        logger.info(f"Gemini embedding: count={len(texts)}, dim={self.DIMENSION}")
         results: List[List[float]] = []
-        for text in texts:
-            try:
-                data = self._post({"content": {"parts": [{"text": text}]}})
-                values = data.get("embeddings", [{}])[0].get("values", [])
-                results.append(values)
-            except Exception as exc:  # pragma: no cover - network errors
-                logger.error("Gemini embedding error", error=str(exc))
+        rate_limit = 100  # requests per minute
+        min_interval = 60.0 / rate_limit
+        last_request_time = 0.0
+        failed = 0
+        for idx, text in enumerate(texts):
+            success = False
+            for attempt in range(1, 4):
+                now = time.time()
+                wait = min_interval - (now - last_request_time)
+                if wait > 0:
+                    time.sleep(wait)
+                last_request_time = time.time()
+                try:
+                    data = self._post({"content": {"parts": [{"text": text}]}})
+                    if "embeddings" in data and data["embeddings"]:
+                        values = data["embeddings"][0].get("values", [])
+                        results.append(values)
+                        success = True
+                        break
+                    else:
+                        logger.warning(
+                            f"Gemini: No embeddings in response (idx={idx}, attempt={attempt})"
+                        )
+                except Exception as exc:
+                    if attempt < 3:
+                        logger.warning(
+                            f"Gemini: error (idx={idx}, attempt={attempt}), retrying: {exc}"
+                        )
+                        time.sleep(10**attempt)
+                    else:
+                        logger.error(
+                            f"Gemini: failed after 3 attempts (idx={idx}): {exc}"
+                        )
+
+            if not success:
                 results.append([])
-        logger.info("Gemini embedding completed successfully")
+                failed += 1
+        logger.info(f"Gemini embedding done: total={len(texts)}, failed={failed}")
         return results
 
 
