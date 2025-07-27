@@ -47,7 +47,9 @@ class StaticEntitiesView(HomeAssistantView):
             return self.json({"areas": [], "devices": [], "entities": []})
 
         hass = request.app["hass"]
-        data = _collect_static(hass)
+        # Check if 'all' parameter is provided to return all entities/devices
+        include_all = request.query.get("all", "").lower() in ("true", "1", "yes")
+        data = _collect_static(hass, include_all=include_all)
         return self.json(data)
 
 
@@ -62,7 +64,9 @@ class StateEntitiesView(HomeAssistantView):
         return self.json({"error": "not implemented"}, status_code=501)
 
 
-def _collect_static(hass: Any) -> dict[str, list[dict[str, Any]]]:
+def _collect_static(
+    hass: Any, include_all: bool = False
+) -> dict[str, list[dict[str, Any]]]:
     """Collect static registry data from Home Assistant."""
     area_mod, device_mod, entity_mod = _helpers  # type: ignore[misc]
     area_reg = area_mod.async_get(hass)
@@ -79,18 +83,9 @@ def _collect_static(hass: Any) -> dict[str, list[dict[str, Any]]]:
         for area in area_reg.async_list_areas()
     ]
 
-    devices = [
-        {
-            "id": device.id,
-            "name": device.name,
-            "model": device.model,
-            "manufacturer": device.manufacturer,
-            "area_id": device.area_id,
-        }
-        for device in device_reg.devices.values()
-    ]
-
     entities = []
+    exposed_device_ids = set()
+
     # Try to import async_should_expose if available
     try:
         from homeassistant.helpers.entity import async_should_expose
@@ -98,26 +93,49 @@ def _collect_static(hass: Any) -> dict[str, list[dict[str, Any]]]:
         async_should_expose = None
 
     for ent in entity_reg.entities.values():
-        if async_should_expose is not None:
+        is_exposed = False
+
+        if include_all:
+            # Include all entities when requested
+            is_exposed = True
+        elif async_should_expose is not None:
             # Use Home Assistant's rule system (UI settings + defaults)
-            if not async_should_expose(hass, "conversation", ent.entity_id):
-                continue
+            is_exposed = async_should_expose(hass, "conversation", ent.entity_id)
         else:
             # Fallback: only expose if options["conversation"]["should_expose"] is True
-            expose = False
             if hasattr(ent, "options") and isinstance(ent.options, dict):
-                expose = ent.options.get("conversation", {}).get("should_expose", False)
-            if not expose:
-                continue
-        entities.append(
-            {
-                "entity_id": ent.entity_id,
-                "platform": ent.platform,
-                "device_id": ent.device_id,
-                "area_id": ent.area_id,
-                "domain": ent.domain,
-                "original_name": ent.original_name,
-            }
-        )
+                is_exposed = ent.options.get("conversation", {}).get(
+                    "should_expose", False
+                )
+
+        if is_exposed or include_all:
+            entities.append(
+                {
+                    "entity_id": ent.entity_id,
+                    "platform": ent.platform,
+                    "device_id": ent.device_id,
+                    "area_id": ent.area_id,
+                    "domain": ent.domain,
+                    "original_name": ent.original_name,
+                    "exposed": is_exposed,
+                }
+            )
+            # Track devices that have at least one exposed entity
+            if ent.device_id and is_exposed:
+                exposed_device_ids.add(ent.device_id)
+
+    # Only include devices that have at least one exposed entity (or all if include_all is True)
+    devices = []
+    for device in device_reg.devices.values():
+        if include_all or device.id in exposed_device_ids:
+            devices.append(
+                {
+                    "id": device.id,
+                    "name": device.name,
+                    "model": device.model,
+                    "manufacturer": device.manufacturer,
+                    "area_id": device.area_id,
+                }
+            )
 
     return {"areas": areas, "devices": devices, "entities": entities}
