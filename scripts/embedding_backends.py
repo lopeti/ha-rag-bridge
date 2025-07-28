@@ -5,10 +5,9 @@ import os
 import time
 from typing import List, Optional
 
-
-import httpx
 import openai
 from openai import RateLimitError  # correct import
+import google.genai as genai
 
 from ha_rag_bridge.logging import get_logger
 
@@ -93,9 +92,15 @@ class GeminiBackend(BaseEmbeddingBackend):
     RATE_LIMIT = 100  # requests per minute
 
     def __init__(self) -> None:
-        self.api_key = os.environ["GEMINI_API_KEY"]
+        # Konfiguráljuk a genai klienst
+        api_key = os.environ["GEMINI_API_KEY"]
+        # Az új Google GenAI SDK más API-val rendelkezik
+        self.client = genai.Client(api_key=api_key)
+
+        # Rate limiting követéséhez
         self._last_request_time = 0.0
         self._min_interval = 60.0 / self.RATE_LIMIT
+
         # Use a semaphore to enforce rate limiting across threads/async
         # Initialize with proper type annotation for mypy
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -105,30 +110,49 @@ class GeminiBackend(BaseEmbeddingBackend):
             # Not in an async context
             pass
 
-    def _post(self, payload: dict) -> dict:
-        """Synchronous post request to Gemini API."""
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.MODEL_NAME}:embedContent?key={self.api_key}"
-        )
-        resp = httpx.post(url, json=payload)
-        # Store status code for retry logic
-        resp_json = resp.json()
-        resp_json["_status_code"] = resp.status_code
-        return resp_json
+    def _embed_content(self, text: str) -> dict:
+        """Synchronously embed a single text using Google GenAI SDK."""
+        try:
+            # Az új SDK-ban a models közvetlen tartalmazza az embed_content metódust
+            result = self.client.models.embed_content(
+                model=self.MODEL_NAME, contents=text
+            )
 
-    async def _post_async(self, payload: dict) -> dict:
-        """Asynchronous post request to Gemini API."""
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.MODEL_NAME}:embedContent?key={self.api_key}"
-        )
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload)
-            # Store status code for retry logic
-            resp_json = resp.json()
-            resp_json["_status_code"] = resp.status_code
-            return resp_json
+            # SDK success esetén visszaadjuk az embedding-et
+            if result and hasattr(result, "embeddings") and result.embeddings:
+                # Az új API-ban a válasz egy embeddings listát tartalmaz, és minden elemnek values tulajdonsága van
+                return {
+                    "_status_code": 200,
+                    "embeddings": [{"values": result.embeddings[0].values}],
+                }
+            else:
+                logger.error(f"Gemini API unexpected response format: {result}")
+                return {
+                    "_status_code": 200,
+                    "error": {"message": "No embedding in response"},
+                }
+        except Exception as e:
+            if (
+                "quota" in str(e).lower()
+                or "rate" in str(e).lower()
+                or "limit" in str(e).lower()
+            ):
+                # Rate limit vagy quota error esetén 429-et adunk vissza
+                logger.error(f"Gemini API quota or rate limit exceeded: {str(e)}")
+                return {"_status_code": 429, "error": {"message": str(e)}}
+            else:
+                # Egyéb hiba esetén 500-as kód
+                logger.error(f"Gemini API error: {str(e)}")
+                return {"_status_code": 500, "error": {"message": str(e)}}
+
+    async def _embed_content_async(self, text: str) -> dict:
+        """Asynchronously embed a single text using Google GenAI SDK.
+
+        Note: A genai SDK nem támogat asyncio-t natively, ezért
+        ugyanazt a szinkron metódust hívjuk, amit a háttérben futtatunk.
+        """
+        # Visszaadjuk ugyanazt a szinkron hívást, amit majd task-ként futtatunk
+        return self._embed_content(text)
 
     def _rate_limit_sync(self) -> None:
         """Apply rate limiting for synchronous calls."""
@@ -186,7 +210,7 @@ class GeminiBackend(BaseEmbeddingBackend):
                 self._rate_limit_sync()
 
                 try:
-                    data = self._post({"content": {"parts": [{"text": text}]}})
+                    data = self._embed_content(text)
                     # Csak 429 esetén próbálkozzunk újra
                     status_code = data.pop("_status_code", 200)
 
@@ -243,10 +267,12 @@ class GeminiBackend(BaseEmbeddingBackend):
                 else:
                     await self._rate_limit_async()
 
+                # Használjuk az asyncio.to_thread segítségével a szinkron metódust
+                # mivel a genai SDK nem támogatja natively az asyncio-t
                 try:
-                    data = await self._post_async(
-                        {"content": {"parts": [{"text": text}]}}
-                    )
+                    loop = asyncio.get_event_loop()
+                    data = await loop.run_in_executor(None, self._embed_content, text)
+
                     # Csak 429 esetén próbálkozzunk újra
                     status_code = data.pop("_status_code", 200)
 
