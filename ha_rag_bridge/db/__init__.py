@@ -1,28 +1,32 @@
 from arango.database import StandardDatabase
 from arango.exceptions import ArangoServerError, DocumentParseError
+
 try:  # python-arango >=8.2
     from arango.exceptions import ViewNotFoundError
 except ImportError:  # pragma: no cover - older versions
     from arango.exceptions import ViewGetError as ViewNotFoundError
 
+
+from typing import Optional
 from ha_rag_bridge.logging import get_logger
 
 
 class BridgeDB(StandardDatabase):
     """
-    A thin wrapper around StandardDatabase that provides utility methods for 
+    A thin wrapper around StandardDatabase that provides utility methods for
     working with collections in a simplified manner.
 
-    This class adds helper methods to streamline common operations, such as 
-    retrieving or ensuring the existence of collections. These methods are 
-    designed to be compatible with workflows inspired by ArangoDB's arangosh 
+    This class adds helper methods to streamline common operations, such as
+    retrieving or ensuring the existence of collections. These methods are
+    designed to be compatible with workflows inspired by ArangoDB's arangosh
     (ArangoDB shell) but are adapted for Python usage.
 
     Helper methods:
         - get_col(name): Returns a collection handle if it exists, otherwise None.
-        - ensure_col(name, edge=False): Ensures a collection exists, creating it 
+        - ensure_col(name, edge=False): Ensures a collection exists, creating it
           if necessary. Supports both document and edge collections.
     """
+
     def get_col(self, name: str):
         """Return collection handle if exists else None."""
         return self.collection(name) if self.has_collection(name) else None
@@ -53,7 +57,7 @@ class BridgeDB(StandardDatabase):
         except DocumentParseError:  # pragma: no cover - malformed response
             return False
 
-    def create_arangosearch_view(self, name: str, properties: dict = None):
+    def create_arangosearch_view(self, name: str, properties: Optional[dict] = None):
         """
         Return an existing ArangoSearch view or create one.
         Signature and behavior now matches python-arango driver for compatibility.
@@ -76,4 +80,3 @@ class BridgeDB(StandardDatabase):
             raise SystemExit(4)
         except ValueError as exc:  # invalid name
             raise SystemExit(2) from exc
-
