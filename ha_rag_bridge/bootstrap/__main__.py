@@ -11,22 +11,63 @@ def ensure_arango_graph():
     try:
         arango_url = os.environ["ARANGO_URL"]
         db_name = os.getenv("ARANGO_DB", "_system")
+        logger.info("Connecting to ArangoDB", url=arango_url, database=db_name)
         db = ArangoClient(hosts=arango_url).db(
             db_name,
             username=os.environ["ARANGO_USER"],
             password=os.environ["ARANGO_PASS"],
         )
+
+        # Ellenőrizzük és létrehozzuk a szükséges kollekciókat
+        collections = {
+            "entity": False,  # nem edge
+            "area": False,  # nem edge
+            "device": False,  # nem edge
+            "edge": True,  # edge kollekció
+        }
+
+        for coll_name, is_edge in collections.items():
+            try:
+                if not db.has_collection(coll_name):
+                    logger.info("Creating collection", name=coll_name, is_edge=is_edge)
+                    db.create_collection(coll_name, edge=is_edge)
+                else:
+                    logger.info("Collection exists", name=coll_name)
+            except Exception as exc:
+                logger.error(
+                    "Failed to create/check collection",
+                    name=coll_name,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+
         graph_name = "ha_entity_graph"
         # Check if graph already exists
         try:
-            graphs = db.graphs()
-            if any(g["_key"] == graph_name for g in graphs):
+            # Közvetlenül ellenőrizzük, hogy létezik-e a gráf
+            if db.has_graph(graph_name):
                 logger.info("ArangoDB graph already exists", graph=graph_name)
                 return
+
+            # Ha nem létezik, akkor listázzuk az összes gráfot a loghoz
+            graphs = db.graphs()
+            existing_graphs = [g.get("_key", "") for g in graphs]
+            logger.info("Existing graphs", graphs=existing_graphs)
         except GraphListError as exc:
-            logger.warning("Could not list graphs", error=str(exc))
+            logger.warning(
+                "Could not list graphs", error_type=type(exc).__name__, error=str(exc)
+            )
+
         # Try to create the graph
         try:
+            logger.info(
+                "Creating graph definition",
+                graph=graph_name,
+                edge_collection="edge",
+                from_cols=["area", "device"],
+                to_cols=["entity"],
+            )
+
             db.create_graph(
                 graph_name,
                 edge_definitions=[
@@ -41,12 +82,30 @@ def ensure_arango_graph():
             logger.info("Created ArangoDB graph", graph=graph_name)
         except GraphCreateError as exc:
             logger.error(
-                "Failed to create ArangoDB graph", graph=graph_name, error=str(exc)
+                "Failed to create ArangoDB graph",
+                graph=graph_name,
+                error_code=getattr(exc, "error_code", None),
+                error_message=getattr(exc, "error_message", None),
+                error=str(exc),
             )
+            # Próbáljuk meg lekérni a gráfot - talán létezik, csak valami más hiba történt
+            try:
+                if db.has_graph(graph_name):
+                    logger.info("Graph exists despite error", graph=graph_name)
+            except Exception:
+                pass
         except Exception as exc:
-            logger.error("Unexpected error during graph creation", error=str(exc))
+            logger.error(
+                "Unexpected error during graph creation",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
     except Exception as exc:
-        logger.error("Error in ensure_arango_graph", error=str(exc))
+        logger.error(
+            "Error in ensure_arango_graph",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 ensure_arango_graph()
