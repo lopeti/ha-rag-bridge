@@ -93,17 +93,39 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
 
                     # Convert entity structure to be compatible with the expected format
                     processed_entities = []
+
+                    # Create a map of area_id to area_name if areas are provided
+                    area_map = {}
+                    if "areas" in data and isinstance(data["areas"], list):
+                        for area in data["areas"]:
+                            if "area_id" in area and "name" in area:
+                                area_map[area["area_id"]] = area["name"]
+
                     for entity in entities:
                         # Check if the entity is exposed (we only want exposed entities)
                         if entity.get("exposed", False):
+                            area_id = entity.get("area_id")
+                            area_name = area_map.get(area_id, "") if area_id else ""
+
                             # Create a structure similar to what the original API returns
                             processed_entity = {
                                 "entity_id": entity["entity_id"],
-                                "state": "",  # RAG API doesn't provide state
+                                "state": entity.get(
+                                    "state", ""
+                                ),  # Try to get state if available
                                 "attributes": {
-                                    "friendly_name": entity.get("original_name", ""),
+                                    "friendly_name": entity.get("original_name", "")
+                                    or entity.get("friendly_name", ""),
                                     "device_id": entity.get("device_id"),
-                                    "area_id": entity.get("area_id"),
+                                    "area_id": area_id,
+                                    "area": area_name,  # Add area name from the areas list
+                                    # Include additional entity metadata if available
+                                    "entity_category": entity.get("entity_category"),
+                                    "device_class": entity.get("device_class"),
+                                    "unit_of_measurement": entity.get(
+                                        "unit_of_measurement"
+                                    ),
+                                    "icon": entity.get("icon"),
                                 },
                             }
                             processed_entities.append(processed_entity)
@@ -133,12 +155,53 @@ def build_text(entity: dict) -> str:
     area = attrs.get("area") or attrs.get("area_id", "")
     entity_id = entity.get("entity_id", "")
     domain = entity_id.split(".")[0] if entity_id else ""
+
+    # Extract additional context from entity_id
+    parts = []
+    if "." in entity_id:
+        name_part = entity_id.split(".", 1)[1]
+        # Replace underscores with spaces
+        name_words = name_part.replace("_", " ")
+        parts.append(name_words)
+
+    device_id = attrs.get("device_id", "")
     synonyms = " ".join(attrs.get("synonyms", []))
+
+    # Get additional context from attributes
+    device_class = attrs.get("device_class", "")
+    unit_of_measurement = attrs.get("unit_of_measurement", "")
+    entity_category = attrs.get("entity_category", "")
+    icon = attrs.get("icon", "")
+
+    # Build meaningful text for embedding
+    text_parts = []
+    if friendly_name:
+        text_parts.append(friendly_name)
+    if area:
+        text_parts.append(f"in {area}")
+    if domain:
+        text_parts.append(f"{domain}")
+    if device_class:
+        text_parts.append(f"{device_class}")
+    if unit_of_measurement:
+        text_parts.append(f"measured in {unit_of_measurement}")
+    if entity_category:
+        text_parts.append(f"{entity_category}")
+    if parts:
+        text_parts.append(" ".join(parts))
+    if device_id:
+        text_parts.append(f"device {device_id}")
+    if icon and icon.startswith("mdi:"):
+        # Extract meaningful info from Material Design Icons
+        icon_name = icon[4:].replace("-", " ")
+        text_parts.append(icon_name)
+    if synonyms:
+        text_parts.append(synonyms)
 
     # Add a couple of manual synonyms to help multilingual search
     # extra_synonyms = "living room nappali temperature h\u0151m\u00e9rs\u00e9klet"
 
-    return f"{friendly_name}. {area}. {domain}. {synonyms}".strip()
+    return ". ".join(text_parts).strip()
 
 
 def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
@@ -146,17 +209,45 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
 
     attrs = entity.get("attributes", {})
     meta_hash = hashlib.sha256(text.encode()).hexdigest()
-    return {
-        "_key": entity["entity_id"],
-        "entity_id": entity["entity_id"],
-        "domain": entity["entity_id"].split(".")[0],
-        "area": attrs.get("area") or attrs.get("area_id"),
+
+    # Get area information - prefer the full name over just the ID
+    area = attrs.get("area")
+    area_id = attrs.get("area_id")
+    area_value = area if area else area_id
+
+    # Get the entity ID and extract parts for improved metadata
+    entity_id = entity["entity_id"]
+    domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+    # Create entity document with all useful fields
+    doc = {
+        "_key": entity_id,
+        "entity_id": entity_id,
+        "domain": domain,
+        "area": area_value,
+        "area_id": area_id,  # Store area_id explicitly
+        "device_id": attrs.get("device_id"),  # Store device_id directly
         "friendly_name": attrs.get("friendly_name"),
         "synonyms": attrs.get("synonyms"),
         "embedding": embedding,
         "text": text,
         "meta_hash": meta_hash,
     }
+
+    # Add additional fields that may be useful for searching and filtering
+    # Only add non-empty values to keep the document clean
+    additional_fields = {
+        "device_class": attrs.get("device_class"),
+        "unit_of_measurement": attrs.get("unit_of_measurement"),
+        "entity_category": attrs.get("entity_category"),
+        "icon": attrs.get("icon"),
+    }
+
+    for key, value in additional_fields.items():
+        if value:  # Only add non-empty values
+            doc[key] = value
+
+    return doc
 
 
 def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
@@ -271,8 +362,9 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                 device_id = attrs.get("device_id")
                 edge_count = 0
                 if area_id:
+                    area_name = attrs.get("area") or area_id
                     area_col.insert(
-                        {"_key": area_id, "name": area_id},
+                        {"_key": area_id, "name": area_name},
                         overwrite=True,
                         overwrite_mode="update",
                     )
@@ -306,7 +398,15 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                         }
                     )
                     edge_count += 1
-                logger.info("upserted entity", entity=d["entity_id"], edges=edge_count)
+                # Log more detailed information about the entity being upserted
+                logger.info(
+                    "upserted entity",
+                    entity=d["entity_id"],
+                    edges=edge_count,
+                    text=text[:50] + "..." if len(text) > 50 else text,
+                    has_area=bool(d.get("area")),
+                    has_device=bool(d.get("device_id")),
+                )
             if edges:
                 edge_col.insert_many(edges, overwrite=True, overwrite_mode="ignore")
 
