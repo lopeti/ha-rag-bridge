@@ -114,16 +114,24 @@ def _bootstrap_impl(
             nLists = 100
             doc_count = entity.count()
             if doc_count < nLists:
-                logger.info(f"Skip vector index – not enough documents in entity (have {doc_count}, need at least {nLists})")
+                logger.info(
+                    f"Skip vector index – not enough documents in entity (have {doc_count}, need at least {nLists})"
+                )
             else:
                 entity.add_index(
                     {
                         "type": "vector",
                         "fields": ["embedding"],
-                        "params": {"dimension": embed_dim, "metric": "cosine", "nLists": nLists},
+                        "params": {
+                            "dimension": embed_dim,
+                            "metric": "cosine",
+                            "nLists": nLists,
+                        },
                     }
                 )
-                logger.info(f"Created vector index on entity.embedding with nLists={nLists}")
+                logger.info(
+                    f"Created vector index on entity.embedding with nLists={nLists}"
+                )
         except Exception as exc:
             logger.error("Failed to create vector index", error=str(exc))
 
@@ -172,9 +180,7 @@ def _bootstrap_impl(
                     "entity": {
                         "includeAllFields": False,
                         "storeValues": "none",
-                        "fields": {
-                            "text": {"analyzers": ["text_en"]}
-                        },
+                        "fields": {"text": {"analyzers": ["text_en"]}},
                         "features": ["frequency", "norm", "position"],
                     }
                 }
@@ -189,9 +195,7 @@ def _bootstrap_impl(
                     "document": {
                         "includeAllFields": False,
                         "storeValues": "none",
-                        "fields": {
-                            "text": {"analyzers": ["text_en"]}
-                        },
+                        "fields": {"text": {"analyzers": ["text_en"]}},
                         "features": ["frequency", "norm", "position"],
                     }
                 }
@@ -199,4 +203,8 @@ def _bootstrap_impl(
         )
 
     meta_col.insert({"_key": "schema_version", "value": SCHEMA_LATEST}, overwrite=True)
+
+    from .__main__ import ensure_arango_graph
+
+    ensure_arango_graph()
     logger.info("bootstrap finished")

@@ -10,7 +10,7 @@ def ensure_arango_graph():
     logger = get_logger(__name__)
     try:
         arango_url = os.environ["ARANGO_URL"]
-        db_name = os.getenv("ARANGO_DB", "_system")
+        db_name = os.getenv("ARANGO_DB", "ha_graph")
         logger.info("Connecting to ArangoDB", url=arango_url, database=db_name)
         db = ArangoClient(hosts=arango_url).db(
             db_name,

@@ -21,7 +21,7 @@ def _reindex(
     try:
         arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
         db = arango.db(
-            os.getenv("ARANGO_DB", "_system"),
+            os.getenv("ARANGO_DB", "ha_graph"),
             username=os.environ["ARANGO_USER"],
             password=os.environ["ARANGO_PASS"],
         )
