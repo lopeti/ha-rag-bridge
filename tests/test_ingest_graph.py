@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import scripts.ingest as ingest
 
 
-def test_ingest_upserts(monkeypatch):
+def test_ingest_full_creates_graph(monkeypatch):
     os.environ.update(
         {
             "HA_URL": "http://ha",
@@ -18,23 +18,20 @@ def test_ingest_upserts(monkeypatch):
     )
 
     payload = {
-        "areas": [{"id": "kitchen", "name": "Kitchen"}],
+        "areas": [],
         "devices": [],
         "entities": [
             {
-                "entity_id": "sensor.test",
-                "original_name": "Test",
+                "entity_id": "sensor.t",
+                "original_name": "T",
                 "device_id": None,
-                "area_id": "kitchen",
+                "area_id": None,
                 "exposed": True,
                 "domain": "sensor",
-                "friendly_name": "Test",
-                "synonyms": ["foo"],
+                "friendly_name": "T",
             }
         ],
     }
-
-    payload["entities"][0]["area"] = "Kitchen"
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = payload
@@ -49,42 +46,42 @@ def test_ingest_upserts(monkeypatch):
     monkeypatch.setattr(ingest, "OpenAIBackend", MagicMock(return_value=mock_backend))
 
     mock_entity_col = MagicMock()
-    mock_area_edge_col = MagicMock()
-    mock_device_edge_col = MagicMock()
     mock_area_col = MagicMock()
     mock_device_col = MagicMock()
+    mock_area_edge = MagicMock()
+    mock_device_edge = MagicMock()
 
     def get_collection(name):
         return {
             "entity": mock_entity_col,
-            "area_contains": mock_area_edge_col,
-            "device_of": mock_device_edge_col,
             "area": mock_area_col,
             "device": mock_device_col,
+            "area_contains": mock_area_edge,
+            "device_of": mock_device_edge,
         }[name]
+
+    mock_graph = MagicMock()
 
     mock_db = MagicMock()
     mock_db.collection.side_effect = get_collection
+    mock_db.has_collection.return_value = True
+    mock_db.has_graph.return_value = False
+    mock_db.graph.return_value = mock_graph
     mock_arango = MagicMock()
     mock_arango.db.return_value = mock_db
     monkeypatch.setattr(ingest, "ArangoClient", MagicMock(return_value=mock_arango))
 
-    ingest.ingest()
+    ingest.ingest(full=True)
 
-    mock_entity_col.insert_many.assert_called_once()
-    args, kwargs = mock_entity_col.insert_many.call_args
-    assert kwargs.get("overwrite") is True
-    docs = args[0]
-    doc = docs[0]
-    assert doc["embedding"]
-
-    mock_area_edge_col.insert_many.assert_called()
-    mock_device_edge_col.insert_many.assert_not_called()
-    area_edges = mock_area_edge_col.insert_many.call_args[0][0]
-    assert len(area_edges) >= 1
-    assert all(e["label"] == "area_contains" for e in area_edges)
-    assert all(e["created_by"] == "ingest" for e in area_edges)
-    assert doc["text"].startswith("Test")
-    import hashlib
-
-    assert doc["meta_hash"] == hashlib.sha256(doc["text"].encode()).hexdigest()
+    assert mock_db.create_graph.called
+    defs = mock_db.create_graph.call_args[1]["edge_definitions"]
+    assert {
+        "edge_collection": "area_contains",
+        "from_vertex_collections": ["area"],
+        "to_vertex_collections": ["entity"],
+    } in defs
+    assert {
+        "edge_collection": "device_of",
+        "from_vertex_collections": ["device"],
+        "to_vertex_collections": ["entity"],
+    } in defs

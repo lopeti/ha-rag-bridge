@@ -283,6 +283,10 @@ def build_text(entity: dict) -> str:
     if translations:
         result += f". Hungarian terms: {', '.join(translations)}"
 
+    aliases = attrs.get("area_aliases") or []
+    if aliases:
+        result += f". Aliases: {' '.join(aliases)}"
+
     return result
 
 
@@ -332,7 +336,9 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     return doc
 
 
-def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
+def ingest(
+    entity_id: Optional[str] = None, delay_sec: int = 5, *, full: bool = False
+) -> None:
     """Run the ingestion process. Only changed or new entities are embedded unless full=True. Batch delay is configurable."""
     import hashlib
     import time
@@ -378,20 +384,56 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
         username=os.environ["ARANGO_USER"],
         password=os.environ["ARANGO_PASS"],
     )
+    if full:
+        for name in ["entity", "area", "device"]:
+            if db.has_collection(name):
+                db.collection(name).truncate()
+            else:
+                db.create_collection(name)
+        for name in ["area_contains", "device_of"]:
+            if db.has_collection(name):
+                db.collection(name).truncate()
+            else:
+                db.create_collection(name, edge=True)
+        if db.has_graph("ha_entity_graph"):
+            db.graph("ha_entity_graph").delete(drop_collections=False)
+        db.create_graph(
+            "ha_entity_graph",
+            edge_definitions=[
+                {
+                    "edge_collection": "area_contains",
+                    "from_vertex_collections": ["area"],
+                    "to_vertex_collections": ["entity"],
+                },
+                {
+                    "edge_collection": "device_of",
+                    "from_vertex_collections": ["device"],
+                    "to_vertex_collections": ["entity"],
+                },
+            ],
+            orphan_collections=[],
+        )
     col = db.collection("entity")
-    edge_col = db.collection("edge")
+    edge_area = db.collection("area_contains")
+    edge_device = db.collection("device_of")
     area_col = db.collection("area")
     device_col = db.collection("device")
 
     # Upsert all areas and devices first
     area_map = {}
+    alias_map = {}
     area_docs: List[dict] = []
     for area in areas:
         aid = area.get("area_id") or area.get("id")
         name = area.get("name")
         if aid and name:
             area_map[aid] = name
-            area_docs.append({"_key": aid, "name": name})
+            aliases = area.get("aliases") or []
+            alias_map[aid] = aliases
+            doc = {"_key": aid, "name": name}
+            if aliases:
+                doc["aliases"] = aliases
+            area_docs.append(doc)
     if area_docs:
         area_col.insert_many(area_docs, overwrite=True, overwrite_mode="update")
 
@@ -423,6 +465,9 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                 if inferred:
                     attrs["area_id"] = inferred
                     attrs.setdefault("area", area_map.get(inferred, ""))
+        aid = attrs.get("area_id")
+        if aid:
+            attrs["area_aliases"] = alias_map.get(aid, [])
 
     # Determine if full ingest is requested
     import inspect
@@ -486,7 +531,8 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
 
         if docs:
             col.insert_many(docs, overwrite=True, overwrite_mode="update")
-            edges: List[dict] = []
+            area_edges: List[dict] = []
+            device_edges: List[dict] = []
             for ent, d in zip(ents_for_docs, docs):
                 eid = d["_key"]
                 attrs = ent.get("attributes", {})
@@ -497,7 +543,7 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                 edge_count = 0
                 if area_id:
                     key_raw = f"area_contains:area/{area_id}->entity/{eid}"
-                    edges.append(
+                    area_edges.append(
                         {
                             "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
                             "_from": f"area/{area_id}",
@@ -509,13 +555,13 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                     )
                     edge_count += 1
                 if device_id:
-                    key_raw = f"device_hosts:device/{device_id}->entity/{eid}"
-                    edges.append(
+                    key_raw = f"device_of:device/{device_id}->entity/{eid}"
+                    device_edges.append(
                         {
                             "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
                             "_from": f"device/{device_id}",
                             "_to": f"entity/{eid}",
-                            "label": "device_hosts",
+                            "label": "device_of",
                             "created_by": "ingest",
                             "ts_created": datetime.utcnow().isoformat(),
                         }
@@ -530,8 +576,14 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                     has_area=bool(d.get("area")),
                     has_device=bool(d.get("device_id")),
                 )
-            if edges:
-                edge_col.insert_many(edges, overwrite=True, overwrite_mode="ignore")
+            if area_edges:
+                edge_area.insert_many(
+                    area_edges, overwrite=True, overwrite_mode="ignore"
+                )
+            if device_edges:
+                edge_device.insert_many(
+                    device_edges, overwrite=True, overwrite_mode="ignore"
+                )
 
         # Delay between batches
         if delay_sec > 0:
@@ -565,7 +617,7 @@ def cli() -> None:
     )
     args = parser.parse_args()
     if args.full:
-        ingest(None, delay_sec=args.delay)
+        ingest(None, delay_sec=args.delay, full=True)
     else:
         ingest(args.entity, delay_sec=args.delay)
 

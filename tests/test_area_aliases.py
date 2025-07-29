@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import scripts.ingest as ingest
 
 
-def test_ingest_upserts(monkeypatch):
+def test_area_aliases(monkeypatch):
     os.environ.update(
         {
             "HA_URL": "http://ha",
@@ -18,23 +18,21 @@ def test_ingest_upserts(monkeypatch):
     )
 
     payload = {
-        "areas": [{"id": "kitchen", "name": "Kitchen"}],
+        "areas": [{"id": "living", "name": "Living", "aliases": ["living room"]}],
         "devices": [],
         "entities": [
             {
-                "entity_id": "sensor.test",
-                "original_name": "Test",
+                "entity_id": "light.test",
+                "original_name": "Test Light",
                 "device_id": None,
-                "area_id": "kitchen",
+                "area_id": "living",
                 "exposed": True,
-                "domain": "sensor",
+                "domain": "light",
                 "friendly_name": "Test",
-                "synonyms": ["foo"],
             }
         ],
     }
-
-    payload["entities"][0]["area"] = "Kitchen"
+    payload["entities"][0]["area"] = "Living"
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = payload
@@ -49,16 +47,16 @@ def test_ingest_upserts(monkeypatch):
     monkeypatch.setattr(ingest, "OpenAIBackend", MagicMock(return_value=mock_backend))
 
     mock_entity_col = MagicMock()
-    mock_area_edge_col = MagicMock()
-    mock_device_edge_col = MagicMock()
+    mock_area_edge = MagicMock()
+    mock_device_edge = MagicMock()
     mock_area_col = MagicMock()
     mock_device_col = MagicMock()
 
     def get_collection(name):
         return {
             "entity": mock_entity_col,
-            "area_contains": mock_area_edge_col,
-            "device_of": mock_device_edge_col,
+            "area_contains": mock_area_edge,
+            "device_of": mock_device_edge,
             "area": mock_area_col,
             "device": mock_device_col,
         }[name]
@@ -71,20 +69,8 @@ def test_ingest_upserts(monkeypatch):
 
     ingest.ingest()
 
-    mock_entity_col.insert_many.assert_called_once()
-    args, kwargs = mock_entity_col.insert_many.call_args
-    assert kwargs.get("overwrite") is True
-    docs = args[0]
-    doc = docs[0]
-    assert doc["embedding"]
+    area_doc = mock_area_col.insert_many.call_args[0][0][0]
+    assert area_doc["aliases"] == ["living room"]
 
-    mock_area_edge_col.insert_many.assert_called()
-    mock_device_edge_col.insert_many.assert_not_called()
-    area_edges = mock_area_edge_col.insert_many.call_args[0][0]
-    assert len(area_edges) >= 1
-    assert all(e["label"] == "area_contains" for e in area_edges)
-    assert all(e["created_by"] == "ingest" for e in area_edges)
-    assert doc["text"].startswith("Test")
-    import hashlib
-
-    assert doc["meta_hash"] == hashlib.sha256(doc["text"].encode()).hexdigest()
+    entity_doc = mock_entity_col.insert_many.call_args[0][0][0]
+    assert "living room" in entity_doc["text"]
