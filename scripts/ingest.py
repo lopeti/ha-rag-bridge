@@ -340,8 +340,7 @@ def ingest(
     entity_id: Optional[str] = None, delay_sec: int = 5, *, full: bool = False
 ) -> None:
     """Run the ingestion process. Only changed or new entities are embedded unless full=True. Batch delay is configurable."""
-    import hashlib
-    import time
+    # ...existing code...
 
     def get_existing_meta_hash(entity_id: str, col) -> Optional[str]:
         doc = col.get(entity_id)
@@ -395,8 +394,13 @@ def ingest(
                 db.collection(name).truncate()
             else:
                 db.create_collection(name, edge=True)
+        # Use official Database.delete_graph() instead of StandardGraph.delete()
         if db.has_graph("ha_entity_graph"):
-            db.graph("ha_entity_graph").delete(drop_collections=False)
+            db.delete_graph(
+                "ha_entity_graph",
+                drop_collections=False,  # vertex/edge collections remain
+                ignore_missing=True,
+            )
         db.create_graph(
             "ha_entity_graph",
             edge_definitions=[
@@ -411,7 +415,6 @@ def ingest(
                     "to_vertex_collections": ["entity"],
                 },
             ],
-            orphan_collections=[],
         )
     col = db.collection("entity")
     edge_area = db.collection("area_contains")
@@ -548,7 +551,7 @@ def ingest(
                             "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
                             "_from": f"area/{area_id}",
                             "_to": f"entity/{eid}",
-                            "label": "area_contains",
+                            # label field removed, collection name is enough
                             "created_by": "ingest",
                             "ts_created": datetime.utcnow().isoformat(),
                         }
@@ -561,7 +564,7 @@ def ingest(
                             "_key": hashlib.sha1(key_raw.encode()).hexdigest(),
                             "_from": f"device/{device_id}",
                             "_to": f"entity/{eid}",
-                            "label": "device_of",
+                            # label field removed, collection name is enough
                             "created_by": "ingest",
                             "ts_created": datetime.utcnow().isoformat(),
                         }
