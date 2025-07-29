@@ -136,23 +136,36 @@ class GeminiBackend(BaseEmbeddingBackend):
                     model=self.MODEL_NAME, contents=text
                 )
 
-            # SDK success esetén visszaadjuk az embedding-et
-            if result and (
-                (hasattr(result, "embeddings") and result.embeddings)
-                or (isinstance(result, dict) and result.get("embeddings"))
-            ):
-                # Az új API-ban a válasz egy embeddings listát tartalmaz, és minden elemnek values tulajdonsága van
-                if isinstance(result, dict):
-                    values = result["embeddings"][0]["values"]
-                else:
-                    values = result.embeddings[0].values
+            # --- extract embedding vector regardless of response shape ---
+            def _extract_values(resp: dict | object) -> list[float] | None:
+                # 1) régi/lapos {"values":[…]}
+                if isinstance(resp, dict) and "values" in resp:
+                    return resp["values"]
+
+                # 2) új {"embedding":{"values":[…]}}
+                if isinstance(resp, dict) and resp.get("embedding"):
+                    return resp["embedding"].get("values")
+
+                # 3) predictions listás
+                if isinstance(resp, dict) and resp.get("predictions"):
+                    emb = resp["predictions"][0].get("embedding", {})
+                    return emb.get("values")
+
+                # 4) SDK-objektum (result.embeddings[0].values)
+                if hasattr(resp, "embeddings") and resp.embeddings:
+                    return resp.embeddings[0].values
+
+                return None
+
+            values = _extract_values(result)
+            if values:
                 return {"_status_code": 200, "embeddings": [{"values": values}]}
-            else:
-                logger.error(f"Gemini API unexpected response format: {result}")
-                return {
-                    "_status_code": 200,
-                    "error": {"message": "No embedding in response"},
-                }
+
+            logger.error("Gemini API unexpected response format: %s", result)
+            return {
+                "_status_code": 200,
+                "error": {"message": "No embedding in response"},
+            }
         except Exception as e:
             if (
                 "quota" in str(e).lower()
