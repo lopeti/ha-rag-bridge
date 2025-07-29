@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import streamlit as st
 
 from ha_rag_bridge import query as rag_query
@@ -47,7 +45,6 @@ if st.button("Futtatás"):
 def main() -> None:  # pragma: no cover
     """Run via `python -m ha_rag_bridge.playground.streamlit_app`."""
     import subprocess
-    import sys
     subprocess.run(
         ["streamlit", "run", "-q", "-"],
         input=__file__.encode(),

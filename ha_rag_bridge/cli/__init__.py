@@ -27,6 +27,21 @@ def query(question: str, top_k: int = typer.Option(3, '--top-k', '-k')) -> None:
     sys.stdout.write("\n")
 
 
+@app.command()
+def eval(dataset: str, threshold: float = typer.Option(0.2, "--threshold", "-t")) -> None:
+    """Run the evaluation harness on DATASET."""
+    from ha_rag_bridge.eval import run as eval_run
+
+    try:
+        score = eval_run(dataset, threshold)
+    except SystemExit as exc:
+        # A runner már eldöntötte, hogy siker (0) vagy bukás (1-től felfelé),
+        # propagáljuk ugyanazzal a kóddal a Typer exit-hez.
+        raise typer.Exit(code=exc.code)
+    else:
+        typer.echo(f"score={score:.3f}")
+
+
 def main(argv: list[str] | None = None) -> None:
     app(prog_name="ha-rag", args=argv)
 
