@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # ArangoDB - Vektoros adatbázis a RAG rendszerhez
+  arangodb:
+    image: arangodb:latest
+    container_name: arangodb
+    environment:
+      - ARANGO_ROOT_PASSWORD=rootpassword
+    ports:
+      - "8529:8529"
+    volumes:
+      - arango_data:/var/lib/arangodb3
+    restart: unless-stopped
+    networks:
+      - ha-rag-network
+
+  # Home Assistant - Smart Home Platform
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    volumes:
+      - ./config:/config
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "8123:8123"
+    restart: unless-stopped
+    networks:
+      - ha-rag-network
+    environment:
+      - TZ=Europe/Budapest
+
+  # Ollama - Lokális LLM modell futtatás
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    networks:
+      - ha-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # LiteLLM - Egységes LLM API proxy
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    volumes:
+      - ./app/litellm_config.py:/app/litellm_config.py
+      - ./app/litellm_ha_rag_hooks.py:/app/litellm_ha_rag_hooks.py
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+    networks:
+      - ha-rag-network
+    depends_on:
+      - ollama
+      - ha-rag-bridge
+    environment:
+      - LITELLM_CONFIG=/app/litellm_config.py
+      - PORT=4000
+      - HOST=0.0.0.0
+
+  # HA-RAG Bridge - Home Assistant RAG API
+  ha-rag-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ha-rag-bridge
+    ports:
+      - "8000:8000"
+    depends_on:
+      - arangodb
+      - homeassistant
+    restart: unless-stopped
+    networks:
+      - ha-rag-network
+    environment:
+      - ARANGODB_URL=http://arangodb:8529
+      - ARANGODB_DB=ha_rag
+      - ARANGODB_USER=root
+      - ARANGODB_PASSWORD=rootpassword
+      - HASS_URL=http://homeassistant:8123
+      - HASS_TOKEN=${HASS_TOKEN:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyNDg5ZGRkNDRiN2M0ZWJkYjRhODRjNzU5ODQwYmViZSIsImlhdCI6MTcwMzE4OTk1OCwiZXhwIjoyMDE4NTQ5OTU4fQ.qVX_MyltOZSjvBvEmZX0-7l01aSYXSwuBYCCQ5ej_Ts}
+      - EMBEDDING_BACKEND=local
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - LOG_LEVEL=INFO
+
+networks:
+  ha-rag-network:
+    driver: bridge
+
+volumes:
+  arango_data:
+  ollama_data:

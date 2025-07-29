@@ -1,0 +1,47 @@
+# Extended OpenAI Conversation konfigurációs példa
+# Home Assistant configuration.yaml részlet
+
+extended_openai_conversation:
+  # Az alábbi yaml konfigurációt a configuration.yaml-be vagy a megfelelő
+  # included yaml fájlba kell helyezni
+
+  # Opciók példa
+  # Az 'init_prompt' a kezdő prompt, ami helyett a RAG-alapú promptot fogjuk használni
+  # A 'dynamic_init_prompt' egy szkriptet hív meg, ami a kérdés alapján generál egy egyedi promptot
+  dynamic_init_prompt: >
+    {% set response = state_attr('script.ha_rag_prompt', 'last_action') %}
+    {{ response if response != None else "I want you to act as smart home manager of Home Assistant\\nI will provide information of smart home along with a question, you will truthfully make correction or answer using information provided in one sentence in everyday language." }}
+
+# Script definíció a konfigurációban
+# Ez a script meghívja a ha-rag-bridge query függvényt a megfelelő prompthoz
+script:
+  ha_rag_prompt:
+    alias: "Generate HA-RAG optimized prompt"
+    sequence:
+      - service: shell_command.generate_rag_prompt
+        data:
+          question: "{{ question }}"
+      - delay:
+          seconds: 1 # Kis késés a script lefutásához
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.last_rag_prompt
+        data:
+          value: "{{ states('sensor.rag_prompt_result') }}"
+
+# Shell parancs a Python szkript futtatásához
+shell_command:
+  generate_rag_prompt: >-
+    python3 /app/generate_rag_prompt.py "{{ question }}" > /tmp/rag_prompt.txt
+
+# A szenzor, ami a promptot olvassa
+sensor:
+  - platform: command_line
+    name: "RAG Prompt Result"
+    command: "cat /tmp/rag_prompt.txt"
+    scan_interval: 5
+
+input_text:
+  last_rag_prompt:
+    name: "Last RAG Prompt"
+    max: 5000

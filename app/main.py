@@ -208,9 +208,15 @@ async def process_request(payload: schemas.Request):
     except Exception as exc:  # pragma: no cover - db errors
         raise HTTPException(status_code=500, detail=str(exc))
 
-    ids = [doc.get("entity_id") for doc in results]
+    # Biztonságos konverzió a None értékek kiszűrésével
+    ids = [
+        str(doc.get("entity_id")) for doc in results if doc.get("entity_id") is not None
+    ]
     comma_sep = ",".join(ids)
-    domain_set = sorted({doc.get("domain") for doc in results if doc.get("domain")})
+    # Biztonságos konverzió a None értékek kiszűrésével és str típusúvá alakítással
+    domain_set = sorted(
+        [str(doc.get("domain")) for doc in results if doc.get("domain") is not None]
+    )
     domains = ",".join(domain_set)
     system_prompt = (
         "You are a Home Assistant agent.\n"
@@ -248,9 +254,11 @@ async def process_request(payload: schemas.Request):
     tools: List[Dict] = []
     if intent == "control":
         for dom in domain_set:
-            services = await service_catalog.get_domain_services(dom)
-            for name, spec in services.items():
-                tools.append(service_to_tool(dom, name, spec))
+            if dom is not None:  # Ellenőrizzük, hogy a domain nem None
+                services = await service_catalog.get_domain_services(str(dom))
+                for name, spec in services.items():
+                    if name is not None:  # Ellenőrizzük, hogy a name nem None
+                        tools.append(service_to_tool(str(dom), name, spec))
 
     return {
         "messages": [

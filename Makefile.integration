@@ -1,0 +1,51 @@
+# Makefile a Home Assistant RAG Bridge + LiteLLM integráció kezeléséhez
+
+# Konfigurációs változók
+DOCKER_COMPOSE_FILE = docker-compose.full-stack.yml
+HASS_TOKEN ?= your_long_lived_access_token_here
+
+.PHONY: help build up down logs test-rag test-litellm test init-db ingest restart clean
+
+help: ## Megjeleníti a parancsok listáját
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+build: ## Felépíti a konténereket
+	HASS_TOKEN=$(HASS_TOKEN) docker-compose -f $(DOCKER_COMPOSE_FILE) build
+
+up: ## Elindítja a teljes rendszert
+	HASS_TOKEN=$(HASS_TOKEN) docker-compose -f $(DOCKER_COMPOSE_FILE) up -d
+
+down: ## Leállítja a teljes rendszert
+	docker-compose -f $(DOCKER_COMPOSE_FILE) down
+
+logs: ## Megjeleníti a logokat
+	docker-compose -f $(DOCKER_COMPOSE_FILE) logs -f
+
+test-rag: ## Teszteli a HA-RAG Bridge API-t
+	@echo "Teszteljük a HA-RAG Bridge API-t..."
+	python test_integration.py --test-type rag --question "Kapcsold be a nappali lámpát"
+
+test-litellm: ## Teszteli a LiteLLM integrációt
+	@echo "Teszteljük a LiteLLM integrációt..."
+	python test_integration.py --test-type litellm --question "Kapcsold be a nappali lámpát"
+
+test: ## Teszteli a teljes rendszert
+	@echo "Teszteljük a teljes rendszert..."
+	python test_integration.py --question "Kapcsold be a nappali lámpát"
+
+init-db: ## Inicializálja az ArangoDB-t
+	@echo "ArangoDB inicializálása..."
+	docker exec -it ha-rag-bridge python -m scripts.init_arango
+
+ingest: ## Entitások importálása Home Assistant-ból
+	@echo "Entitások importálása Home Assistant-ból..."
+	docker exec -it ha-rag-bridge python -m scripts.ingest_entities
+
+restart: ## Újraindítja a rendszert
+	docker-compose -f $(DOCKER_COMPOSE_FILE) restart
+
+clean: ## Leállítja és törli a konténereket és a volumeokat
+	docker-compose -f $(DOCKER_COMPOSE_FILE) down -v
+
+# Alapértelmezett parancs
+.DEFAULT_GOAL := help

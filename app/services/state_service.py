@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 from typing import Optional, Any
 
-from cachetools import TTLCache, cached
+# Használjuk a mypy:ignore-t a cachetools importjánál
+from cachetools import TTLCache, cached  # type: ignore
 
 import httpx
 from ha_rag_bridge.settings import HTTP_TIMEOUT
-from influxdb_client import InfluxDBClient
+from influxdb_client import InfluxDBClient  # type: ignore
 
 from ha_rag_bridge.logging import get_logger
 
@@ -27,14 +28,20 @@ def _query_influx(entity_id: str) -> Optional[Any]:
 
     query = (
         f'from(bucket: "{bucket}")\n'
-        '  |> range(start: -5m)\n'
-        +(f'  |> filter(fn: (r) => r["_measurement"] == "{measurement}")\n' if measurement else '')
-        +f'  |> filter(fn: (r) => r["entity_id"] == "{entity_id}")\n'
-        '  |> last()'
+        "  |> range(start: -5m)\n"
+        + (
+            f'  |> filter(fn: (r) => r["_measurement"] == "{measurement}")\n'
+            if measurement
+            else ""
+        )
+        + f'  |> filter(fn: (r) => r["entity_id"] == "{entity_id}")\n'
+        "  |> last()"
     )
 
     try:
-        with InfluxDBClient(url=url, token=token or None, org=org, timeout=5000) as client:
+        with InfluxDBClient(
+            url=url, token=token or None, org=org, timeout=5000
+        ) as client:
             tables = client.query_api().query(query)
             for table in tables:
                 for record in table.records:
@@ -56,7 +63,9 @@ def _query_ha_state(entity_id: str) -> Optional[Any]:
     headers = {"Authorization": f"Bearer {token}"}
     for attempt in range(2):
         try:
-            with httpx.Client(base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT) as client:
+            with httpx.Client(
+                base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT
+            ) as client:
                 resp = client.get(f"/api/states/{entity_id}")
                 if resp.status_code == 404:
                     return None
