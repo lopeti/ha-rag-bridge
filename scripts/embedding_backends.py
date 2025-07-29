@@ -138,20 +138,26 @@ class GeminiBackend(BaseEmbeddingBackend):
 
             # --- extract embedding vector regardless of response shape ---
             def _extract_values(resp: dict | object) -> list[float] | None:
-                # 1) régi/lapos {"values":[…]}
+                # 1) régi/lapos {"values": [...]}
                 if isinstance(resp, dict) and "values" in resp:
                     return resp["values"]
 
-                # 2) új {"embedding":{"values":[…]}}
+                # 2) új {"embedding": {"values": [...]}}
                 if isinstance(resp, dict) and resp.get("embedding"):
                     return resp["embedding"].get("values")
 
-                # 3) predictions listás
+                # 3) top-level {"embeddings": [{"values": [...] }]}
+                if isinstance(resp, dict) and resp.get("embeddings"):
+                    first = resp["embeddings"][0]
+                    if isinstance(first, dict) and "values" in first:
+                        return first["values"]
+
+                # 4) predictions listás
                 if isinstance(resp, dict) and resp.get("predictions"):
                     emb = resp["predictions"][0].get("embedding", {})
                     return emb.get("values")
 
-                # 4) SDK-objektum (result.embeddings[0].values)
+                # 5) SDK-objektum (result.embeddings[0].values)
                 if hasattr(resp, "embeddings") and resp.embeddings:
                     return resp.embeddings[0].values
 

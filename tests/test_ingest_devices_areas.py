@@ -51,14 +51,16 @@ def test_ingest_devices_areas(monkeypatch):
     monkeypatch.setattr(ingest, "OpenAIBackend", MagicMock(return_value=mock_backend))
 
     mock_entity_col = MagicMock()
-    mock_edge_col = MagicMock()
+    mock_area_edge_col = MagicMock()
+    mock_device_edge_col = MagicMock()
     mock_area_col = MagicMock()
     mock_device_col = MagicMock()
 
     def get_collection(name):
         return {
             "entity": mock_entity_col,
-            "edge": mock_edge_col,
+            "area_contains": mock_area_edge_col,
+            "device_of": mock_device_edge_col,
             "area": mock_area_col,
             "device": mock_device_col,
         }[name]
@@ -82,10 +84,10 @@ def test_ingest_devices_areas(monkeypatch):
     assert device_docs[0]["model"] == "F1"
     assert device_docs[0]["manufacturer"] == "Acme"
 
-    edges = mock_edge_col.insert_many.call_args[0][0]
+    area_edges = mock_area_edge_col.insert_many.call_args[0][0]
     assert any(
         e["label"] == "area_contains"
         and e["_from"] == "area/kitchen"
         and e["_to"] == "entity/sensor.temp1"
-        for e in edges
+        for e in area_edges
     )

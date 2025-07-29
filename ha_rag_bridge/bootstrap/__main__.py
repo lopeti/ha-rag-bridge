@@ -20,10 +20,11 @@ def ensure_arango_graph():
 
         # Ellenőrizzük és létrehozzuk a szükséges kollekciókat
         collections = {
-            "entity": False,  # nem edge
-            "area": False,  # nem edge
-            "device": False,  # nem edge
-            "edge": True,  # edge kollekció
+            "entity": False,
+            "area": False,
+            "device": False,
+            "area_contains": True,
+            "device_of": True,
         }
 
         for coll_name, is_edge in collections.items():
@@ -63,19 +64,22 @@ def ensure_arango_graph():
             logger.info(
                 "Creating graph definition",
                 graph=graph_name,
-                edge_collection="edge",
-                from_cols=["area", "device"],
-                to_cols=["entity"],
+                edge_collections=["area_contains", "device_of"],
             )
 
             db.create_graph(
                 graph_name,
                 edge_definitions=[
                     {
-                        "edge_collection": "edge",
-                        "from_vertex_collections": ["area", "device"],
+                        "edge_collection": "area_contains",
+                        "from_vertex_collections": ["area"],
                         "to_vertex_collections": ["entity"],
-                    }
+                    },
+                    {
+                        "edge_collection": "device_of",
+                        "from_vertex_collections": ["device"],
+                        "to_vertex_collections": ["entity"],
+                    },
                 ],
                 orphan_collections=[],
             )
