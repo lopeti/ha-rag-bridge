@@ -52,8 +52,13 @@ def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
             time.sleep(wait)
 
 
-def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
-    """Fetch entity states from Home Assistant using the RAG API."""
+def fetch_states(entity_id: Optional[str] = None) -> dict:
+    """Fetch entity states from Home Assistant using the RAG API.
+
+    Returns a dictionary with ``entities``, ``areas`` and ``devices`` lists. The
+    entity objects are normalized to match the structure expected by the rest of
+    the ingest pipeline.
+    """
 
     base_url = os.environ["HA_URL"]
     token = os.environ["HA_TOKEN"]
@@ -69,10 +74,10 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
                 resp = _retry_get(client, url)
                 data = resp.json()
                 logger.info("Successfully fetched data for specific entity", url=url)
-                return [data]
+                return {"entities": [data], "areas": [], "devices": []}
             except Exception as exc:
                 logger.error("Error fetching entity", url=url, error=str(exc))
-                return []
+                return {"entities": [], "areas": [], "devices": []}
         else:
             # Use the RAG API endpoint for all entities
             url = "/api/rag/static/entities"
@@ -98,8 +103,9 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
                     area_map = {}
                     if "areas" in data and isinstance(data["areas"], list):
                         for area in data["areas"]:
-                            if "area_id" in area and "name" in area:
-                                area_map[area["area_id"]] = area["name"]
+                            area_id = area.get("area_id") or area.get("id")
+                            if area_id and "name" in area:
+                                area_map[area_id] = area["name"]
 
                     for entity in entities:
                         # Check if the entity is exposed (we only want exposed entities)
@@ -130,14 +136,18 @@ def fetch_states(entity_id: Optional[str] = None) -> List[dict]:
                             }
                             processed_entities.append(processed_entity)
 
-                    return processed_entities
+                    return {
+                        "entities": processed_entities,
+                        "areas": data.get("areas", []),
+                        "devices": data.get("devices", []),
+                    }
                 else:
                     logger.warning("Unexpected data structure from RAG API", data=data)
-                    return []
+                    return {"entities": [], "areas": [], "devices": []}
             except Exception as exc:
                 logger.error("Error fetching from RAG API", url=url, error=str(exc))
                 # Don't fallback, just return empty to signal the error
-                return []
+                return {"entities": [], "areas": [], "devices": []}
 
 
 def fetch_exposed_entity_ids() -> Optional[set]:
@@ -333,12 +343,21 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
             return doc.get("meta_hash")
         return None
 
-    states = fetch_states(entity_id)
+    data = fetch_states(entity_id)
+    states = data.get("entities", [])
     if not states:
         logger.error("No states returned from fetch_states, aborting ingestion")
         return
 
-    logger.info("Fetched states from RAG API", count=len(states))
+    areas = data.get("areas", [])
+    devices = data.get("devices", [])
+
+    logger.info(
+        "Fetched states from RAG API",
+        entity_count=len(states),
+        area_count=len(areas),
+        device_count=len(devices),
+    )
 
     # Voice assistant filtering is disabled as we're using the RAG API
     # which should already provide the correctly filtered entities
@@ -363,6 +382,47 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
     edge_col = db.collection("edge")
     area_col = db.collection("area")
     device_col = db.collection("device")
+
+    # Upsert all areas and devices first
+    area_map = {}
+    area_docs: List[dict] = []
+    for area in areas:
+        aid = area.get("area_id") or area.get("id")
+        name = area.get("name")
+        if aid and name:
+            area_map[aid] = name
+            area_docs.append({"_key": aid, "name": name})
+    if area_docs:
+        area_col.insert_many(area_docs, overwrite=True, overwrite_mode="update")
+
+    device_map = {}
+    device_docs: List[dict] = []
+    for dev in devices:
+        did = dev.get("id") or dev.get("device_id")
+        if not did:
+            continue
+        device_map[did] = dev
+        doc = {"_key": did}
+        if dev.get("name"):
+            doc["name"] = dev.get("name")
+        if dev.get("model"):
+            doc["model"] = dev.get("model")
+        if dev.get("manufacturer"):
+            doc["manufacturer"] = dev.get("manufacturer")
+        device_docs.append(doc)
+    if device_docs:
+        device_col.insert_many(device_docs, overwrite=True, overwrite_mode="update")
+
+    # Fill missing area information on entities using the device map
+    for ent in states:
+        attrs = ent.get("attributes", {})
+        if not attrs.get("area_id") and attrs.get("device_id"):
+            dev = device_map.get(attrs["device_id"])
+            if dev:
+                inferred = dev.get("area_id")
+                if inferred:
+                    attrs["area_id"] = inferred
+                    attrs.setdefault("area", area_map.get(inferred, ""))
 
     # Determine if full ingest is requested
     import inspect
@@ -430,16 +490,12 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
             for ent, d in zip(ents_for_docs, docs):
                 eid = d["_key"]
                 attrs = ent.get("attributes", {})
-                area_id = attrs.get("area") or attrs.get("area_id")
                 device_id = attrs.get("device_id")
+                area_id = attrs.get("area_id") or (
+                    device_map.get(device_id, {}).get("area_id") if device_id else None
+                )
                 edge_count = 0
                 if area_id:
-                    area_name = attrs.get("area") or area_id
-                    area_col.insert(
-                        {"_key": area_id, "name": area_name},
-                        overwrite=True,
-                        overwrite_mode="update",
-                    )
                     key_raw = f"area_contains:area/{area_id}->entity/{eid}"
                     edges.append(
                         {
@@ -453,11 +509,6 @@ def ingest(entity_id: Optional[str] = None, delay_sec: int = 5) -> None:
                     )
                     edge_count += 1
                 if device_id:
-                    device_col.insert(
-                        {"_key": device_id, "name": device_id},
-                        overwrite=True,
-                        overwrite_mode="update",
-                    )
                     key_raw = f"device_hosts:device/{device_id}->entity/{eid}"
                     edges.append(
                         {

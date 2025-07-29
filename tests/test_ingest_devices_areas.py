@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import scripts.ingest as ingest
 
 
-def test_ingest_upserts(monkeypatch):
+def test_ingest_devices_areas(monkeypatch):
     os.environ.update(
         {
             "HA_URL": "http://ha",
@@ -19,22 +19,24 @@ def test_ingest_upserts(monkeypatch):
 
     payload = {
         "areas": [{"id": "kitchen", "name": "Kitchen"}],
-        "devices": [],
+        "devices": [
+            {
+                "id": "dev1",
+                "name": "Fridge",
+                "model": "F1",
+                "manufacturer": "Acme",
+                "area_id": "kitchen",
+            }
+        ],
         "entities": [
             {
-                "entity_id": "sensor.test",
-                "original_name": "Test",
-                "device_id": None,
-                "area_id": "kitchen",
+                "entity_id": "sensor.temp1",
+                "original_name": "Temp1",
+                "device_id": "dev1",
                 "exposed": True,
-                "domain": "sensor",
-                "friendly_name": "Test",
-                "synonyms": ["foo"],
             }
         ],
     }
-
-    payload["entities"][0]["area"] = "Kitchen"
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = payload
@@ -69,19 +71,21 @@ def test_ingest_upserts(monkeypatch):
 
     ingest.ingest()
 
-    mock_entity_col.insert_many.assert_called_once()
-    args, kwargs = mock_entity_col.insert_many.call_args
-    assert kwargs.get("overwrite") is True
-    docs = args[0]
-    doc = docs[0]
-    assert doc["embedding"]
+    # all areas and devices inserted via bulk call
+    mock_area_col.insert_many.assert_called_once()
+    assert len(mock_area_col.insert_many.call_args[0][0]) == len(payload["areas"])
 
-    mock_edge_col.insert_many.assert_called()
-    edge_docs = mock_edge_col.insert_many.call_args[0][0]
-    assert len(edge_docs) >= 1
-    assert any(e["label"] == "area_contains" for e in edge_docs)
-    assert all(e["created_by"] == "ingest" for e in edge_docs)
-    assert doc["text"].startswith("Test")
-    import hashlib
+    mock_device_col.insert_many.assert_called_once()
+    device_docs = mock_device_col.insert_many.call_args[0][0]
+    assert len(device_docs) == len(payload["devices"])
+    assert device_docs[0]["name"] == "Fridge"
+    assert device_docs[0]["model"] == "F1"
+    assert device_docs[0]["manufacturer"] == "Acme"
 
-    assert doc["meta_hash"] == hashlib.sha256(doc["text"].encode()).hexdigest()
+    edges = mock_edge_col.insert_many.call_args[0][0]
+    assert any(
+        e["label"] == "area_contains"
+        and e["_from"] == "area/kitchen"
+        and e["_to"] == "entity/sensor.temp1"
+        for e in edges
+    )

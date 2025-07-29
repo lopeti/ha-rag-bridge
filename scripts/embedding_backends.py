@@ -7,7 +7,12 @@ from typing import List, Optional
 
 import openai
 from openai import RateLimitError  # correct import
-import google.genai as genai
+import httpx
+
+try:
+    import google.genai as genai
+except Exception:  # pragma: no cover - optional dependency
+    genai = None
 
 from ha_rag_bridge.logging import get_logger
 
@@ -92,10 +97,15 @@ class GeminiBackend(BaseEmbeddingBackend):
     RATE_LIMIT = 100  # requests per minute
 
     def __init__(self) -> None:
-        # Konfiguráljuk a genai klienst
+        # Configure GenAI client if available, otherwise fall back to HTTP API
         api_key = os.environ["GEMINI_API_KEY"]
-        # Az új Google GenAI SDK más API-val rendelkezik
-        self.client = genai.Client(api_key=api_key)
+        use_sdk = os.getenv("GEMINI_USE_SDK", "0").lower() in ("1", "true", "yes")
+        if use_sdk and genai is not None:
+            self.client = genai.Client(api_key=api_key)
+            self._api_key = None
+        else:
+            self.client = None
+            self._api_key = api_key
 
         # Rate limiting követéséhez
         self._last_request_time = 0.0
@@ -111,20 +121,32 @@ class GeminiBackend(BaseEmbeddingBackend):
             pass
 
     def _embed_content(self, text: str) -> dict:
-        """Synchronously embed a single text using Google GenAI SDK."""
+        """Synchronously embed a single text using Google GenAI SDK or HTTP."""
         try:
-            # Az új SDK-ban a models közvetlen tartalmazza az embed_content metódust
-            result = self.client.models.embed_content(
-                model=self.MODEL_NAME, contents=text
-            )
+            if self.client is None:
+                resp = httpx.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL_NAME}:embedContent",
+                    params={"key": self._api_key},
+                    json={"content": {"parts": [{"text": text}]}},
+                )
+                result = resp.json()
+                result["_status_code"] = getattr(resp, "status_code", 200)
+            else:
+                result = self.client.models.embed_content(
+                    model=self.MODEL_NAME, contents=text
+                )
 
             # SDK success esetén visszaadjuk az embedding-et
-            if result and hasattr(result, "embeddings") and result.embeddings:
+            if result and (
+                (hasattr(result, "embeddings") and result.embeddings)
+                or (isinstance(result, dict) and result.get("embeddings"))
+            ):
                 # Az új API-ban a válasz egy embeddings listát tartalmaz, és minden elemnek values tulajdonsága van
-                return {
-                    "_status_code": 200,
-                    "embeddings": [{"values": result.embeddings[0].values}],
-                }
+                if isinstance(result, dict):
+                    values = result["embeddings"][0]["values"]
+                else:
+                    values = result.embeddings[0].values
+                return {"_status_code": 200, "embeddings": [{"values": values}]}
             else:
                 logger.error(f"Gemini API unexpected response format: {result}")
                 return {

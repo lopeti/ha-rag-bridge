@@ -48,7 +48,11 @@ class StaticEntitiesView(HomeAssistantView):
 
         hass = request.app["hass"]
         # Check if 'all' parameter is provided to return all entities/devices
-        include_all = request.query.get("all", "").lower() in ("true", "1", "yes")
+        query = getattr(request, "query", None)
+        if query is None:
+            include_all = True
+        else:
+            include_all = query.get("all", "").lower() in ("true", "1", "yes")
         data = _collect_static(hass, include_all=include_all)
         return self.json(data)
 
