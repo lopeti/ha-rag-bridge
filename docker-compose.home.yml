@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  bridge:
+    environment:
+      # Home Assistant connection settings
+      - HASS_URL=http://192.168.1.128:8123
+      - HASS_TOKEN=${HASS_TOKEN}
+      # ArangoDB connection
+      - ARANGO_URL=http://192.168.1.105:8529
+      - ARANGO_DB=ha_rag
+      - ARANGO_USER=root
+      - ARANGO_PASS=rootpassword
+      # Debug and ingest settings
+      - LOG_LEVEL=DEBUG
+      - DEBUG=true
+      - HTTP_TIMEOUT=60
+      - INGEST_BATCH_SIZE=10
+      - BOOTSTRAP_TIMEOUT=120
+      - REFRESH_INTERVAL=60
+      - SERVICE_CACHE_TTL=300
+      - DETAILED_LOGS=true
+      - TRACK_ENTITY_CHANGES=true
+      - SKIP_EXISTING_ENTITIES=false
+      # Embedding settings
+      - EMBEDDING_PROVIDER=local
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - EMBED_DIM=384
+    # Network configuration for external access
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "homelab:192.168.1.105"
+      - "homeassistant:192.168.1.128"
+  
+  # Disable the built-in Home Assistant since we're using the real one
+  homeassistant:
+    profiles:
+      - donotstart
+  
+  # Disable the built-in ArangoDB since we're using the one on homelab
+  arangodb:
+    profiles:
+      - donotstart

@@ -3,12 +3,56 @@
     "configurations": [
         {
             "name": "Attach Bridge",
-            "type": "python",
+            "type": "debugpy",
             "request": "attach",
-            "connect": {"host": "localhost", "port": 5678},
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
             "pathMappings": [
-                {"localRoot": "${workspaceFolder}", "remoteRoot": "/app"}
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "/app"
+                }
             ]
+        },
+        {
+            "name": "Ingest Home Assistant Entities",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ha_rag_bridge.cli.ingest",
+            "args": [
+                "--debug"
+            ],
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Bootstrap Home Assistant RAG",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ha_rag_bridge.cli.bootstrap",
+            "args": [],
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run App with Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--reload",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+                "--log-config",
+                "docker/uvicorn_log.ini"
+            ],
+            "justMyCode": false,
+            "console": "integratedTerminal"
         }
     ]
 }
