@@ -13,23 +13,21 @@ app = typer.Typer()
 
 def load_dotenv():
     """Load environment variables from .env file"""
-    env_path = Path("/app/.env")
+    env_path = Path('/app/.env')
     if env_path.exists():
         print(f"Loading environment variables from {env_path}")
         with open(env_path) as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith("#"):
+                if not line or line.startswith('#'):
                     continue
-                if "=" in line:
-                    key, value = line.split("=", 1)
+                if '=' in line:
+                    key, value = line.split('=', 1)
                     # Don't override existing environment variables
                     if key not in os.environ:
                         os.environ[key] = value
-                        if key == "HA_TOKEN" and value == "YOUR_HA_TOKEN_HERE":
-                            print(
-                                "Warning: You need to set your actual Home Assistant token in .env file"
-                            )
+                        if key == 'HA_TOKEN' and value == 'YOUR_HA_TOKEN_HERE':
+                            print("Warning: You need to set your actual Home Assistant token in .env file")
 
 
 @app.command()
@@ -41,25 +39,22 @@ def ingest(
     delay: int = typer.Option(
         5, "--delay", help="Delay in seconds between embedding batches"
     ),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug mode"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug mode")
 ) -> None:
     """Run the ingest pipeline for Home Assistant entities."""
     # Load environment variables from .env file
     load_dotenv()
-
+    
     from scripts.ingest import ingest as run_ingest
 
     # Set debug logging if requested
     if debug:
         import logging
-
         logging.basicConfig(level=logging.DEBUG)
 
     # If no arguments are provided and in debug mode, default to full ingest
     if not full and not entity and debug:
-        typer.echo(
-            "No entity or full flag specified, defaulting to full ingest in debug mode"
-        )
+        typer.echo("No entity or full flag specified, defaulting to full ingest in debug mode")
         full = True
     elif not full and not entity:
         typer.echo("Error: Either --full or --entity must be specified")
