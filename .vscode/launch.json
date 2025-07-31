@@ -2,6 +2,59 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug Dev Environment",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ha_rag_bridge.cli.ingest",
+            "args": [
+                "--full",
+                "--debug"
+            ],
+            "env": {
+                "HA_URL": "http://192.168.1.128:8123",
+                "HA_TOKEN": "YOUR_HA_TOKEN_HERE",
+                "ARANGO_URL": "http://192.168.1.105:8529",
+                "ARANGO_DB": "ha_rag",
+                "ARANGO_USER": "root",
+                "ARANGO_PASS": "changeme",
+                "LOG_LEVEL": "DEBUG",
+                "DEBUG": "true",
+                "HTTP_TIMEOUT": "60",
+                "EMBEDDING_BACKEND": "local",
+                "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
+                "EMBED_DIM": "384"
+            },
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Home Environment",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ha_rag_bridge.cli.ingest",
+            "args": [
+                "--entity",
+                "light.kitchen",
+                "--debug"
+            ],
+            "env": {
+                "HA_URL": "http://192.168.1.128:8123",
+                "HA_TOKEN": "${env:HASS_TOKEN}",
+                "ARANGO_URL": "http://192.168.1.105:8529",
+                "ARANGO_DB": "ha_rag",
+                "ARANGO_USER": "root",
+                "ARANGO_PASS": "rootpassword",
+                "LOG_LEVEL": "DEBUG",
+                "DEBUG": "true",
+                "HTTP_TIMEOUT": "60",
+                "EMBEDDING_BACKEND": "local",
+                "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
+                "EMBED_DIM": "384"
+            },
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Attach Bridge",
             "type": "debugpy",
             "request": "attach",
@@ -22,6 +75,7 @@
             "request": "launch",
             "module": "ha_rag_bridge.cli.ingest",
             "args": [
+                "--full",
                 "--debug"
             ],
             "justMyCode": false,
@@ -37,7 +91,32 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Run App with Debug",
+            "name": "Debug Docker Compose (Home)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.ingest",
+            "args": [
+                "--full"
+            ],
+            "env": {
+                "HA_URL": "http://192.168.1.128:8123",
+                "HA_TOKEN": "${env:HASS_TOKEN}",
+                "ARANGO_URL": "http://192.168.1.105:8529",
+                "ARANGO_DB": "ha_rag",
+                "ARANGO_USER": "root",
+                "ARANGO_PASS": "rootpassword",
+                "LOG_LEVEL": "DEBUG",
+                "DEBUG": "true",
+                "HTTP_TIMEOUT": "60",
+                "EMBEDDING_BACKEND": "local",
+                "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
+                "EMBED_DIM": "384"
+            },
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run App with Debug (Home)",
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
@@ -51,6 +130,20 @@
                 "--log-config",
                 "docker/uvicorn_log.ini"
             ],
+            "env": {
+                "HA_URL": "http://192.168.1.128:8123",
+                "HA_TOKEN": "${env:HASS_TOKEN}",
+                "ARANGO_URL": "http://192.168.1.105:8529",
+                "ARANGO_DB": "ha_rag",
+                "ARANGO_USER": "root",
+                "ARANGO_PASS": "rootpassword",
+                "LOG_LEVEL": "DEBUG",
+                "DEBUG": "true",
+                "HTTP_TIMEOUT": "60",
+                "EMBEDDING_BACKEND": "local",
+                "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
+                "EMBED_DIM": "384"
+            },
             "justMyCode": false,
             "console": "integratedTerminal"
         }

@@ -1,5 +1,5 @@
 {
-    "name": "HA RAG Bridge Dev Container - Development",
+    "name": "HA RAG Bridge Dev Container - Home Environment",
     "dockerComposeFile": [
         "../docker-compose.yml",
         "../docker-compose.dev.yml"
@@ -7,9 +7,7 @@
     "service": "bridge",
     "forwardPorts": [
         8000,
-        8123,
-        5678,
-        18529
+        5678
     ],
     "workspaceFolder": "/app",
     "features": {
@@ -31,8 +29,8 @@
                     "editor.formatOnSave": true
                 },
                 "terminal.integrated.env.linux": {
-                    "ARANGO_URL": "http://arangodb:8529",
-                    "HASS_URL": "http://homeassistant:8123"
+                    "ARANGO_URL": "http://192.168.1.105:8529",
+                    "HASS_URL": "http://192.168.1.128:8123"
                 }
             },
             "extensions": [
@@ -45,5 +43,5 @@
             ]
         }
     },
-    "postStartCommand": "echo 'Development environment active - Home Assistant: http://localhost:8123, ArangoDB: http://localhost:18529'"
+    "postStartCommand": "echo 'Home environment active - Home Assistant: http://192.168.1.128:8123, ArangoDB: http://192.168.1.105:8529'"
 }
