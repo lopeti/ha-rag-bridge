@@ -29,14 +29,48 @@ class BaseEmbeddingBackend:
 
 
 class LocalBackend(BaseEmbeddingBackend):
-    """Embed texts locally using SentenceTransformers."""
+    """Embed texts locally using SentenceTransformers optimized for CPU."""
 
     DIMENSION = 384
 
     def __init__(self) -> None:
         from sentence_transformers import SentenceTransformer
+        import os
+        import torch
 
-        self.model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+        # Model selection based on environment variable or default to better multilingual model
+        model_name = os.getenv(
+            "SENTENCE_TRANSFORMER_MODEL", "paraphrase-multilingual-MiniLM-L12-v2"
+        )
+
+        # CPU optimization for VM environment
+        device = "cpu"
+
+        # Set optimal CPU threads for embedding (only if not already set)
+        cpu_threads = int(
+            os.getenv("EMBEDDING_CPU_THREADS", "4")
+        )  # Conservative default for VM
+
+        # Only set threads if not already configured
+        try:
+            torch.set_num_threads(cpu_threads)
+            torch.set_num_interop_threads(cpu_threads)
+        except RuntimeError:
+            # Threads already set, skip
+            pass
+
+        print(f"Loading SentenceTransformer model: {model_name} on {device}")
+        print(f"CPU threads: {cpu_threads}")
+
+        # Load model with CPU optimizations
+        self.model = SentenceTransformer(model_name, device=device)
+
+        # Dynamic dimension detection based on model
+        sample_embedding = self.model.encode(
+            ["test"], convert_to_numpy=True, normalize_embeddings=True
+        )
+        self.DIMENSION = len(sample_embedding[0])
+        print(f"Model dimension: {self.DIMENSION}")
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         embeddings = self.model.encode(

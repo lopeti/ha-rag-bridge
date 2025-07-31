@@ -7,6 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
+from ha_rag_bridge.similarity_config import get_adaptive_threshold, get_current_config
 from app.middleware.request_id import request_id_middleware
 
 from .routers.graph import router as graph_router
@@ -99,17 +100,23 @@ def detect_intent(text: str) -> str:
 
 
 def query_arango(db, q_vec: Sequence[float], q_text: str, k: int) -> List[dict]:
+    # Get adaptive similarity threshold based on query context
+    similarity_threshold = get_adaptive_threshold(q_text)
+
     aql = (
         "FOR e IN v_meta "
         "SEARCH ANALYZER("
-        "SIMILARITY(e.embedding, @qv) > 0.7 "
+        f"SIMILARITY(e.embedding, @qv) > @sim_threshold "
         "OR PHRASE(e.text, @msg, 'text_en')"
         ", 'text_en') "
         "SORT BM25(e) DESC "
         f"LIMIT {k} "
         "RETURN e"
     )
-    cursor = db.aql.execute(aql, bind_vars={"qv": q_vec, "msg": q_text})
+    cursor = db.aql.execute(
+        aql,
+        bind_vars={"qv": q_vec, "msg": q_text, "sim_threshold": similarity_threshold},
+    )
     return list(cursor)
 
 
@@ -128,10 +135,13 @@ def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
 def query_manual(
     db, doc_id: str, q_vec: Sequence[float], q_text: str, k: int = 2
 ) -> List[str]:
+    # Get adaptive similarity threshold based on query context
+    similarity_threshold = get_adaptive_threshold(q_text)
+
     aql = (
         "FOR d IN v_manual "
         "SEARCH d.document_id == @doc AND ANALYZER("
-        "SIMILARITY(d.embedding, @qv) > 0.7 OR PHRASE(d.text, @msg, 'text_en')"
+        "SIMILARITY(d.embedding, @qv) > @sim_threshold OR PHRASE(d.text, @msg, 'text_en')"
         ", 'text_en') "
         "SORT BM25(d) DESC "
         "LIMIT @k "
@@ -139,7 +149,13 @@ def query_manual(
     )
     cursor = db.aql.execute(
         aql,
-        bind_vars={"doc": doc_id, "qv": q_vec, "msg": q_text, "k": k},
+        bind_vars={
+            "doc": doc_id,
+            "qv": q_vec,
+            "msg": q_text,
+            "k": k,
+            "sim_threshold": similarity_threshold,
+        },
     )
     return list(cursor)
 
@@ -176,6 +192,12 @@ async def health():
     if HEALTH_ERROR:
         raise HTTPException(status_code=500, detail=HEALTH_ERROR)
     return {"status": "ok"}
+
+
+@router.get("/similarity-config")
+async def get_similarity_config():
+    """Get current similarity threshold configuration."""
+    return get_current_config()
 
 
 @router.post("/process-request", response_model=schemas.ProcessResponse)
