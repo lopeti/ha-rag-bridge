@@ -6,5 +6,10 @@ __pycache__/
 # Poetry virtualenv
 .venv/
 .env
+.env.core
+.env.home
+.env.prod
+.env.dev
+.env.backup
 .vscode/launch.json
 terminal_output.txt
