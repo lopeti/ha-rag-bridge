@@ -1,0 +1,14 @@
+model_list:
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+environment_variables:
+  HA_RAG_API_URL: http://ha-rag-bridge:8000
+  HA_RAG_PLACEHOLDER: "{{HA_RAG_ENTITIES}}"
+  ENABLE_HA_TOOL_EXECUTION: "true"
+general_settings:
+  drop_params: true
+  add_function_to_prompt: true
+litellm_settings:
+  callbacks: litellm_ha_rag_hooks.ha_rag_hook_instance

@@ -15,7 +15,6 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
       - "5678:5678"
     environment:
       - EMBEDDING_BACKEND=gemini
@@ -24,8 +23,8 @@ services:
       - EMBED_DIM=1536
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - AUTO_BOOTSTRAP=1
-    depends_on:
-      - arangodb
+    profiles:
+      - dev
     env_file:
       - .env
   arangodb:

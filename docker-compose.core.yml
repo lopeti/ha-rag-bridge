@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # HA-RAG Bridge - Core application
+  ha-rag-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ha-rag-bridge
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Database connection (external ArangoDB)
+      # ArangoDB connection
+      - ARANGO_URL=${ARANGO_URL}
+      - ARANGO_DB=${ARANGO_DB}
+      - ARANGO_USER=${ARANGO_USER}
+      - ARANGO_PASS=${ARANGO_PASS}
+      
+      # Home Assistant connection (external)
+      - HA_URL=${HA_URL}
+      - HA_TOKEN=${HA_TOKEN}
+      
+      # Embedding settings
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_OUTPUT_DIM=${GEMINI_OUTPUT_DIM:-1536}
+      - EMBED_DIM=${EMBED_DIM:-384}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Application settings
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=${DEBUG:-false}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-60}
+      - INGEST_BATCH_SIZE=${INGEST_BATCH_SIZE:-10}
+      - BOOTSTRAP_TIMEOUT=${BOOTSTRAP_TIMEOUT:-120}
+      - REFRESH_INTERVAL=${REFRESH_INTERVAL:-60}
+      - SERVICE_CACHE_TTL=${SERVICE_CACHE_TTL:-300}
+      
+      # Optional InfluxDB
+      - INFLUX_URL=${INFLUX_URL}
+      - INFLUX_DB=${INFLUX_DB}
+      - INFLUX_USER=${INFLUX_USER}
+      - INFLUX_PASS=${INFLUX_PASS}
+    volumes:
+      - ha_rag_logs:/logs
+    networks:
+      - ha-rag-core
+    extra_hosts:
+      - "arangodb:192.168.1.105"
+    command: /bin/sh -c "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # LiteLLM - API proxy with custom hooks
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: ha-rag-litellm
+    restart: unless-stopped
+    ports:
+      - "4001:4000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PORT=4000
+      - HOST=0.0.0.0
+    volumes:
+      - ./litellm_config.yaml:/app/litellm_config.yaml:ro
+      - ./litellm_ha_rag_hooks.py:/app/litellm_ha_rag_hooks.py:ro
+    networks:
+      - ha-rag-core
+    depends_on:
+      ha-rag-bridge:
+        condition: service_healthy
+    command:
+      - "--config=/app/litellm_config.yaml"
+      - "--detailed_debug"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  ha-rag-core:
+    driver: bridge
+
+volumes:
+  ha_rag_logs:

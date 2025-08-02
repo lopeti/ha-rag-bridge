@@ -1,0 +1,237 @@
+version: '3.8'
+
+services:
+  # Ollama - Local LLM server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    privileged: true
+    restart: always
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - ha-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Open WebUI - LLM interface
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:latest
+    container_name: open-webui
+    restart: always
+    depends_on:
+      - ollama
+      - gemini-proxy
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_API_URL=http://ollama:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_BASE_URL=http://gemini-proxy:8000/v1
+    volumes:
+      - openwebui_data:/app/backend/data
+    networks:
+      - ha-rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # MindsDB - ML database
+  mindsdb:
+    image: mindsdb/mindsdb:latest
+    container_name: mindsdb
+    restart: always
+    depends_on:
+      - ollama
+    ports:
+      - "47334:47334"
+      - "47335:47335"
+    volumes:
+      - mindsdb_data:/root/mdb_storage
+    environment:
+      - OLLAMA_SERVE_URL=http://ollama:11434
+    networks:
+      - ha-rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:47334/api/status"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Gemini Proxy - Google Gemini API proxy
+  gemini-proxy:
+    image: ghcr.io/zuisong/gemini-openai-proxy:deno
+    container_name: gemini-proxy
+    restart: always
+    environment:
+      - GOOGLE_API_KEY=${GEMINI_API_KEY}
+    ports:
+      - "8080:8000"
+    networks:
+      - ha-rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # LiteLLM Proxy - Unified LLM API
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-proxy
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=4000
+      - HOST=0.0.0.0
+    volumes:
+      - ./litellm_config.py:/app/litellm_config.py:ro
+      - ./litellm_ha_rag_hooks.py:/app/litellm_ha_rag_hooks.py:ro
+    command:
+      - "--config=/app/litellm_config.py"
+      - "--detailed_debug"
+    networks:
+      - ha-rag-network
+    depends_on:
+      - ollama
+      - gemini-proxy
+      - ha-rag-bridge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ArangoDB - Vector database
+  arangodb:
+    image: arangodb:latest
+    container_name: arangodb
+    restart: always
+    environment:
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test123}
+    ports:
+      - "8529:8529"
+    volumes:
+      - arangodb_data:/var/lib/arangodb3
+    networks:
+      - ha-rag-network
+    command: >
+      arangod
+      --server.endpoint tcp://0.0.0.0:8529
+      --server.authentication true
+      --log.output - 
+      --experimental-vector-index
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8529/_api/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # HA-RAG Bridge - Main application
+  ha-rag-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ha-rag-bridge
+    restart: always
+    ports:
+      - "8001:8000"
+    depends_on:
+      arangodb:
+        condition: service_healthy
+    environment:
+      # Embedding settings
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_OUTPUT_DIM=1536
+      - EMBED_DIM=1536
+      # Database connections
+      - ARANGO_URL=http://arangodb:8529
+      - ARANGO_DB=${ARANGO_DB:-homeassistant}
+      - ARANGO_USER=root
+      - ARANGO_PASS=${ARANGO_ROOT_PASSWORD:-test123}
+      - INFLUX_URL=${INFLUX_URL:-http://192.168.1.128:8086}
+      - INFLUX_DB=${INFLUX_DB:-homeassistant}
+      - INFLUX_USER=${INFLUX_USER:-homeassistant}
+      - INFLUX_PASS=${INFLUX_PASS:-123}
+      # Home Assistant connection
+      - HA_URL=${HA_URL:-http://192.168.1.128:8123}
+      - HA_TOKEN=${HA_TOKEN}
+      # Application settings
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/logs/bridge.log
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-admin_token_123}
+      # Performance settings
+      - HTTP_TIMEOUT=60
+      - INGEST_BATCH_SIZE=10
+      - BOOTSTRAP_TIMEOUT=120
+      - REFRESH_INTERVAL=60
+      - SERVICE_CACHE_TTL=300
+    volumes:
+      - ha_rag_logs:/logs
+    networks:
+      - ha-rag-network
+    command: /bin/sh -c "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # Jupyter Notebook - Development environment
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: jupyter
+    restart: always
+    ports:
+      - "8888:8888"
+    volumes:
+      - jupyter_data:/home/jovyan/work
+      - ./notebooks:/home/jovyan/work/notebooks
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-}
+      - JUPYTER_PASSWORD=${JUPYTER_PASSWORD:-}
+    networks:
+      - ha-rag-network
+    user: root
+    command: >
+      bash -c "
+      chown -R jovyan:users /home/jovyan/work &&
+      start-notebook.sh --NotebookApp.token='${JUPYTER_TOKEN:-}' --NotebookApp.password='${JUPYTER_PASSWORD:-}' --NotebookApp.allow_root=True
+      "
+
+networks:
+  ha-rag-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  # Ha már létező volume-okat akarsz használni, add hozzá az "external: true" opciót
+  ollama_data:
+    # external: true  # Uncomment if using existing volume
+  openwebui_data:
+    # external: true  # Uncomment if using existing volume
+  mindsdb_data:
+    # external: true  # Uncomment if using existing volume
+  arangodb_data:
+    # external: true  # Uncomment if using existing volume
+  jupyter_data:
+    # external: true  # Uncomment if using existing volume
+  ha_rag_logs:

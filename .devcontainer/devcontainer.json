@@ -2,11 +2,12 @@
     "name": "HA RAG Bridge Dev Container - Home Environment",
     "dockerComposeFile": [
         "../docker-compose.yml",
-        "../docker-compose.dev.yml"
+        "../docker-compose.dev.yml",
+        "../docker-compose.home.yml"
     ],
     "service": "bridge",
     "forwardPorts": [
-        8000,
+        8001,
         5678
     ],
     "workspaceFolder": "/app",
@@ -16,7 +17,12 @@
             "version": "20"
         }
     },
-    "postCreateCommand": "pip install poetry && poetry config virtualenvs.create false && poetry install && pre-commit install",
+    "postCreateCommand": "pip install poetry && poetry config virtualenvs.create false && poetry install && pre-commit install && git config --global user.name 'lopeti' && git config --global user.email 'lovas.peter.hu@gmail.com'",
+    "remoteUser": "root",
+    "mounts": [
+        "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,consistency=cached"
+    ],
     "customizations": {
         "vscode": {
             "settings": {

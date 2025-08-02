@@ -1,36 +1,40 @@
-version: '3.8'
-
 services:
   bridge:
+    profiles:
+      - "" # Activate the bridge service (override dev profile)
+    ports:
+      - "8001:8000"  # Only map to port 8001, not 8000
+      - "5678:5678"  # Debug port
     environment:
       # Home Assistant connection settings
-      - HASS_URL=http://192.168.1.128:8123
-      - HASS_TOKEN=${HASS_TOKEN}
+      - HASS_URL=${HA_URL}
+      - HASS_TOKEN=${HA_TOKEN}
       # ArangoDB connection
-      - ARANGO_URL=http://192.168.1.105:8529
-      - ARANGO_DB=ha_rag
-      - ARANGO_USER=root
-      - ARANGO_PASS=rootpassword
+      - ARANGO_URL=${ARANGO_URL}
+      - ARANGO_DB=${ARANGO_DB}
+      - ARANGO_USER=${ARANGO_USER}
+      - ARANGO_PASS=${ARANGO_PASS}
       # Debug and ingest settings
-      - LOG_LEVEL=DEBUG
-      - DEBUG=true
-      - HTTP_TIMEOUT=60
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DEBUG=${DEBUG}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT}
       - INGEST_BATCH_SIZE=10
       - BOOTSTRAP_TIMEOUT=120
       - REFRESH_INTERVAL=60
-      - SERVICE_CACHE_TTL=300
+      - SERVICE_CACHE_TTL=${SERVICE_CACHE_TTL}
       - DETAILED_LOGS=true
       - TRACK_ENTITY_CHANGES=true
       - SKIP_EXISTING_ENTITIES=false
       # Embedding settings
-      - EMBEDDING_PROVIDER=local
-      - EMBEDDING_MODEL=all-MiniLM-L6-v2
-      - EMBED_DIM=384
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBED_DIM=${EMBED_DIM}
     # Network configuration for external access
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "homelab:192.168.1.105"
       - "homeassistant:192.168.1.128"
+      - "arangodb:192.168.1.105"
   
   # Disable the built-in Home Assistant since we're using the real one
   homeassistant:

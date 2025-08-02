@@ -1,256 +1,239 @@
-"""
-LiteLLM Hook a Home Assistant RAG Bridge integrációhoz
+"""LiteLLM Hook for Home Assistant RAG Bridge integration
 
-Ez a modul tartalmazza a LiteLLM hook függvényeket a Home Assistant RAG Bridge
-integrációhoz, amelyek lehetővé teszik a releváns entitások promptba illesztését
-és a tool hívások kezelését.
+This module provides LiteLLM callback hooks that
+1. Inject relevant Home‑Assistant entities into the system prompt (pre‑call)
+2. Optionally execute Home‑Assistant tool calls and attach their results (post‑call)
+
+The implementation follows LiteLLM's `CustomLogger` interface and must be
+referenced from `litellm_config.yaml` like so:
+
+```yaml
+litellm_settings:
+  callbacks: litellm_ha_rag_hooks.ha_rag_hook_instance
+```
 """
 
-import os
-import requests
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from __future__ import annotations
+
 import logging
+import os
+from typing import Any, Dict, Literal, List
 
-# Konfigurációs értékek
-HA_RAG_API_URL = os.getenv("HA_RAG_API_URL", "http://localhost:8000/api")
-RAG_PLACEHOLDER = os.getenv("HA_RAG_PLACEHOLDER", "{{HA_RAG_ENTITIES}}")
-RAG_QUERY_ENDPOINT = f"{HA_RAG_API_URL}/query"
-TOOL_EXECUTION_ENDPOINT = f"{HA_RAG_API_URL}/execute_tool"
+import httpx
+from litellm.integrations.custom_logger import CustomLogger
+from litellm.proxy.proxy_server import DualCache, UserAPIKeyAuth
 
-# Tool végrehajtás konfigurációk
-# "ha-rag-bridge": Ha-rag-bridge végzi a tool végrehajtást
-# "caller": A hívó (pl. extended_openai_conversation) végzi a tool végrehajtást
-# "both": Mindkettő kapja a tool hívásokat (a ha-rag-bridge végrehajtja, a hívó is megkapja)
-# "disabled": Nincs tool végrehajtás
-TOOL_EXECUTION_MODE = os.getenv("HA_RAG_TOOL_EXECUTION_MODE", "ha-rag-bridge")
+# ──────────────────────────────────────────────────────────────────────────────
+# Configuration constants ─ values are injected via environment variables
+# ──────────────────────────────────────────────────────────────────────────────
 
-# Logger beállítása
+HA_RAG_API_URL: str = os.getenv("HA_RAG_API_URL", "http://ha-rag-bridge:8000")
+RAG_PLACEHOLDER: str = os.getenv("HA_RAG_PLACEHOLDER", "{{HA_RAG_ENTITIES}}")
+RAG_QUERY_ENDPOINT: str = f"{HA_RAG_API_URL}/process-request"
+TOOL_EXECUTION_ENDPOINT: str = f"{HA_RAG_API_URL}/execute_tool"
+
+# Tool‑execution behaviour: "ha-rag-bridge"|"caller"|"both"|"disabled"
+TOOL_EXECUTION_MODE: str = os.getenv("HA_RAG_TOOL_EXECUTION_MODE", "ha-rag-bridge")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Logging
+# ──────────────────────────────────────────────────────────────────────────────
+
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("litellm_ha_rag_hook")
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper functions
+# ──────────────────────────────────────────────────────────────────────────────
 
-def litellm_pre_processor(
-    messages: List[Dict[str, Any]], model: Optional[str] = None, **kwargs
-) -> List[Dict[str, Any]]:
-    """
-    LiteLLM pre-processor hook a Home Assistant RAG entitások injektálásához.
 
-    Ez a függvény:
-    1. Megkeresi a RAG_PLACEHOLDER-t a rendszerüzenetekben
-    2. Kivonja a felhasználói kérdést
-    3. Meghívja a HA-RAG Bridge API-t a releváns entitások lekéréséhez
-    4. Beilleszti a formázott entitásokat a prompt helyére
-
-    Args:
-        messages: Az LLM-nek küldendő üzenetek listája
-        model: Az LLM modell neve
-        kwargs: További paraméterek
-
-    Returns:
-        A módosított üzenetek listája
-    """
-    start_time = datetime.now()
-    logger.info(f"HA-RAG Hook indítása: {start_time.isoformat()}")
-
-    # Ellenőrizzük, hogy van-e placeholder a promptban
-    has_placeholder = False
-    system_message_idx = None
-
-    for i, message in enumerate(messages):
+def _find_system_placeholder(messages: List[Dict[str, Any]]) -> int | None:
+    """Return index of first system message containing the placeholder, else None."""
+    for idx, msg in enumerate(messages):
         if (
-            message.get("role") == "system"
-            and isinstance(message.get("content"), str)
-            and RAG_PLACEHOLDER in message["content"]
+            msg.get("role") == "system"
+            and isinstance(msg.get("content"), str)
+            and RAG_PLACEHOLDER in msg["content"]
         ):
-            has_placeholder = True
-            system_message_idx = i
-            break
+            return idx
+    return None
 
-    # Ha nincs placeholder, nincs teendőnk
-    if not has_placeholder or system_message_idx is None:
-        logger.info(
-            "Nincs RAG placeholder a promptban, az eredeti üzenetek visszaadása"
-        )
-        return messages
 
-    # Keressünk felhasználói kérdést
-    user_question = None
-    for message in messages:
-        if message.get("role") == "user":
-            user_question = message.get("content")
-            if user_question:
-                break
+def _extract_user_question(messages: List[Dict[str, Any]]) -> str | None:
+    """Return first user message content, else None."""
+    for msg in messages:
+        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+            return msg["content"]
+    return None
 
-    # Ha nincs felhasználói kérdés, nincs teendőnk
-    if not user_question:
-        logger.warning(
-            "Nem találtunk felhasználói kérdést, az eredeti üzenetek visszaadása"
-        )
-        return messages
 
-    # Hívjuk meg a RAG API-t
-    try:
-        logger.info(f"HA-RAG API hívása: {RAG_QUERY_ENDPOINT}")
-        response = requests.post(
-            RAG_QUERY_ENDPOINT, json={"question": user_question, "top_k": 5}, timeout=10
-        )
-        response.raise_for_status()
-        rag_data = response.json()
+# ──────────────────────────────────────────────────────────────────────────────
+# The main callback class
+# ──────────────────────────────────────────────────────────────────────────────
 
-        # Ellenőrizzük, hogy megérkezett-e a formázott tartalom
-        formatted_content = rag_data.get("formatted_content")
-        if not formatted_content:
-            # Próbáljuk meg a relevant_entities-t használni
-            relevant_entities = rag_data.get("relevant_entities", [])
-            if relevant_entities:
-                # Formázzuk a szöveget
-                formatted_content = "Available Devices (relevant to your query):\n```csv\nentity_id,name,state,aliases\n"
-                for entity in relevant_entities:
-                    aliases = "/".join(entity.get("aliases", []))
-                    formatted_content += f"{entity['entity_id']},{entity.get('name', entity['entity_id'])},{entity.get('state', 'unknown')},{aliases}\n"
-                formatted_content += "```"
-            else:
-                formatted_content = "No relevant entities found for your query."
 
-        # Cseréljük ki a placeholder-t a formázott tartalomra
-        system_message = messages[system_message_idx]
-        system_message["content"] = system_message["content"].replace(
+class HARagHook(CustomLogger):
+    """Async LiteLLM callback for Home‑Assistant RAG bridging."""
+
+    # ────────────────────────────────
+    # Pre‑call: inject entities
+    # ────────────────────────────────
+
+    async def async_pre_call_hook(
+        self,
+        user_api_key_dict: UserAPIKeyAuth,  # noqa: D401  (unused but required)
+        cache: DualCache,  # noqa: D401  (unused but required)
+        data: Dict[str, Any],
+        call_type: Literal[
+            "completion",
+            "text_completion",
+            "embeddings",
+            "image_generation",
+            "moderation",
+            "audio_transcription",
+        ],
+    ) -> Dict[str, Any]:
+        """Inject formatted entity list into the system prompt before the LLM call."""
+
+        messages: List[Dict[str, Any]] = data.get("messages", [])
+        sys_idx = _find_system_placeholder(messages)
+        if sys_idx is None:
+            return data  # nothing to do
+
+        user_question = _extract_user_question(messages)
+        if not user_question:
+            return data
+
+        logger.debug("Querying HA‑RAG bridge for relevant entities…")
+        logger.debug("Using RAG_QUERY_ENDPOINT: %s", RAG_QUERY_ENDPOINT)
+        formatted_content: str
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                logger.debug(
+                    "Sending request to RAG_QUERY_ENDPOINT with payload: %s",
+                    {"user_message": user_question},
+                )
+                resp = await client.post(
+                    RAG_QUERY_ENDPOINT,
+                    json={"user_message": user_question},
+                )
+                resp.raise_for_status()
+                logger.debug(
+                    "Received response from RAG_QUERY_ENDPOINT: %s, %s",
+                    resp.status_code,
+                    resp.text,
+                )
+                rag_payload = resp.json()
+
+            formatted_content = rag_payload.get("formatted_content")
+            if not formatted_content:
+                entities = rag_payload.get("relevant_entities", [])
+                if entities:
+                    rows = [
+                        f"{e['entity_id']},{e.get('name', e['entity_id'])},{e.get('state', 'unknown')},{'/'.join(e.get('aliases', []))}"
+                        for e in entities
+                    ]
+                    formatted_content = (
+                        "Available Devices (relevant to your query):\n"  # header
+                        "```csv\nentity_id,name,state,aliases\n"
+                        + "\n".join(rows)
+                        + "\n```"
+                    )
+                else:
+                    formatted_content = "No relevant entities found for your query."
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("HA‑RAG query failed: %s", exc)
+            formatted_content = "Error retrieving Home Assistant entities."
+
+        # Replace the placeholder in‑place
+        messages[sys_idx]["content"] = messages[sys_idx]["content"].replace(
             RAG_PLACEHOLDER, formatted_content
         )
-        messages[system_message_idx] = system_message
+        data["messages"] = messages
+        return data
 
-        # Loggoljuk a sikert
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        logger.info(
-            f"HA-RAG entitások sikeresen beillesztve, időtartam: {duration:.2f} másodperc"
-        )
+    # ────────────────────────────────
+    # Post‑call: execute HA tools
+    # ────────────────────────────────
 
-    except Exception as e:
-        # Hiba esetén, hagyjuk az eredeti promptot
-        logger.error(f"Hiba a HA-RAG API hívásakor: {str(e)}")
-        # Cseréljük ki a placeholder-t egy hibaüzenetre
-        system_message = messages[system_message_idx]
-        system_message["content"] = system_message["content"].replace(
-            RAG_PLACEHOLDER, "Error retrieving Home Assistant entities."
-        )
-        messages[system_message_idx] = system_message
+    async def async_post_call_success_hook(
+        self,
+        data: Dict[str, Any],
+        user_api_key_dict: UserAPIKeyAuth,  # noqa: D401 (unused)
+        response: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Optionally execute Home‑Assistant tool calls after a successful LLM call."""
 
-    return messages
+        execution_mode: str = (
+            data.get("tool_execution_mode") or TOOL_EXECUTION_MODE
+        ).lower()
+        if execution_mode == "disabled":
+            return response
 
+        # Ensure there is at least one tool call
+        choices = response.get("choices", [])
+        if not choices:
+            return response
 
-def litellm_post_processor(
-    response: Dict[str, Any], model: Optional[str] = None, **kwargs
-) -> Dict[str, Any]:
-    """
-    LiteLLM post-processor hook a Home Assistant tool hívások kezeléséhez.
+        tool_calls = choices[0].get("message", {}).get("tool_calls", [])
+        if not tool_calls:
+            return response
 
-    Ez a függvény:
-    1. Ellenőrzi, hogy a válasz tartalmaz-e tool hívásokat
-    2. Azonosítja a Home Assistant műveleteket (pl. light.turn_on)
-    3. A beállított végrehajtási mód alapján kezeli a tool hívásokat:
-       - ha-rag-bridge: Továbbítja a műveleteket a HA-RAG Bridge API-nak végrehajtásra
-       - caller: A tool hívásokat változatlanul hagyja, hogy a hívó fél hajtsa végre
-       - both: Végrehajtja a műveleteket és a hívó fél is megkapja azokat
-       - disabled: Nincs tool végrehajtás
-    4. Hozzáadja a végrehajtási eredményeket a válaszhoz, ha szükséges
+        # Filter Home‑Assistant calls
+        ha_calls: List[Dict[str, Any]] = []
+        for call in tool_calls:
+            func = call.get("function", {})
+            name: str = func.get("name", "")
+            if name.startswith("homeassistant.") or (
+                "." in name
+                and name.split(".", 1)[0]
+                in {
+                    "light",
+                    "switch",
+                    "climate",
+                    "sensor",
+                    "media_player",
+                    "scene",
+                    "script",
+                    "automation",
+                    "cover",
+                    "fan",
+                    "input_boolean",
+                    "notify",
+                }
+            ):
+                ha_calls.append(call)
 
-    Args:
-        response: Az LLM válasz
-        model: Az LLM modell neve
-        kwargs: További paraméterek, amelyek megadhatják a végrehajtási módot
+        if not ha_calls:
+            return response  # nothing to execute
 
-    Returns:
-        A módosított válasz
-    """
-    # Kérés specifikus végrehajtási mód ellenőrzése (a kwargs-ból vagy headerből)
-    execution_mode = kwargs.get("tool_execution_mode", TOOL_EXECUTION_MODE)
+        if execution_mode == "caller":
+            return response  # let the caller handle execution
 
-    # Loggoljuk a használt végrehajtási módot
-    logger.info(f"Home Assistant tool végrehajtási mód: {execution_mode}")
+        # ha‑rag‑bridge or both → execute via bridge
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                exec_resp = await client.post(
+                    TOOL_EXECUTION_ENDPOINT,
+                    json={"tool_calls": ha_calls},
+                )
+                exec_resp.raise_for_status()
+                exec_payload = exec_resp.json()
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Tool execution via HA‑RAG bridge failed: %s", exc)
+            return response
 
-    # Ha ki van kapcsolva a tool végrehajtás, visszaadjuk az eredeti választ
-    if execution_mode == "disabled":
-        logger.info(
-            "Home Assistant tool végrehajtás nincs engedélyezve, kihagyjuk a végrehajtást"
-        )
-        return response
-
-    # Ellenőrizzük, hogy a válasz tartalmaz-e tool hívásokat
-    if not response.get("choices"):
-        return response
-
-    choice = response["choices"][0]
-    if not choice.get("message") or not choice["message"].get("tool_calls"):
-        return response
-
-    tool_calls = choice["message"]["tool_calls"]
-    ha_tool_calls = []
-
-    # Azonosítsuk a Home Assistant műveleteket
-    for tool_call in tool_calls:
-        if not tool_call.get("function"):
-            continue
-
-        function = tool_call["function"]
-        name = function.get("name", "")
-
-        # Home Assistant művelet azonosítása
-        if (
-            name.startswith("homeassistant.")
-            or "." in name
-            and name.split(".", 1)[0]
-            in [
-                "light",
-                "switch",
-                "climate",
-                "sensor",
-                "media_player",
-                "scene",
-                "script",
-                "automation",
-                "cover",
-                "fan",
-                "input_boolean",
-                "notify",
-            ]
+        if execution_mode in {"ha-rag-bridge", "both"} and exec_payload.get(
+            "tool_execution_results"
         ):
-            ha_tool_calls.append(tool_call)
-
-    # Ha nincsenek Home Assistant műveletek, visszaadjuk az eredeti választ
-    if not ha_tool_calls:
-        return response
-
-    # Ha a caller mód van beállítva, csak a caller hajtja végre a tool hívásokat
-    if execution_mode == "caller":
-        logger.info("Tool végrehajtás a hívó félnek átadva")
-        return response
-
-    try:
-        # Ha ha-rag-bridge vagy both mód van beállítva, a ha-rag-bridge végrehajtja a tool hívásokat
-        if execution_mode in ["ha-rag-bridge", "both"]:
-            logger.info(f"Tool végrehajtás kérése: {len(ha_tool_calls)} tool")
-            execute_response = requests.post(
-                TOOL_EXECUTION_ENDPOINT, json={"tool_calls": ha_tool_calls}, timeout=15
+            response.setdefault("execution_results", []).extend(
+                exec_payload["tool_execution_results"]
             )
-            execute_response.raise_for_status()
-            execute_result = execute_response.json()
+        return response
 
-            # Tool execution eredmények hozzáadása a válaszhoz
-            if "tool_execution_results" in execute_result:
-                # Itt kibővítjük a választ a végrehajtás eredményeivel
-                logger.info(
-                    f"Tool végrehajtási eredmények hozzáadása: {len(execute_result['tool_execution_results'])} eredmény"
-                )
-                if "execution_results" not in response:
-                    response["execution_results"] = []
-                response["execution_results"].extend(
-                    execute_result["tool_execution_results"]
-                )
-    except Exception as e:
-        logger.error(f"Hiba a Home Assistant tool-ok végrehajtásakor: {str(e)}")
 
-    return response
+# Exported instance – reference this in litellm_config.yaml
+ha_rag_hook_instance: HARagHook = HARagHook()

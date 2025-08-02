@@ -1,4 +1,3 @@
-
 # --- Base stage ---
 FROM python:3.13-slim AS base
 
@@ -27,3 +26,9 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 FROM base AS dev
 COPY . .
 RUN poetry install --no-interaction --no-ansi --with dev
+
+# Explicitly copy uvicorn_log.ini to the container
+COPY docker/uvicorn_log.ini /app/docker/
+
+# Debug: List contents of /app/docker
+RUN echo "Contents of /app/docker:" && ls -R /app/docker
