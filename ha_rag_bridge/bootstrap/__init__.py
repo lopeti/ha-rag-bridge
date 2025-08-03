@@ -111,13 +111,12 @@ def _bootstrap_impl(
         idx = None
     if not idx:
         try:
-            nLists = 100
             doc_count = entity.count()
-            if doc_count < nLists:
-                logger.info(
-                    f"Skip vector index – not enough documents in entity (have {doc_count}, need at least {nLists})"
-                )
+            if doc_count == 0:
+                logger.info("Skip vector index – no documents in entity")
             else:
+                nLists = max(100, doc_count // 15)
+                default_nprobe = min(20, nLists)
                 entity.add_index(
                     {
                         "type": "vector",
@@ -126,14 +125,17 @@ def _bootstrap_impl(
                             "dimension": embed_dim,
                             "metric": "cosine",
                             "nLists": nLists,
+                            "defaultNProbe": default_nprobe,
                         },
                     }
                 )
                 logger.info(
-                    f"Created vector index on entity.embedding with nLists={nLists}"
+                    "Created vector index on entity.embedding (nLists=%s, defaultNProbe=%s)",
+                    nLists,
+                    default_nprobe,
                 )
         except Exception as exc:
-            logger.error("Failed to create vector index", error=str(exc))
+            logger.error("Failed to create vector index: %s", exc)
 
     doc_cols = [
         "area",

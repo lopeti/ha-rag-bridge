@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
-from ha_rag_bridge.similarity_config import get_adaptive_threshold, get_current_config
+from ha_rag_bridge.similarity_config import get_current_config
 from app.middleware.request_id import request_id_middleware
 
 from .routers.graph import router as graph_router
@@ -106,23 +106,27 @@ def detect_intent(text: str) -> str:
     return "read"
 
 
-def query_arango(db, q_vec: Sequence[float], q_text: str, k: int) -> List[dict]:
-    # Get adaptive similarity threshold based on query context
-    similarity_threshold = get_adaptive_threshold(q_text)
-
+def query_arango(
+    db, q_vec: Sequence[float], q_text: str, k: int, nprobe: int = 4
+) -> List[dict]:
     aql = (
+        "LET knn = ("
+        "FOR e IN entity "
+        "SORT APPROX_NEAR_COSINE(e.embedding, @qv, { nProbe: @nprobe }) DESC "
+        "LIMIT @k "
+        "RETURN e) "
+        "LET txt = ("
         "FOR e IN v_meta "
-        "SEARCH ANALYZER("
-        f"SIMILARITY(e.embedding, @qv) > @sim_threshold "
-        "OR PHRASE(e.text, @msg, 'text_en')"
-        ", 'text_en') "
+        "SEARCH ANALYZER(PHRASE(e.text, @msg, 'text_en'), 'text_en') "
         "SORT BM25(e) DESC "
-        f"LIMIT {k} "
+        "LIMIT @k "
+        "RETURN e) "
+        "FOR e IN UNIQUE(UNION(knn, txt)) "
+        "LIMIT @k "
         "RETURN e"
     )
     cursor = db.aql.execute(
-        aql,
-        bind_vars={"qv": q_vec, "msg": q_text, "sim_threshold": similarity_threshold},
+        aql, bind_vars={"qv": q_vec, "msg": q_text, "k": k, "nprobe": nprobe}
     )
     return list(cursor)
 
@@ -140,19 +144,24 @@ def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
 
 
 def query_manual(
-    db, doc_id: str, q_vec: Sequence[float], q_text: str, k: int = 2
+    db, doc_id: str, q_vec: Sequence[float], q_text: str, k: int = 2, nprobe: int = 4
 ) -> List[str]:
-    # Get adaptive similarity threshold based on query context
-    similarity_threshold = get_adaptive_threshold(q_text)
-
     aql = (
+        "LET knn = ("
+        "FOR d IN document "
+        "FILTER d.document_id == @doc "
+        "SORT APPROX_NEAR_COSINE(d.embedding, @qv, { nProbe: @nprobe }) DESC "
+        "LIMIT @k "
+        "RETURN d.text) "
+        "LET txt = ("
         "FOR d IN v_manual "
-        "SEARCH d.document_id == @doc AND ANALYZER("
-        "SIMILARITY(d.embedding, @qv) > @sim_threshold OR PHRASE(d.text, @msg, 'text_en')"
-        ", 'text_en') "
+        "SEARCH d.document_id == @doc AND ANALYZER(PHRASE(d.text, @msg, 'text_en'), 'text_en') "
         "SORT BM25(d) DESC "
         "LIMIT @k "
-        "RETURN d.text"
+        "RETURN d.text) "
+        "FOR t IN UNIQUE(UNION(knn, txt)) "
+        "LIMIT @k "
+        "RETURN t"
     )
     cursor = db.aql.execute(
         aql,
@@ -161,7 +170,7 @@ def query_manual(
             "qv": q_vec,
             "msg": q_text,
             "k": k,
-            "sim_threshold": similarity_threshold,
+            "nprobe": nprobe,
         },
     )
     return list(cursor)
