@@ -65,8 +65,8 @@ def _bootstrap_impl(
         logger.warning("bootstrap skipped", missing=str(exc))
         return
 
-    db_name = os.getenv("ARANGO_DB", "ha_graph")
-    embed_dim = int(os.getenv("EMBED_DIM", "1536"))
+    db_name = os.getenv("ARANGO_DB", "homeassistant")
+    embed_dim = int(os.getenv("EMBED_DIM", "384"))
 
     client = ArangoClient(hosts=arango_url)
     sys_db = client.db("_system", username=user, password=password)

@@ -72,12 +72,19 @@ if not os.getenv("SKIP_ARANGO_HEALTHCHECK"):
             None,
         )
         if idx and idx.get("dimensions") != backend_dim:
-            logger.warning(
-                "embedding dimension mismatch",
-                backend=backend_dim,
-                index=idx.get("dimensions"),
-            )
-            HEALTH_ERROR = "dimension mismatch"
+            idx_dim = idx.get("dimensions")
+            if idx_dim is None:
+                idx_dim = idx.get("params", {}).get("dimension")
+
+            if idx_dim is None:
+                logger.warning("vector index found, but no dimension info")
+            elif idx_dim != backend_dim:
+                logger.warning(
+                    "embedding dimension mismatch",
+                    backend=backend_dim,
+                    index=idx_dim,
+                )
+                HEALTH_ERROR = "dimension mismatch"
     except KeyError:
         pass
     except Exception as exc:  # pragma: no cover - db errors
