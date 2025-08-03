@@ -32,6 +32,7 @@ class LocalBackend(BaseEmbeddingBackend):
     """Embed texts locally using SentenceTransformers optimized for CPU."""
 
     DIMENSION = 384
+    _MODEL = None
 
     def __init__(self) -> None:
         from sentence_transformers import SentenceTransformer
@@ -62,8 +63,9 @@ class LocalBackend(BaseEmbeddingBackend):
         print(f"Loading SentenceTransformer model: {model_name} on {device}")
         print(f"CPU threads: {cpu_threads}")
 
-        # Load model with CPU optimizations
-        self.model = SentenceTransformer(model_name, device=device)
+        if LocalBackend._MODEL is None:
+            LocalBackend._MODEL = SentenceTransformer(model_name, device=device)
+        self.model = LocalBackend._MODEL
 
         # Dynamic dimension detection based on model
         sample_embedding = self.model.encode(
