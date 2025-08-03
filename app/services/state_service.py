@@ -20,10 +20,20 @@ _CACHE = TTLCache(maxsize=1024, ttl=int(os.getenv("STATE_CACHE_TTL", "30")))
 def _query_influx(entity_id: str) -> Optional[Any]:
     url = os.getenv("INFLUX_URL")
     token = os.getenv("INFLUX_TOKEN", "")
+    username = os.getenv("INFLUX_USERNAME")
+    password = os.getenv("INFLUX_PASSWORD")
     org = os.getenv("INFLUX_ORG", "homeassistant")
     bucket = os.getenv("INFLUX_BUCKET", "homeassistant")
     measurement = os.getenv("INFLUX_MEASUREMENT", "measurement")
     if not url:
+        return None
+
+    if token:
+        auth_kwargs = {"token": token}
+    elif username and password:
+        auth_kwargs = {"username": username, "password": password}
+    else:
+        logger.warning("Influx auth missing; skipping query", entity_id=entity_id)
         return None
 
     query = (
@@ -39,9 +49,7 @@ def _query_influx(entity_id: str) -> Optional[Any]:
     )
 
     try:
-        with InfluxDBClient(
-            url=url, token=token or None, org=org, timeout=5000
-        ) as client:
+        with InfluxDBClient(url=url, org=org, timeout=5000, **auth_kwargs) as client:
             tables = client.query_api().query(query)
             for table in tables:
                 for record in table.records:
