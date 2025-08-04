@@ -6,7 +6,10 @@
       "Bash(grep:*)",
       "Bash(env)",
       "Bash(python3:*)",
-      "Bash(poetry add:*)"
+      "Bash(poetry add:*)",
+      "Bash(echo:*)",
+      "Bash(export EMBEDDING_BACKEND=local)",
+      "Bash(EMBED_DIM=384 poetry run ha-rag-bootstrap)"
     ],
     "deny": []
   }

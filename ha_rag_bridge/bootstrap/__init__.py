@@ -66,7 +66,44 @@ def _bootstrap_impl(
         return
 
     db_name = os.getenv("ARANGO_DB", "homeassistant")
-    embed_dim = int(os.getenv("EMBED_DIM", "384"))
+    backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+
+    # Try to get actual dimension from embedding backend
+    try:
+        if backend_name == "local":
+            # For LocalBackend, we need to initialize it to get the actual dimension
+            from scripts.embedding_backends import LocalBackend
+
+            # Check if model is already loaded to avoid reloading
+            if LocalBackend._MODEL is not None:
+                embed_dim = LocalBackend.DIMENSION
+            else:
+                # Initialize backend to get actual dimension
+                backend = LocalBackend()
+                embed_dim = backend.DIMENSION
+        elif backend_name == "openai":
+            from scripts.embedding_backends import OpenAIBackend
+
+            embed_dim = OpenAIBackend.DIMENSION
+        elif backend_name == "gemini":
+            from scripts.embedding_backends import GeminiBackend
+
+            embed_dim = GeminiBackend.DIMENSION
+        else:
+            # Fallback to environment variable
+            embed_dim = int(os.getenv("EMBED_DIM", "384"))
+    except Exception as exc:
+        logger.warning(
+            "Failed to detect embedding dimension from backend, falling back to EMBED_DIM env var",
+            error=str(exc),
+        )
+        embed_dim = int(os.getenv("EMBED_DIM", "384"))
+
+    logger.info(
+        "Using embedding dimension for vector index",
+        backend=backend_name,
+        dimension=embed_dim,
+    )
 
     client = ArangoClient(hosts=arango_url)
     sys_db = client.db("_system", username=user, password=password)
