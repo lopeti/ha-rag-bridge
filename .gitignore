@@ -13,3 +13,6 @@ __pycache__/
 .env.backup
 .vscode/launch.json
 terminal_output.txt
+
+# Memory bank conversations
+memory-bank/conversations/
