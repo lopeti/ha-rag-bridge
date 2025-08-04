@@ -2,7 +2,8 @@ import os
 import re
 import json
 from typing import List, Sequence, Dict, Any
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
@@ -33,7 +34,26 @@ router = APIRouter()
 logger = get_logger(__name__)
 app.add_middleware(BaseHTTPMiddleware, dispatch=request_id_middleware)
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler to log all unhandled exceptions."""
+    logger.error(
+        "Unhandled exception occurred",
+        method=request.method,
+        url=str(request.url),
+        exc_info=exc,
+        error=str(exc)
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error occurred"}
+    )
+
 service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
+
+# Cache embedding backends globally to avoid reloading models
+_cached_backends: Dict[str, EmbeddingBackend] = {}
 
 if env_true("AUTO_BOOTSTRAP", True):
     from ha_rag_bridge.bootstrap import bootstrap
@@ -104,6 +124,19 @@ def detect_intent(text: str) -> str:
     if CONTROL_RE.search(text):
         return "control"
     return "read"
+
+
+def get_embedding_backend(backend_name: str) -> EmbeddingBackend:
+    """Get cached embedding backend instance."""
+    if backend_name not in _cached_backends:
+        logger.info(f"Initializing embedding backend: {backend_name}")
+        if backend_name == "openai":
+            _cached_backends[backend_name] = OpenAIBackend()
+        elif backend_name == "local":
+            _cached_backends[backend_name] = LocalBackend()
+        else:
+            _cached_backends[backend_name] = get_backend(backend_name)
+    return _cached_backends[backend_name]
 
 
 def query_arango(
@@ -219,17 +252,19 @@ async def get_similarity_config():
 @router.post("/process-request", response_model=schemas.ProcessResponse)
 async def process_request(payload: schemas.Request):
     backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
-    if backend_name == "openai":
-        emb_backend: EmbeddingBackend = OpenAIBackend()
-    elif backend_name == "local":
-        emb_backend = LocalBackend()
-    else:
-        emb_backend = get_backend(backend_name)
+    emb_backend = get_embedding_backend(backend_name)
 
     try:
         query_vector = emb_backend.embed([payload.user_message])[0]
     except Exception as exc:  # pragma: no cover - backend errors
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error(
+            "Embedding backend error",
+            backend=backend_name,
+            message=payload.user_message,
+            exc_info=exc,
+            error=str(exc)
+        )
+        raise HTTPException(status_code=500, detail=f"Embedding error: {str(exc)}")
 
     arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
     db_name = os.getenv("ARANGO_DB", "_system")
@@ -244,7 +279,13 @@ async def process_request(payload: schemas.Request):
     try:
         results = retrieve_entities(db, query_vector, payload.user_message)
     except Exception as exc:  # pragma: no cover - db errors
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error(
+            "Database query error",
+            message=payload.user_message,
+            exc_info=exc,
+            error=str(exc)
+        )
+        raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")
 
     # Biztonságos konverzió a None értékek kiszűrésével
     ids = [

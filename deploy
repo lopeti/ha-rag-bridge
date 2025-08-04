@@ -1,0 +1,3 @@
+#!/bin/bash
+# Ultra-gyors deploy parancs
+exec "$(dirname "$0")/quick-deploy.sh" "$@"

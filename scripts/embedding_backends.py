@@ -60,19 +60,19 @@ class LocalBackend(BaseEmbeddingBackend):
             # Threads already set, skip
             pass
 
-        print(f"Loading SentenceTransformer model: {model_name} on {device}")
-        print(f"CPU threads: {cpu_threads}")
-
         if LocalBackend._MODEL is None:
+            print(f"Loading SentenceTransformer model: {model_name} on {device}")
+            print(f"CPU threads: {cpu_threads}")
             LocalBackend._MODEL = SentenceTransformer(model_name, device=device)
+            
+            # Dynamic dimension detection based on model (only once)
+            sample_embedding = LocalBackend._MODEL.encode(
+                ["test"], convert_to_numpy=True, normalize_embeddings=True
+            )
+            LocalBackend.DIMENSION = len(sample_embedding[0])
+            print(f"Model dimension: {LocalBackend.DIMENSION}")
+            
         self.model = LocalBackend._MODEL
-
-        # Dynamic dimension detection based on model
-        sample_embedding = self.model.encode(
-            ["test"], convert_to_numpy=True, normalize_embeddings=True
-        )
-        self.DIMENSION = len(sample_embedding[0])
-        print(f"Model dimension: {self.DIMENSION}")
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         embeddings = self.model.encode(

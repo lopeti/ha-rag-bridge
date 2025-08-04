@@ -11,6 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `poetry install` - Install Python dependencies
 - `poetry shell` - Activate virtual environment
 
+### Quick Deploy (Fejlesztés -> Éles)
+- `make deploy` - Gyors deploy ha-rag-core könyvtárba
+- `make deploy-start` - Deploy + automatikus indítás
+- `make deploy-check` - Éles verzió státusza
+- `./deploy` - Közvetlen deploy parancs
+- `./quick-deploy.sh [target_dir]` - Teljes deploy script
+
 ### Testing
 - `poetry run pytest` - Run all tests
 - `poetry run pytest tests/test_filename.py` - Run specific test file
