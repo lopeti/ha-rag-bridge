@@ -27,6 +27,7 @@ pydantic = "^2.7"
 google-genai = "^0.6.0"
 typer = "^0.12.3"
 rouge-score = "^0.1.2"
+influxdb = "^5.3.2"
 
 [tool.poetry.scripts]
 ha-rag-bootstrap = "ha_rag_bridge.bootstrap.cli:main"

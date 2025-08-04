@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(env)",
+      "Bash(python3:*)",
+      "Bash(poetry add:*)"
     ],
     "deny": []
   }
