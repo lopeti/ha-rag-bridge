@@ -28,6 +28,7 @@ from scripts.embedding_backends import (
 )
 from .services.state_service import get_last_state
 from .services.service_catalog import ServiceCatalog
+from .services.entity_reranker import entity_reranker
 
 app = FastAPI()
 router = APIRouter()
@@ -43,12 +44,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         method=request.method,
         url=str(request.url),
         exc_info=exc,
-        error=str(exc)
+        error=str(exc),
     )
     return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error occurred"}
+        status_code=500, content={"detail": "Internal server error occurred"}
     )
+
 
 service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
 
@@ -262,7 +263,7 @@ async def process_request(payload: schemas.Request):
             backend=backend_name,
             message=payload.user_message,
             exc_info=exc,
-            error=str(exc)
+            error=str(exc),
         )
         raise HTTPException(status_code=500, detail=f"Embedding error: {str(exc)}")
 
@@ -283,52 +284,137 @@ async def process_request(payload: schemas.Request):
             "Database query error",
             message=payload.user_message,
             exc_info=exc,
-            error=str(exc)
+            error=str(exc),
         )
         raise HTTPException(status_code=500, detail=f"Database error: {str(exc)}")
 
-    # Biztonságos konverzió a None értékek kiszűrésével
-    ids = [
-        str(doc.get("entity_id")) for doc in results if doc.get("entity_id") is not None
-    ]
-    comma_sep = ",".join(ids)
-    # Biztonságos konverzió a None értékek kiszűrésével és str típusúvá alakítással
-    domain_set = sorted(
-        [str(doc.get("domain")) for doc in results if doc.get("domain") is not None]
-    )
-    domains = ",".join(domain_set)
-    system_prompt = (
-        "You are a Home Assistant agent.\n"
-        f"Relevant entities: {comma_sep}\n"
-        f"Relevant domains: {domains}\n"
-    )
+    # Use entity reranker for context-aware prioritization
+    try:
+        logger.info(
+            "Starting entity reranking",
+            query=payload.user_message,
+            entity_count=len(results),
+            has_conversation_history=bool(payload.conversation_history),
+            conversation_id=payload.conversation_id,
+        )
 
-    if results:
-        top = results[0]
-        if top.get("domain") == "sensor":
-            last = get_last_state(top.get("entity_id"))
-            if last is not None:
-                system_prompt += (
-                    f"Current value of {top['entity_id'].lower()}: {last}\n"
-                )
-        device_id = top.get("device_id")
-        if device_id:
-            try:
-                cur = db.aql.execute(
-                    "FOR e IN edge FILTER e._from == @d AND e.label == 'device_has_manual' RETURN PARSE_IDENTIFIER(e._to).key",
-                    bind_vars={"d": f"device/{device_id}"},
-                )
-                manual_id = next(iter(cur), None)
-                if manual_id:
-                    hints = query_manual(
-                        db, manual_id, query_vector, payload.user_message
+        ranked_entities = entity_reranker.rank_entities(
+            entities=results,
+            query=payload.user_message,
+            conversation_history=payload.conversation_history,
+            conversation_id=payload.conversation_id,
+            k=10,
+        )
+
+        # Log successful reranking
+        if ranked_entities:
+            top_entity_id = ranked_entities[0].entity.get("entity_id", "unknown")
+            top_score = ranked_entities[0].final_score
+            logger.info(
+                "✅ Entity reranking SUCCESSFUL",
+                query=payload.user_message,
+                top_entity=top_entity_id,
+                top_score=round(top_score, 3),
+                ranked_count=len(ranked_entities),
+                system_prompt_type="hierarchical",
+            )
+
+        # Create hierarchical system prompt with more entities
+        system_prompt = entity_reranker.create_hierarchical_system_prompt(
+            ranked_entities=ranked_entities,
+            query=payload.user_message,
+            max_primary=1,
+            max_related=5,  # Növelve 3-ról 5-re
+        )
+
+        # Add manual hints for primary entity if available
+        if ranked_entities:
+            primary_entity = ranked_entities[0].entity
+            device_id = primary_entity.get("device_id")
+            if device_id:
+                try:
+                    cur = db.aql.execute(
+                        "FOR e IN edge FILTER e._from == @d AND e.label == 'device_has_manual' RETURN PARSE_IDENTIFIER(e._to).key",
+                        bind_vars={"d": f"device/{device_id}"},
                     )
-                    if hints:
-                        system_prompt += "Manual hints:\n"
-                        for h in hints:
-                            system_prompt += f"- {h}\n"
-            except Exception:  # pragma: no cover - db errors
-                pass
+                    manual_id = next(iter(cur), None)
+                    if manual_id:
+                        hints = query_manual(
+                            db, manual_id, query_vector, payload.user_message
+                        )
+                        if hints:
+                            system_prompt += "\nManual hints:\n"
+                            for h in hints:
+                                system_prompt += f"- {h}\n"
+                except Exception:  # pragma: no cover - db errors
+                    pass
+
+        # Extract domains for service catalog (fallback to old logic if reranking fails)
+        if ranked_entities:
+            domain_set = sorted(
+                [
+                    domain
+                    for entity in ranked_entities[:5]  # Top 5 entities
+                    if (domain := entity.entity.get("domain")) is not None
+                ]
+            )
+        else:
+            domain_set = sorted(
+                [
+                    str(domain)
+                    for doc in results
+                    if (domain := doc.get("domain")) is not None
+                ]
+            )
+
+    except Exception as exc:
+        # Log fallback with detailed error information
+        logger.warning(
+            "❌ Entity reranking FAILED - using FALLBACK logic",
+            query=payload.user_message,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            entity_count=len(results),
+            system_prompt_type="legacy_fallback",
+        )
+
+        # Fallback to original logic if reranking fails
+        ids = [
+            str(doc.get("entity_id"))
+            for doc in results
+            if doc.get("entity_id") is not None
+        ]
+        comma_sep = ",".join(ids)
+        domain_set = sorted(
+            [
+                str(domain)
+                for doc in results
+                if (domain := doc.get("domain")) is not None
+            ]
+        )
+        domains = ",".join(domain_set)
+        system_prompt = (
+            "You are a Home Assistant agent.\n"
+            f"Relevant entities: {comma_sep}\n"
+            f"Relevant domains: {domains}\n"
+        )
+
+        if results:
+            top = results[0]
+            fallback_entity_id = top.get("entity_id", "unknown")
+            logger.info(
+                "Using fallback entity selection",
+                query=payload.user_message,
+                fallback_entity=fallback_entity_id,
+                selection_method="first_result",
+            )
+
+            if top.get("domain") == "sensor":
+                last = get_last_state(top.get("entity_id"))
+                if last is not None:
+                    system_prompt += (
+                        f"Current value of {top['entity_id'].lower()}: {last}\n"
+                    )
 
     tools: List[Dict] = []
     if intent == "control":

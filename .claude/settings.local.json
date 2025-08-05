@@ -10,7 +10,9 @@
       "Bash(echo:*)",
       "Bash(export EMBEDDING_BACKEND=local)",
       "Bash(EMBED_DIM=384 poetry run ha-rag-bootstrap)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(poetry run pytest:*)",
+      "Bash(poetry run:*)"
     ],
     "deny": []
   }

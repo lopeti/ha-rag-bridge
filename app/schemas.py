@@ -1,9 +1,11 @@
 from pydantic import BaseModel, field_validator, ConfigDict, Field
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 class Request(BaseModel):
     user_message: str
+    conversation_history: Optional[List["ChatMessage"]] = None
+    conversation_id: Optional[str] = None
 
 
 class ChatMessage(BaseModel):
@@ -46,6 +48,7 @@ class ExecResult(BaseModel):
     status: str
     message: str
 
+
 class EdgeCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     from_: str = Field(alias="_from")
@@ -55,13 +58,13 @@ class EdgeCreate(BaseModel):
     source: str | None = None
     ts_created: str | None = None
 
-    @field_validator('label')
+    @field_validator("label")
     @classmethod
     def _valid_label(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError('label must not be empty')
+            raise ValueError("label must not be empty")
         if len(v) > 30:
-            raise ValueError('label too long')
+            raise ValueError("label too long")
         return v
 
 
@@ -69,4 +72,3 @@ class EdgeResult(BaseModel):
     status: str
     edge_key: str
     action: str
-
