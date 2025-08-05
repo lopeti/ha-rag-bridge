@@ -3,9 +3,11 @@ Conversation analyzer service for context-aware entity prioritization.
 Handles Hungarian language processing, area detection, and conversation context analysis.
 """
 
+import os
 import re
 from typing import List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass
+from cachetools import TTLCache  # type: ignore
 
 from ha_rag_bridge.logging import get_logger
 from app.schemas import ChatMessage
@@ -28,7 +30,10 @@ class ConversationContext:
 class ConversationAnalyzer:
     """Analyzes conversation context for better entity prioritization."""
 
-    # Hungarian area detection patterns with aliases
+    # Cache for dynamically loaded aliases (TTL: 10 minutes)
+    _aliases_cache = TTLCache(maxsize=1, ttl=600)
+
+    # Hungarian area detection patterns with aliases (base patterns)
     AREA_PATTERNS = {
         "kert": [
             "kert",
@@ -125,12 +130,84 @@ class ConversationAnalyzer:
     def __init__(self):
         """Initialize the conversation analyzer."""
         self._compile_patterns()
+        self._load_dynamic_aliases()
 
     def _compile_patterns(self):
         """Compile regex patterns for better performance."""
         self.control_re = re.compile("|".join(self.CONTROL_PATTERNS), re.IGNORECASE)
         self.read_re = re.compile("|".join(self.READ_PATTERNS), re.IGNORECASE)
         self.follow_up_re = re.compile("|".join(self.FOLLOW_UP_PATTERNS), re.IGNORECASE)
+
+    def _load_dynamic_aliases(self):
+        """Load entity aliases from database and merge with static patterns."""
+        cache_key = "area_aliases"
+
+        if cache_key in self._aliases_cache:
+            self.dynamic_area_patterns = self._aliases_cache[cache_key]
+            return
+
+        try:
+            from arango import ArangoClient
+
+            # Initialize database connection
+            arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
+            db = arango.db(
+                os.getenv("ARANGO_DB", "_system"),
+                username=os.environ["ARANGO_USER"],
+                password=os.environ["ARANGO_PASS"],
+            )
+
+            # Query for entities with aliases
+            cursor = db.aql.execute(
+                """
+                FOR e IN entity 
+                FILTER e.text LIKE '%Aliases:%' AND e.area != null
+                RETURN {
+                    area: e.area,
+                    text: e.text
+                }
+            """
+            )
+
+            # Start with base patterns
+            dynamic_patterns = {}
+            for area, patterns in self.AREA_PATTERNS.items():
+                dynamic_patterns[area] = list(patterns)  # Copy base patterns
+
+            # Add aliases from database
+            for entity in cursor:
+                area = entity["area"]
+                text = entity["text"]
+
+                if "Aliases:" in text:
+                    aliases_part = text.split("Aliases:")[-1].strip()
+                    if aliases_part:
+                        # Split aliases by space and add them
+                        aliases = [
+                            alias.strip()
+                            for alias in aliases_part.split()
+                            if alias.strip()
+                        ]
+
+                        # Ensure area exists in patterns
+                        if area not in dynamic_patterns:
+                            dynamic_patterns[area] = []
+
+                        # Add unique aliases
+                        for alias in aliases:
+                            if alias not in dynamic_patterns[area]:
+                                dynamic_patterns[area].append(alias)
+                                logger.debug(f"Added alias '{alias}' for area '{area}'")
+
+            self.dynamic_area_patterns = dynamic_patterns
+            self._aliases_cache[cache_key] = dynamic_patterns
+
+            logger.info(f"Loaded dynamic aliases for {len(dynamic_patterns)} areas")
+
+        except Exception as exc:
+            logger.warning(f"Failed to load dynamic aliases: {exc}")
+            # Fallback to static patterns
+            self.dynamic_area_patterns = dict(self.AREA_PATTERNS)
 
     def analyze_conversation(
         self,
@@ -183,13 +260,16 @@ class ConversationAnalyzer:
         return context
 
     def _extract_areas(self, text: str) -> Set[str]:
-        """Extract area mentions from text using Hungarian patterns."""
+        """Extract area mentions from text using Hungarian patterns and dynamic aliases."""
         areas = set()
         text_lower = text.lower()
 
-        for area, patterns in self.AREA_PATTERNS.items():
+        # Use dynamic patterns that include database aliases
+        patterns_to_use = getattr(self, "dynamic_area_patterns", self.AREA_PATTERNS)
+
+        for area, patterns in patterns_to_use.items():
             for pattern in patterns:
-                if pattern in text_lower:
+                if pattern.lower() in text_lower:
                     areas.add(area)
                     logger.debug(f"Found area '{area}' from pattern '{pattern}'")
 

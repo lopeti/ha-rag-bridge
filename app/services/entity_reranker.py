@@ -5,9 +5,9 @@ Integrates with conversation analyzer to provide context-aware entity ranking.
 
 import time
 import hashlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-from cachetools import TTLCache
+from cachetools import TTLCache  # type: ignore
 
 from ha_rag_bridge.logging import get_logger
 from app.schemas import ChatMessage
@@ -344,15 +344,413 @@ class EntityReranker:
 
         return factors
 
+    def _create_human_readable_entity_name(self, entity: Dict[str, Any]) -> str:
+        """
+        Create a human-readable entity name with area information.
+
+        Args:
+            entity: Entity document
+
+        Returns:
+            Human-readable entity description
+        """
+        friendly_name = entity.get("friendly_name", "")
+        area = entity.get("area", "")
+        entity_id = entity.get("entity_id", "")
+
+        # Extract aliases from text field if available
+        text = entity.get("text", "")
+        aliases = ""
+        if "Aliases:" in text:
+            aliases_part = text.split("Aliases:")[-1].strip()
+            if aliases_part:
+                aliases = f" ({aliases_part})"
+
+        # Create readable name
+        if friendly_name and friendly_name.lower() != "temperature":
+            name = friendly_name
+        else:
+            # Use domain-specific naming
+            domain = entity.get("domain", "")
+
+            if domain == "sensor":
+                if "temperature" in entity_id.lower():
+                    name = "Hőmérséklet szenzor"
+                elif "humidity" in entity_id.lower():
+                    name = "Páratartalom szenzor"
+                elif "pressure" in entity_id.lower():
+                    name = "Légnyomás szenzor"
+                else:
+                    name = f"{friendly_name or 'Szenzor'}"
+            elif domain == "light":
+                name = "Világítás"
+            elif domain == "switch":
+                name = "Kapcsoló"
+            else:
+                name = friendly_name or entity_id
+
+        # Add area information
+        if area:
+            area_name = area.replace("_", " ").title()
+            name += f" ({area_name} területen)"
+
+        # Add aliases if available
+        name += aliases
+
+        return name
+
+    class SystemPromptFormatter:
+        """Different formatting strategies for system prompts based on context"""
+
+        @classmethod
+        def compact_format(cls, primary_entities, related_entities, areas_info):
+            """Ultra-compact format for token-limited contexts or many entities"""
+            parts = ["You are a Home Assistant agent.\n"]
+
+            if primary_entities:
+                primary_strs = []
+                for pe in primary_entities:
+                    entity = pe.entity
+                    name = cls._get_clean_name(entity)
+                    area = entity.get("area", "")
+                    value = cls._get_value_str(entity)
+                    primary_strs.append(f"{name} [{area}]{value}")
+                parts.append(f"Primary: {' | '.join(primary_strs)}")
+
+            if related_entities:
+                related_strs = []
+                for re in related_entities:
+                    entity = re.entity
+                    name = cls._get_clean_name(entity)
+                    area = entity.get("area", "")
+                    value = cls._get_value_str(entity)
+                    related_strs.append(f"{name} [{area}]{value}")
+                parts.append(f"Related: {' | '.join(related_strs)}")
+
+            if areas_info:
+                area_strs = []
+                for area, aliases in areas_info.items():
+                    if aliases:
+                        area_strs.append(f"{area} ({', '.join(aliases)})")
+                    else:
+                        area_strs.append(area)
+                parts.append(f"Areas: {', '.join(area_strs)}")
+
+            return "\n".join(parts)
+
+        @classmethod
+        def detailed_format(cls, primary_entities, related_entities, areas_info):
+            """Standard detailed format"""
+            parts = ["You are a Home Assistant agent.\n"]
+
+            if primary_entities:
+                if len(primary_entities) == 1:
+                    parts.append("Primary entity:")
+                else:
+                    parts.append("Primary entities:")
+
+                for pe in primary_entities:
+                    entity = pe.entity
+                    name = cls._get_clean_name(entity)
+                    area = entity.get("area", "")
+                    value = cls._get_value_str(entity)
+                    parts.append(f"- {name} [{area}]{value}")
+
+            if related_entities:
+                parts.append("\nRelated entities:")
+                for re in related_entities:
+                    entity = re.entity
+                    name = cls._get_clean_name(entity)
+                    area = entity.get("area", "")
+                    value = cls._get_value_str(entity)
+                    parts.append(f"- {name} [{area}]{value}")
+
+            if areas_info:
+                parts.append("\nAreas:")
+                for area, aliases in areas_info.items():
+                    if aliases:
+                        parts.append(f"- {area}: {', '.join(aliases)}")
+                    else:
+                        parts.append(f"- {area}")
+
+            return "\n".join(parts)
+
+        @classmethod
+        def grouped_by_area_format(cls, primary_entities, related_entities, areas_info):
+            """Group entities by area for spatial queries"""
+            parts = ["You are a Home Assistant agent.\n"]
+            parts.append("Entities by area:\n")
+
+            # Group all entities by area
+            area_groups = {}
+            all_entities = primary_entities + related_entities
+
+            for entity_score in all_entities:
+                entity = entity_score.entity
+                area = entity.get("area", "unknown")
+                if area not in area_groups:
+                    area_groups[area] = []
+
+                name = cls._get_clean_name(entity)
+                value = cls._get_value_str(entity)
+                is_primary = entity_score in primary_entities
+                prefix = "[P] " if is_primary else "[R] "
+                area_groups[area].append(f"- {prefix}{name}{value}")
+
+            for area, entities in area_groups.items():
+                area_aliases = areas_info.get(area, [])
+                if area_aliases:
+                    parts.append(f"{area} ({', '.join(area_aliases)}):")
+                else:
+                    parts.append(f"{area}:")
+                parts.extend(entities)
+                parts.append("")  # Empty line between areas
+
+            return "\n".join(parts).rstrip()
+
+        @classmethod
+        def tldr_format(cls, primary_entities, related_entities, areas_info):
+            """Detailed format with TL;DR summary"""
+            detailed = cls.detailed_format(
+                primary_entities, related_entities, areas_info
+            )
+
+            # Generate TL;DR summary
+            summary_parts = []
+
+            # Count entities by area
+            area_counts = {}
+            all_entities = primary_entities + related_entities
+            for entity_score in all_entities:
+                area = entity_score.entity.get("area", "unknown")
+                area_counts[area] = area_counts.get(area, 0) + 1
+
+            # Create concise summary
+            if area_counts:
+                area_summaries = []
+                for area, count in area_counts.items():
+                    area_summaries.append(f"{area} ({count} entities)")
+                summary_parts.append(f"Monitoring: {', '.join(area_summaries)}")
+
+            if summary_parts:
+                tldr = f"\nTL;DR: {' | '.join(summary_parts)}"
+                return detailed + tldr
+
+            return detailed
+
+        @classmethod
+        def _get_clean_name(cls, entity):
+            """Get clean entity name without area repetition"""
+            friendly_name = entity.get("friendly_name", "")
+            entity_id = entity.get("entity_id", "")
+            domain = entity.get("domain", "")
+            device_class = entity.get("device_class", "")
+
+            # Use friendly name if available and meaningful
+            if friendly_name and friendly_name.lower() not in [
+                "temperature",
+                "humidity",
+                "pressure",
+            ]:
+                return friendly_name
+
+            # Generate descriptive name based on domain/device_class
+            if domain == "sensor":
+                if "temperature" in entity_id.lower() or device_class == "temperature":
+                    return "Hőmérséklet"
+                elif "humidity" in entity_id.lower() or device_class == "humidity":
+                    return "Páratartalom"
+                elif "pressure" in entity_id.lower() or device_class == "pressure":
+                    return "Légnyomás"
+                elif "motion" in entity_id.lower():
+                    return "Mozgás"
+                elif "door" in entity_id.lower():
+                    return "Ajtó"
+                elif "window" in entity_id.lower():
+                    return "Ablak"
+                else:
+                    return friendly_name or "Szenzor"
+            elif domain == "light":
+                return "Világítás"
+            elif domain == "switch":
+                return "Kapcsoló"
+            elif domain == "climate":
+                return "Klíma"
+            else:
+                return friendly_name or entity_id
+
+        @classmethod
+        def _get_value_str(cls, entity):
+            """Get formatted value string for entity"""
+            from app.services.state_service import get_last_state
+
+            if entity.get("domain") == "sensor":
+                entity_id = entity.get("entity_id", "")
+                current_value = get_last_state(entity_id)
+                if current_value is not None:
+                    return f": {current_value}"
+            return ""
+
+    def _categorize_entities(
+        self,
+        ranked_entities: List[EntityScore],
+        query: str,
+        max_primary: int,
+        max_related: int,
+    ) -> Tuple[List[EntityScore], List[EntityScore]]:
+        """
+        Intelligently categorize entities into primary and related based on
+        score thresholds, area context, and device classes.
+
+        Args:
+            ranked_entities: List of ranked entities
+            query: User query
+            max_primary: Maximum primary entities
+            max_related: Maximum related entities
+
+        Returns:
+            Tuple of (primary_entities, related_entities)
+        """
+        if not ranked_entities:
+            return [], []
+
+        # Get top score for normalization
+        top_score = ranked_entities[0].final_score if ranked_entities else 0
+
+        # Analyze query context
+        from app.services.conversation_analyzer import conversation_analyzer
+
+        context = conversation_analyzer.analyze_conversation(query)
+        areas_mentioned = context.areas_mentioned
+        device_classes_mentioned = context.device_classes_mentioned
+
+        primary_entities: List[EntityScore] = []
+        related_entities: List[EntityScore] = []
+
+        # Track what we've seen to ensure diversity
+        seen_device_classes: set[str] = set()
+        seen_areas: set[str] = set()
+
+        for entity_score in ranked_entities:
+            entity = entity_score.entity
+            score = entity_score.final_score
+            entity_area = entity.get("area", "")
+            device_class = entity.get("device_class", "")
+
+            # Calculate if this should be primary based on multiple factors
+            is_primary = False
+
+            # Factor 1: High relevance score (relative to top score)
+            score_threshold = max(0.3, top_score * 0.7) if top_score > 0 else 0.3
+            high_score = score >= score_threshold
+
+            # Factor 2: Matches area context perfectly
+            perfect_area_match = entity_area in areas_mentioned
+
+            # Factor 3: Matches device class context perfectly
+            perfect_device_match = device_class in device_classes_mentioned
+
+            # Factor 4: Is in same area as other primary entities (clustering)
+            same_area_as_primary = any(
+                pe.entity.get("area") == entity_area for pe in primary_entities
+            )
+
+            # Factor 5: Provides complementary information (different device classes)
+            complementary_device = (
+                device_class not in seen_device_classes
+                and len(seen_device_classes)
+                < 3  # Max 3 different device classes as primary
+            )
+
+            # Decision logic for primary entities
+            if len(primary_entities) < max_primary:
+                # First entity is always primary if it has decent score
+                if not primary_entities and score > 0.1:
+                    is_primary = True
+                # Perfect matches are primary
+                elif perfect_area_match and (perfect_device_match or high_score):
+                    is_primary = True
+                # High scoring entities in same area as existing primaries
+                elif same_area_as_primary and high_score and complementary_device:
+                    is_primary = True
+                # High scoring entities with complementary device classes
+                elif high_score and complementary_device and len(primary_entities) < 3:
+                    is_primary = True
+
+            if is_primary:
+                primary_entities.append(entity_score)
+                seen_device_classes.add(device_class)
+                seen_areas.add(entity_area)
+            elif len(related_entities) < max_related:
+                related_entities.append(entity_score)
+
+        logger.debug(
+            f"Categorized {len(primary_entities)} primary and {len(related_entities)} related entities",
+            primary_areas=list(seen_areas),
+            primary_device_classes=list(seen_device_classes),
+        )
+
+        return primary_entities, related_entities
+
+    def _select_formatter(
+        self,
+        query: str,
+        primary_entities: List[EntityScore],
+        related_entities: List[EntityScore],
+    ) -> str:
+        """Intelligently select the best formatter based on query and entity context"""
+        from app.services.conversation_analyzer import conversation_analyzer
+
+        context = conversation_analyzer.analyze_conversation(query)
+        total_entities = len(primary_entities) + len(related_entities)
+        areas_mentioned = context.areas_mentioned
+
+        # Select formatter based on context
+        if total_entities > 8:
+            return "compact"
+        elif len(areas_mentioned) > 2:
+            return "tldr"
+        elif len(areas_mentioned) == 1:
+            return "grouped_by_area"
+        else:
+            return "detailed"
+
+    def _collect_areas_info(self, entities: List[EntityScore]) -> Dict[str, List[str]]:
+        """Collect area information and aliases from entities"""
+        areas_info = {}
+
+        for entity_score in entities:
+            entity = entity_score.entity
+            area = entity.get("area", "")
+            if not area:
+                continue
+
+            if area not in areas_info:
+                # Extract aliases from entity text if available
+                text = entity.get("text", "")
+                aliases = []
+                if "Aliases:" in text:
+                    aliases_part = text.split("Aliases:")[-1].strip()
+                    if aliases_part:
+                        aliases = [
+                            alias.strip()
+                            for alias in aliases_part.split()
+                            if alias.strip()
+                        ]
+                areas_info[area] = aliases
+
+        return areas_info
+
     def create_hierarchical_system_prompt(
         self,
         ranked_entities: List[EntityScore],
         query: str,
-        max_primary: int = 1,
-        max_related: int = 3,
+        max_primary: int = 7,  # Increased for more entities
+        max_related: int = 8,  # Increased for more entities
     ) -> str:
         """
-        Create hierarchical system prompt with primary and related entities.
+        Create hierarchical system prompt with multiple primary and related entities.
+        Uses intelligent formatting based on query context and entity count.
 
         Args:
             ranked_entities: List of ranked entities
@@ -366,86 +764,37 @@ class EntityReranker:
         if not ranked_entities:
             return "You are a Home Assistant agent.\n"
 
-        primary_entities = ranked_entities[:max_primary]
-        related_entities = ranked_entities[max_primary : max_primary + max_related]
-
-        prompt_parts = ["You are a Home Assistant agent.\n"]
-
-        # Primary entities section
-        if primary_entities:
-            if len(primary_entities) == 1:
-                entity = primary_entities[0].entity
-                entity_id = entity.get("entity_id", "")
-                area = entity.get("area", "")
-                area_text = f" [{area}]" if area else ""
-
-                prompt_parts.append(f"Primary entity: {entity_id}{area_text}")
-
-                # Add current state for sensors
-                if entity.get("domain") == "sensor":
-                    from app.services.state_service import get_last_state
-
-                    current_value = get_last_state(entity_id)
-                    if current_value is not None:
-                        prompt_parts.append(f"Current value: {current_value}")
-            else:
-                prompt_parts.append("Primary entities:")
-                for score in primary_entities:
-                    entity = score.entity
-                    entity_id = entity.get("entity_id", "")
-                    area = entity.get("area", "")
-                    area_text = f" [{area}]" if area else ""
-
-                    # Add current value for each primary sensor
-                    if entity.get("domain") == "sensor":
-                        from app.services.state_service import get_last_state
-
-                        current_value = get_last_state(entity_id)
-                        if current_value is not None:
-                            prompt_parts.append(
-                                f"- {entity_id}{area_text}: {current_value}"
-                            )
-                        else:
-                            prompt_parts.append(f"- {entity_id}{area_text}")
-                    else:
-                        prompt_parts.append(f"- {entity_id}{area_text}")
-
-        # Related entities section
-        if related_entities:
-            prompt_parts.append("\nRelated entities:")
-            for score in related_entities:
-                entity = score.entity
-                entity_id = entity.get("entity_id", "")
-                area = entity.get("area", "")
-                area_text = f" [{area}]" if area else ""
-
-                # Add current value for related sensors too
-                if entity.get("domain") == "sensor":
-                    from app.services.state_service import get_last_state
-
-                    current_value = get_last_state(entity_id)
-                    if current_value is not None:
-                        prompt_parts.append(
-                            f"- {entity_id}{area_text}: {current_value}"
-                        )
-                    else:
-                        prompt_parts.append(f"- {entity_id}{area_text}")
-                else:
-                    prompt_parts.append(f"- {entity_id}{area_text}")
-
-        # All domains for service catalog
-        all_entities = primary_entities + related_entities
-        domains = sorted(
-            [
-                domain
-                for entity in all_entities
-                if (domain := entity.entity.get("domain")) is not None
-            ]
+        # Intelligently determine primary entities based on score thresholds and context
+        primary_entities, related_entities = self._categorize_entities(
+            ranked_entities, query, max_primary, max_related
         )
-        if domains:
-            prompt_parts.append(f"\nRelevant domains: {','.join(domains)}")
 
-        return "\n".join(prompt_parts) + "\n"
+        # Collect areas information
+        all_entities = primary_entities + related_entities
+        areas_info = self._collect_areas_info(all_entities)
+
+        # Select the best formatter
+        formatter_type = self._select_formatter(
+            query, primary_entities, related_entities
+        )
+
+        # Apply the selected formatter
+        if formatter_type == "compact":
+            return self.SystemPromptFormatter.compact_format(
+                primary_entities, related_entities, areas_info
+            )
+        elif formatter_type == "grouped_by_area":
+            return self.SystemPromptFormatter.grouped_by_area_format(
+                primary_entities, related_entities, areas_info
+            )
+        elif formatter_type == "tldr":
+            return self.SystemPromptFormatter.tldr_format(
+                primary_entities, related_entities, areas_info
+            )
+        else:
+            return self.SystemPromptFormatter.detailed_format(
+                primary_entities, related_entities, areas_info
+            )
 
 
 # Global instance for reuse

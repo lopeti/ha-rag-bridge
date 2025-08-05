@@ -146,7 +146,9 @@ def query_arango(
     aql = (
         "LET knn = ("
         "FOR e IN entity "
-        "SORT APPROX_NEAR_COSINE(e.embedding, @qv, { nProbe: @nprobe }) DESC "
+        "FILTER LENGTH(e.embedding) > 0 "
+        "LET score = COSINE_SIMILARITY(e.embedding, @qv) "
+        "SORT score DESC "
         "LIMIT @k "
         "RETURN e) "
         "LET txt = ("
@@ -159,9 +161,7 @@ def query_arango(
         "LIMIT @k "
         "RETURN e"
     )
-    cursor = db.aql.execute(
-        aql, bind_vars={"qv": q_vec, "msg": q_text, "k": k, "nprobe": nprobe}
-    )
+    cursor = db.aql.execute(aql, bind_vars={"qv": q_vec, "msg": q_text, "k": k})
     return list(cursor)
 
 
@@ -183,8 +183,9 @@ def query_manual(
     aql = (
         "LET knn = ("
         "FOR d IN document "
-        "FILTER d.document_id == @doc "
-        "SORT APPROX_NEAR_COSINE(d.embedding, @qv, { nProbe: @nprobe }) DESC "
+        "FILTER d.document_id == @doc AND LENGTH(d.embedding) > 0 "
+        "LET score = COSINE_SIMILARITY(d.embedding, @qv) "
+        "SORT score DESC "
         "LIMIT @k "
         "RETURN d.text) "
         "LET txt = ("
@@ -204,7 +205,6 @@ def query_manual(
             "qv": q_vec,
             "msg": q_text,
             "k": k,
-            "nprobe": nprobe,
         },
     )
     return list(cursor)
@@ -319,12 +319,12 @@ async def process_request(payload: schemas.Request):
                 system_prompt_type="hierarchical",
             )
 
-        # Create hierarchical system prompt with more entities
+        # Create hierarchical system prompt with more entities using new formatter system
         system_prompt = entity_reranker.create_hierarchical_system_prompt(
             ranked_entities=ranked_entities,
             query=payload.user_message,
-            max_primary=1,
-            max_related=5,  # Növelve 3-ról 5-re
+            max_primary=4,  # Increased for multi-primary entity support
+            max_related=6,  # Increased for richer context
         )
 
         # Add manual hints for primary entity if available

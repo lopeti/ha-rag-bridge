@@ -131,3 +131,23 @@ The project uses Docker Compose for development with multiple stack configuratio
 - Device-manual associations via edge collection
 - Manual hint injection during query processing
 - Area containment and adjacency relationships
+
+**Smart Home Intelligence System** (`app/services/`)
+- **Conversation Analyzer** (`conversation_analyzer.py`) - Hungarian/English context understanding with area/domain detection
+- **Entity Reranker** (`entity_reranker.py`) - Cross-encoder semantic scoring with multi-primary entity support
+- **Multi-Formatter System** - Intelligent prompt formatting: compact/detailed/grouped_by_area/tldr based on context
+- **Context-Aware Entity Prioritization** - Replaces hardcoded result selection with semantic relevance scoring
+
+### Implementation Status
+
+**Sprint 1: Context-Aware Entity Prioritization** ✅ COMPLETED
+- Hungarian conversation analysis with comprehensive area aliases
+- Cross-encoder entity reranking (ms-marco-MiniLM-L-6-v2)
+- Hierarchical system prompt generation with current sensor values
+- Performance: <10ms conversation analysis, <200ms entity ranking
+
+**Sprint 1.5: Multi-Primary Entity Formatter System** ✅ COMPLETED  
+- 4-formatter pattern system for optimal token usage
+- Multi-primary entity support (up to 4 primary + 6 related entities)
+- Intelligent categorization: complementary entity grouping (temperature + humidity + climate)
+- Context-aware formatting selection based on query complexity and area count
