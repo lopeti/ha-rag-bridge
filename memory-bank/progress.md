@@ -105,18 +105,21 @@
 
 ## Doing
 
-### Sprint 2 Preparation: ArangoDB Conversation Tracking
-- Planning conversation graph schema design
-- Investigating ArangoDB edge collections for conversation memory
-- Designing session tracking and context persistence
-- Preparing LiteLLM hook enhancements for full conversation context
+### Sprint 2 Preparation: Cluster-based RAG Optimization
+- ✅ Comprehensive analysis completed of current multi-turn conversation limitations
+- ✅ Smart "zoom level" query scope detection strategy designed
+- ✅ 3-tier cluster architecture planned (micro/macro/overview clusters)
+- ✅ Graph-based semantic clustering approach leveraging existing ArangoDB edge infrastructure
+- 📋 Detailed implementation plan documented in `cluster-based-rag-optimization.md`
 
 ## Next
 
-### Sprint 2: ArangoDB Conversation Tracking (2-3 weeks)
-- **Goal**: Graph-based conversation memory foundation
-- **Primary Objective**: Multi-turn conversations with persistent context
-- **Key Features**: conversation_id generation, turn sequence management, context transition detection
+### Sprint 2: Cluster-based RAG Optimization (8-10 weeks)
+- **Goal**: Semantic entity clustering with adaptive query scope detection
+- **Primary Objective**: Fix multi-turn conversation context loss and improve entity retrieval relevance
+- **Phase 1** (2-3 weeks): Core cluster infrastructure (`cluster`, `cluster_entity`, `conversation_memory` collections)
+- **Phase 2** (2-3 weeks): Adaptive scope detection (micro/macro/overview query classification)
+- **Phase 3** (3-4 weeks): Multi-turn conversation memory with TTL-based entity persistence
 
 ### Future Sprints:
 - **Sprint 3**: MindsDB integration for basic pattern recognition (shower activity detection)

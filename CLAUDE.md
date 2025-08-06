@@ -32,6 +32,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `ha-rag-bootstrap --reindex [collection]` - Rebuild vector indexes
 - `make migrate` - Run ArangoDB migrations (requires arangosh)
 
+### Cluster-based RAG Development (Planned)
+- **Phase 1**: Core cluster infrastructure - `cluster` and `cluster_entity` collections
+- **Phase 2**: Adaptive scope detection - query classification and variable k-values  
+- **Phase 3**: Conversation memory - multi-turn context with TTL-based entity caching
+- See `memory-bank/cluster-based-rag-optimization.md` for detailed implementation plan
+
 ### Application
 - `poetry run uvicorn app.main:app --reload` - Run FastAPI server in development
 - `poetry run python demo.py "query"` - Run demo with query
@@ -53,9 +59,10 @@ This is a Home Assistant RAG (Retrieval Augmented Generation) bridge that syncs 
 **Database Layer** (`ha_rag_bridge/db/`)
 - ArangoDB integration with vector indexes for semantic search
 - Collections: `entity` (HA entities), `document` (device manuals), `area`, `device`, `edge` (relationships)
+- **Planned**: `cluster` (semantic entity groups), `cluster_entity` (cluster-entity relationships), `conversation_memory` (multi-turn context cache)
 - ArangoSearch view `v_meta` for hybrid vector/text search
 - TTL indexes for automatic event cleanup (30-day retention)
-- Graph relationships: device-manual links, area adjacency
+- Graph relationships: device-manual links, area adjacency, planned cluster-entity associations
 
 **Bootstrap System** (`ha_rag_bridge/bootstrap/`)
 - CLI tool for database initialization and schema management
@@ -73,9 +80,26 @@ This is a Home Assistant RAG (Retrieval Augmented Generation) bridge that syncs 
 ### Data Flow
 
 1. **Ingestion**: Entity metadata from Home Assistant → ArangoDB collections
-2. **Query Processing**: User query → embedding vector → ArangoDB vector search → relevant entities
+2. **Query Processing**: User query → embedding vector → **Planned: semantic cluster search** → ArangoDB vector search → relevant entities
 3. **Tool Generation**: Found entities → HA service definitions → OpenAI tool schema
 4. **Execution**: LLM tool calls → Home Assistant API calls → execution results
+
+### Planned Enhancements (Cluster-based RAG Optimization)
+
+**Smart Query Scope Detection ("Zoom Level" System)**
+- **Micro queries** (k=5-10): Specific entity operations like "kapcsold fel a lámpát" → targeted cluster lookup
+- **Macro queries** (k=15-30): Area-based queries like "mi van a nappaliban" → area-specific clusters
+- **Overview queries** (k=30-50): House-wide queries like "mi a helyzet otthon" → summary clusters
+
+**Semantic Entity Clustering**
+- Pre-computed entity clusters for common use cases (solar performance, climate control, security)
+- Graph-based cluster-entity relationships with relevance weights
+- Hierarchical clusters: micro (specific function) → macro (area/domain) → overview (house-level)
+
+**Multi-turn Conversation Memory**
+- Conversation-scoped entity cache with 15-minute TTL
+- Previous entity boosting in reranking algorithm
+- Smart query augmentation using conversation context
 
 ### Key Configuration
 
@@ -151,3 +175,10 @@ The project uses Docker Compose for development with multiple stack configuratio
 - Multi-primary entity support (up to 4 primary + 6 related entities)
 - Intelligent categorization: complementary entity grouping (temperature + humidity + climate)
 - Context-aware formatting selection based on query complexity and area count
+
+**Sprint 2: Cluster-based RAG Optimization** 📋 PLANNED
+- Semantic entity clustering with pre-computed embeddings (solar, climate, security, lighting clusters)
+- Smart query scope detection ("zoom level" system: micro/macro/overview queries)
+- Multi-turn conversation memory with TTL-based entity persistence
+- Graph-based cluster-entity relationships using existing ArangoDB edge infrastructure
+- See `memory-bank/cluster-based-rag-optimization.md` for detailed specifications

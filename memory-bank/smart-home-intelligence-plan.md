@@ -22,11 +22,12 @@ Home Assistant → Extended OpenAI → LiteLLM Proxy → ha-rag-bridge
 ```
 
 ### Key Components
-- **ArangoDB**: Graph-based conversation tracking, entity relationships, temporal patterns
+- **ArangoDB**: Graph-based conversation tracking, entity relationships, temporal patterns, **semantic clusters**
 - **MindsDB**: ML models for activity detection, anomaly recognition, behavioral learning
 - **LlamaCPP**: Local AI reasoning (15 tok/sec Mistral 7B Q5) for pattern explanation
 - **Cross-encoder**: Conversation-aware entity reranking
-- **Enhanced RAG**: Context-aware system prompt generation
+- **Enhanced RAG**: Context-aware system prompt generation, **cluster-based entity retrieval**
+- **Smart Scope Detection**: Adaptive "zoom level" query processing (micro/macro/overview)
 
 ## Sprint-Based Implementation
 
