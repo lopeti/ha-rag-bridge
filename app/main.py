@@ -228,7 +228,7 @@ def service_to_tool(domain: str, name: str, spec: Dict[str, Any]) -> Dict[str, A
 
 
 def retrieve_entities(
-    db, q_vec: Sequence[float], q_text: str, k_list=(5, 15)
+    db, q_vec: Sequence[float], q_text: str, k_list=(15, 15)
 ) -> List[dict]:
     for k in k_list:
         ents = query_arango(db, q_vec, q_text, k)
@@ -256,7 +256,13 @@ async def process_request(payload: schemas.Request):
     emb_backend = get_embedding_backend(backend_name)
 
     try:
-        query_vector = emb_backend.embed([payload.user_message])[0]
+        # Run sync embedding in thread executor to avoid asyncio conflicts
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        query_vector = await loop.run_in_executor(
+            None, lambda: emb_backend.embed([payload.user_message])[0]
+        )
     except Exception as exc:  # pragma: no cover - backend errors
         logger.error(
             "Embedding backend error",

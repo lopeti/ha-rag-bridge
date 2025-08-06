@@ -342,6 +342,23 @@ class EntityReranker:
             if entity_domain == "sensor":
                 factors["readable"] = 0.1
 
+        # Availability boost - strongly prefer entities with active state values
+        if entity_domain == "sensor" and entity_id:
+            from app.services.state_service import get_last_state
+
+            try:
+                current_value = get_last_state(entity_id)
+                if current_value is not None:
+                    factors["has_active_value"] = (
+                        2.0  # Very strong boost for active sensors
+                    )
+                else:
+                    factors["unavailable_penalty"] = (
+                        -1.0
+                    )  # Penalize unavailable sensors
+            except Exception:
+                pass  # Don't fail ranking on state service errors
+
         return factors
 
     def _create_human_readable_entity_name(self, entity: Dict[str, Any]) -> str:
