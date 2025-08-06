@@ -20,7 +20,11 @@
       "Bash(chmod:*)",
       "Bash(python:*)",
       "Bash(SKIP=black git commit -m \"fix: Improve entity ranking to prioritize active sensors over inactive ones\n\n- Add availability checking in entity ranking algorithm with 2.0 boost for active sensors\n- Apply -1.0 penalty for unavailable sensors to deprioritize them \n- Expand entity retrieval limit from 5 to 15 entities to include more sensor candidates\n- Fix async embedding execution in process_request to avoid asyncio conflicts\n- Resolves issue where inactive sensors were selected as primary despite having no values\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ha-rag-bootstrap:*)",
+      "Bash(timeout:*)",
+      "Bash(true)"
     ],
     "deny": []
   }

@@ -230,11 +230,114 @@ def service_to_tool(domain: str, name: str, spec: Dict[str, Any]) -> Dict[str, A
 def retrieve_entities(
     db, q_vec: Sequence[float], q_text: str, k_list=(15, 15)
 ) -> List[dict]:
+    """Legacy retrieve_entities function for fallback compatibility."""
     for k in k_list:
         ents = query_arango(db, q_vec, q_text, k)
         if len(ents) >= 2:
             return ents
     return query_arango_text_only(db, q_text, 10)
+
+
+def retrieve_entities_with_clusters(
+    db,
+    q_vec: Sequence[float],
+    q_text: str,
+    scope_config,
+    cluster_types: List[str],
+    k: int = 15,
+    conversation_context: Optional[dict] = None,
+) -> List[dict]:
+    """Enhanced entity retrieval with cluster-first logic.
+
+    Args:
+        db: ArangoDB database connection
+        q_vec: Query embedding vector
+        q_text: Query text
+        scope_config: Query scope configuration
+        cluster_types: Types of clusters to search
+        k: Number of entities to retrieve
+        conversation_context: Optional conversation context
+
+    Returns:
+        List of relevant entities prioritized by semantic clusters
+    """
+    from .services.cluster_manager import cluster_manager
+
+    try:
+        # Phase 1: Search for relevant clusters
+        relevant_clusters = cluster_manager.search_clusters(
+            query_vector=list(q_vec),
+            cluster_types=cluster_types,
+            k=min(5, k // 3),  # Search fewer clusters but expand to more entities
+            threshold=scope_config.threshold,
+        )
+
+        cluster_entities = []
+        if relevant_clusters:
+            # Phase 2: Expand clusters to entities
+            cluster_keys = [c["_key"] for c in relevant_clusters]
+            cluster_entities = cluster_manager.get_cluster_entities(cluster_keys)
+
+            # Apply cluster boost to entity scores
+            for ce in cluster_entities:
+                entity = ce["entity"]
+                # Add cluster context metadata
+                entity["_cluster_context"] = {
+                    "cluster_key": ce["cluster_key"],
+                    "role": ce["role"],
+                    "weight": ce["weight"],
+                    "context_boost": ce["context_boost"],
+                }
+
+            logger.debug(
+                f"Cluster-first retrieval found {len(cluster_entities)} entities "
+                f"from {len(relevant_clusters)} clusters"
+            )
+
+        # Phase 3: Hybrid fallback - combine cluster entities with vector search
+        cluster_entity_ids = {
+            ce["entity"]["entity_id"]
+            for ce in cluster_entities
+            if ce["entity"].get("entity_id")
+        }
+
+        # Get additional entities via traditional vector search
+        vector_k = max(
+            k - len(cluster_entities), k // 2
+        )  # Ensure we get enough entities
+        vector_entities = query_arango(db, q_vec, q_text, vector_k)
+
+        # Combine results, prioritizing cluster entities
+        combined_entities = []
+
+        # Add cluster entities first
+        combined_entities.extend([ce["entity"] for ce in cluster_entities])
+
+        # Add vector entities that aren't already in cluster results
+        for ve in vector_entities:
+            if ve.get("entity_id") not in cluster_entity_ids:
+                combined_entities.append(ve)
+                if len(combined_entities) >= k:
+                    break
+
+        # If still not enough entities, use text-only fallback
+        if len(combined_entities) < 2:
+            logger.debug("Falling back to text-only search")
+            return query_arango_text_only(db, q_text, k)
+
+        logger.info(
+            f"Enhanced retrieval: {len(cluster_entities)} from clusters, "
+            f"{len(combined_entities) - len(cluster_entities)} from vector search"
+        )
+
+        return combined_entities[:k]
+
+    except Exception as exc:
+        logger.warning(
+            f"Cluster-first retrieval failed, falling back to vector search: {exc}"
+        )
+        # Fallback to original logic
+        return retrieve_entities(db, q_vec, q_text, (k, k))
 
 
 @router.get("/health")
@@ -283,8 +386,38 @@ async def process_request(payload: schemas.Request):
 
     intent = detect_intent(payload.user_message)
 
+    # Phase 1: Detect query scope for adaptive retrieval
+    from .services.query_scope_detector import query_scope_detector
+
     try:
-        results = retrieve_entities(db, query_vector, payload.user_message)
+        detected_scope, scope_config, detection_details = (
+            query_scope_detector.detect_scope(
+                payload.user_message,
+                conversation_context=None,  # Will be enhanced with conversation analyzer integration
+            )
+        )
+
+        optimal_k = detection_details["optimal_k"]
+
+        logger.info(
+            f"Query scope detection: {detected_scope.value}",
+            query=payload.user_message[:50],
+            optimal_k=optimal_k,
+            confidence=round(detection_details["confidence"], 2),
+            formatter=scope_config.formatter,
+        )
+
+        # Phase 2: Use cluster-first retrieval with adaptive parameters
+        results = retrieve_entities_with_clusters(
+            db=db,
+            q_vec=query_vector,
+            q_text=payload.user_message,
+            scope_config=scope_config,
+            cluster_types=scope_config.cluster_types,
+            k=optimal_k,
+            conversation_context=detection_details.get("context_factors", {}),
+        )
+
     except Exception as exc:  # pragma: no cover - db errors
         logger.error(
             "Database query error",
@@ -309,7 +442,9 @@ async def process_request(payload: schemas.Request):
             query=payload.user_message,
             conversation_history=payload.conversation_history,
             conversation_id=payload.conversation_id,
-            k=10,
+            k=min(
+                optimal_k, len(results)
+            ),  # Use adaptive k but respect available results
         )
 
         # Log successful reranking
@@ -325,12 +460,17 @@ async def process_request(payload: schemas.Request):
                 system_prompt_type="hierarchical",
             )
 
-        # Create hierarchical system prompt with more entities using new formatter system
+        # Create hierarchical system prompt with adaptive formatting based on query scope
         system_prompt = entity_reranker.create_hierarchical_system_prompt(
             ranked_entities=ranked_entities,
             query=payload.user_message,
-            max_primary=4,  # Increased for multi-primary entity support
-            max_related=6,  # Increased for richer context
+            max_primary=(
+                4 if detected_scope.value != "micro" else 2
+            ),  # Fewer entities for micro queries
+            max_related=(
+                6 if detected_scope.value == "overview" else 4
+            ),  # More entities for overview
+            force_formatter=scope_config.formatter,  # Use scope-detected formatter
         )
 
         # Add manual hints for primary entity if available
@@ -431,10 +571,40 @@ async def process_request(payload: schemas.Request):
                     if name is not None:  # Ellenőrizzük, hogy a name nem None
                         tools.append(service_to_tool(str(dom), name, spec))
 
+    # Cache-friendly approach: static system prompt + dynamic context in user message
+    STATIC_SYSTEM_PROMPT = """You are an intelligent home assistant AI with deep understanding of your user's home environment.
+
+**Your Capabilities:**
+- Answer questions about home status, device states, and environmental conditions  
+- Control smart home devices through available services
+- Provide proactive insights and recommendations
+- Understand context from previous conversations
+
+**Response Guidelines:**
+- Be concise but informative - avoid unnecessary explanations
+- When controlling devices, confirm the action taken  
+- For status queries, provide current values with context (e.g., "Living room is 22.5°C, which is comfortable")
+- If multiple entities are relevant, prioritize the most important ones
+- For Hungarian queries, respond in Hungarian; for English queries, respond in English
+- When you don't have enough information, ask specific clarifying questions
+
+**Smart Reasoning:**
+- Consider relationships between entities (e.g., if heating is on but windows are open)
+- Provide seasonal or time-appropriate context when relevant
+- Suggest energy-saving or comfort optimizations when appropriate
+
+Help the user efficiently and naturally, as if you truly understand their home."""
+
+    # Dynamic context goes in user message for better LLM caching
+    user_message_with_context = f"""Current home context:
+{system_prompt}
+
+User question: {payload.user_message}"""
+
     return {
         "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": payload.user_message},
+            {"role": "system", "content": STATIC_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message_with_context},
         ],
         "tools": tools,
     }

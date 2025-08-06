@@ -764,6 +764,9 @@ class EntityReranker:
         query: str,
         max_primary: int = 7,  # Increased for more entities
         max_related: int = 8,  # Increased for more entities
+        force_formatter: Optional[
+            str
+        ] = None,  # Force specific formatter based on query scope
     ) -> str:
         """
         Create hierarchical system prompt with multiple primary and related entities.
@@ -790,8 +793,8 @@ class EntityReranker:
         all_entities = primary_entities + related_entities
         areas_info = self._collect_areas_info(all_entities)
 
-        # Select the best formatter
-        formatter_type = self._select_formatter(
+        # Select the best formatter (use force_formatter if provided)
+        formatter_type = force_formatter or self._select_formatter(
             query, primary_entities, related_entities
         )
 

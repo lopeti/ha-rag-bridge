@@ -184,6 +184,9 @@ def _bootstrap_impl(
         "event",
         "knowledge",
         "document",
+        # Phase 1: Cluster-based RAG collections
+        "cluster",
+        "conversation_memory",
     ]
     existing = {c["name"] for c in db.collections()}
     for orig in doc_cols:
@@ -203,8 +206,76 @@ def _bootstrap_impl(
     if not db.has_collection("edge"):
         safe_create_collection(db, "edge", edge=True)
 
+    # Phase 1: Create cluster_entity edge collection
+    if not db.has_collection("cluster_entity"):
+        safe_create_collection(db, "cluster_entity", edge=True)
+
     mgr = IndexManager(entity, db)
     mgr.ensure_hash(["entity_id"], unique=True)
+
+    # Phase 1: Set up cluster collection indexes
+    if db.has_collection("cluster"):
+        cluster = db.collection("cluster")
+        cluster_mgr = IndexManager(cluster, db)
+        cluster_mgr.ensure_hash(["type"])
+
+        # Create vector index for cluster embeddings
+        idx = next(
+            (
+                i
+                for i in cluster.indexes()
+                if i["type"] == "vector" and i["fields"] == ["embedding"]
+            ),
+            None,
+        )
+        if idx and idx.get("dimensions") != embed_dim:
+            cluster.delete_index(idx["id"])
+            idx = None
+        if not idx:
+            try:
+                doc_count = cluster.count()
+                if (
+                    doc_count >= 10
+                ):  # Only create vector index if we have enough documents
+                    nLists = max(
+                        2, min(10, doc_count // 5)
+                    )  # Much smaller nLists for fewer clusters
+                    default_nprobe = min(5, nLists)
+                    cluster.add_index(
+                        {
+                            "type": "vector",
+                            "fields": ["embedding"],
+                            "params": {
+                                "dimension": embed_dim,
+                                "metric": "cosine",
+                                "nLists": nLists,
+                                "defaultNProbe": default_nprobe,
+                            },
+                        }
+                    )
+                    logger.info(
+                        "Created vector index on cluster.embedding (nLists=%s, defaultNProbe=%s)",
+                        nLists,
+                        default_nprobe,
+                    )
+            except Exception as exc:
+                logger.error("Failed to create cluster vector index: %s", exc)
+
+    # Set up cluster_entity edge indexes
+    if db.has_collection("cluster_entity"):
+        cluster_entity = db.collection("cluster_entity")
+        ce_mgr = IndexManager(cluster_entity, db)
+        ce_mgr.ensure_hash(["role"])
+        ce_mgr.ensure_persistent(["weight"])
+
+    # Set up conversation_memory indexes
+    if db.has_collection("conversation_memory"):
+        conv_mem = db.collection("conversation_memory")
+        cm_mgr = IndexManager(conv_mem, db)
+        cm_mgr.ensure_hash(["conversation_id"])
+        cm_mgr.ensure_ttl(
+            "ttl", 0
+        )  # TTL index with immediate expiry based on ttl field
 
     events = db.collection("event")
     ev_mgr = IndexManager(events, db)
