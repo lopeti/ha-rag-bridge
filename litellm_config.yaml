@@ -1,4 +1,6 @@
 model_list:
+  # === CHEAP GEMINI MODELS ===
+  # Gemini 2.5 Flash - Fastest and cheapest
   - model_name: gemini-flash
     litellm_params:
       model: gemini/gemini-2.5-flash
@@ -7,12 +9,57 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
+  
+  # Gemini 1.5 Flash - Previous generation flash
+  - model_name: gemini-flash-1-5
+    litellm_params:
+      model: gemini/gemini-1.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-flash-1-5-hass
+    litellm_params:
+      model: gemini/gemini-1.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # === PREMIUM GEMINI MODELS ===
+  # Gemini 2.5 Pro - Latest premium model
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-pro-hass
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+  
+  # Gemini 1.5 Pro - Established premium model
+  - model_name: gemini-pro-1-5
+    litellm_params:
+      model: gemini/gemini-1.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-pro-1-5-hass
+    litellm_params:
+      model: gemini/gemini-1.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  # === LOCAL MISTRAL MODEL ===
+  # Local Mistral 7B - Self-hosted model
+  - model_name: mistral-7b
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.1.115:8000/v1
+      api_key: fake-key
+  - model_name: mistral-7b-hass
+    litellm_params:
+      model: openai/mistral-7b-instruct
+      api_base: http://192.168.1.115:8000/v1
+      api_key: fake-key
 environment_variables:
-  HA_RAG_API_URL: http://ha-rag-bridge:8000
+  HA_RAG_API_URL: http://bridge:8000
   HA_RAG_PLACEHOLDER: "{{HA_RAG_ENTITIES}}"
   ENABLE_HA_TOOL_EXECUTION: "true"
 general_settings:
   drop_params: true
   add_function_to_prompt: true
+  set_verbose: true
 litellm_settings:
-  callbacks: litellm_ha_rag_hooks.ha_rag_hook_instance
+  callbacks: ["litellm_ha_rag_hooks.ha_rag_hook_instance"]

@@ -26,7 +26,7 @@ services:
       - TRACK_ENTITY_CHANGES=true
       - SKIP_EXISTING_ENTITIES=false
       # Embedding settings
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - EMBED_DIM=${EMBED_DIM}
     # Network configuration for external access

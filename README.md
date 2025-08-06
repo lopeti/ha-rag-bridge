@@ -82,9 +82,9 @@ with `--skip-invalid` or automatically rename it using:
 ha-rag-bootstrap --rename-invalid
 ```
 
-## Embedding Provider
+## Embedding Backend
 
-Set `EMBEDDING_PROVIDER` to choose how text embeddings are created. Valid values:
+Set `EMBEDDING_BACKEND` to choose how text embeddings are created. Valid values:
 
 - `local` – runs on CPU using the MiniLM model from the `sentence-transformers` package.
 - `openai` – uses the OpenAI API with your `OPENAI_API_KEY`.

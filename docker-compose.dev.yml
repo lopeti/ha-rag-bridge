@@ -17,7 +17,7 @@ services:
     ports:
       - "5678:5678"
     environment:
-      - EMBEDDING_BACKEND=gemini
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_OUTPUT_DIM=1536
       - EMBED_DIM=1536

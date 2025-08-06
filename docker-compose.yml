@@ -1,14 +1,8 @@
 services:
-  influxdb:
-    image: influxdb:2.7
-    ports:
-      - "8086:8086"
-    environment:
-      - INFLUXD_REPORTING_DISABLED=true
   bridge:
     build: .
     environment:
-      - EMBEDDING_BACKEND=gemini
+      - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_OUTPUT_DIM=1536
       - EMBED_DIM=1536
@@ -24,3 +18,20 @@ services:
           --log-config docker/uvicorn_log.ini
     env_file:
       - .env
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+      - ./litellm_ha_rag_hooks.py:/app/litellm_ha_rag_hooks.py
+    command: ["--config", "/app/config.yaml", "--detailed_debug"]
+    environment:
+      - HA_RAG_API_URL=http://bridge:8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    env_file:
+      - .env
+    depends_on:
+      - bridge
