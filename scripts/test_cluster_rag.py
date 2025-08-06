@@ -9,10 +9,13 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from ha_rag_bridge.logging import get_logger
-from scripts.embedding_backends import get_backend
-from app.services.cluster_manager import ClusterManager
-from app.services.query_scope_detector import query_scope_detector, QueryScope
+from ha_rag_bridge.logging import get_logger  # noqa: E402
+from scripts.embedding_backends import get_backend  # noqa: E402
+from app.services.cluster_manager import ClusterManager  # noqa: E402
+from app.services.query_scope_detector import (
+    query_scope_detector,
+    QueryScope,
+)  # noqa: E402
 
 logger = get_logger(__name__)
 

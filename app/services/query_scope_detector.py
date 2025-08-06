@@ -1,7 +1,7 @@
 """Query scope detection service for adaptive RAG retrieval."""
 
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from enum import Enum
 from dataclasses import dataclass
 
@@ -125,7 +125,9 @@ class QueryScopeDetector:
 
         # Score each scope based on pattern matching
         scope_scores = {scope: 0.0 for scope in QueryScope}
-        matched_patterns: Dict[QueryScope, List[str]] = {scope: [] for scope in QueryScope}
+        matched_patterns: Dict[QueryScope, List[str]] = {
+            scope: [] for scope in QueryScope
+        }
 
         # Pattern-based scoring
         for scope, patterns in self.compiled_patterns.items():
