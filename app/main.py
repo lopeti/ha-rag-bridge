@@ -648,6 +648,108 @@ async def process_response(payload: schemas.LLMResponse):
     return {"status": "ok", "message": message.content}
 
 
+@router.post("/process-request-workflow")
+async def process_request_workflow(payload: schemas.Request):
+    """Process request using Phase 3 LangGraph workflow (used by hook integration)."""
+    from .langgraph_workflow.workflow import run_rag_workflow
+    from . import schemas as app_schemas
+
+    logger.info(
+        f"Processing request via Phase 3 workflow: {payload.user_message[:50]}..."
+    )
+
+    try:
+        # Convert conversation history to the format expected by workflow
+        conversation_history = []
+        if payload.conversation_history:
+            for msg in payload.conversation_history:
+                conversation_history.append({"role": msg.role, "content": msg.content})
+
+        # Extract session_id from payload
+        session_id = getattr(payload, "session_id", None) or getattr(
+            payload, "conversation_id", "default_session"
+        )
+
+        logger.info(f"Using session_id: {session_id}")
+
+        # Run the Phase 3 LangGraph workflow
+        workflow_result = await run_rag_workflow(
+            user_query=payload.user_message,
+            session_id=session_id,
+            conversation_history=conversation_history,
+        )
+
+        # Extract results from workflow
+        formatted_context = workflow_result.get("formatted_context", "")
+        retrieved_entities = workflow_result.get("retrieved_entities", [])
+        diagnostics = workflow_result.get("diagnostics", {})
+        errors = workflow_result.get("errors", [])
+
+        # Convert entities to the format expected by the response schema
+        relevant_entities = []
+        for entity in retrieved_entities[:15]:  # Limit to 15 entities
+            relevant_entities.append(
+                schemas.EntityInfo(
+                    entity_id=entity.get("entity_id", "unknown"),
+                    name=entity.get(
+                        "display_entity_id", entity.get("entity_id", "unknown")
+                    ),
+                    state=entity.get("state", "unknown"),
+                    domain=entity.get("domain", "unknown"),
+                    area_name=entity.get("area_name"),
+                    similarity=entity.get("_score", entity.get("similarity", 0.0)),
+                    aliases=[],  # Phase 3 doesn't use aliases in the same way
+                    is_primary=entity.get("_memory_boosted", False),
+                )
+            )
+
+        # Add Phase 3 diagnostics as metadata
+        metadata = None
+        if diagnostics:
+            logger.info(
+                f"Phase 3 workflow quality: {diagnostics.get('overall_quality', 0.0):.2f}"
+            )
+
+            metadata = {
+                "workflow_quality": diagnostics.get("overall_quality", 0.0),
+                "memory_entities_count": len(
+                    workflow_result.get("memory_entities", [])
+                ),
+                "memory_boosted_count": len(
+                    [e for e in retrieved_entities if e.get("_memory_boosted")]
+                ),
+                "phase": "3_langgraph_workflow",
+            }
+
+        # Build response with Phase 3 enhancements
+        response = schemas.ProcessResponse(
+            relevant_entities=relevant_entities,
+            formatted_content=formatted_context,
+            intent=workflow_result.get("conversation_context", {}).get(
+                "intent", "read"
+            ),
+            messages=[
+                app_schemas.ChatMessage(role="system", content=formatted_context)
+            ],
+            metadata=metadata,
+        )
+
+        # Log workflow errors as warnings
+        if errors:
+            logger.warning(f"Phase 3 workflow completed with errors: {errors[:3]}")
+
+        logger.info(
+            f"Phase 3 workflow completed: {len(relevant_entities)} entities, quality={diagnostics.get('overall_quality', 0.0):.2f}"
+        )
+        return response
+
+    except Exception as exc:
+        logger.error(f"Phase 3 workflow error: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Phase 3 workflow error: {str(exc)}"
+        )
+
+
 app.include_router(router)
 app.include_router(graph_router)
 app.include_router(admin_router)

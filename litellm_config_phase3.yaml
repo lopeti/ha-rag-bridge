@@ -1,0 +1,170 @@
+# LiteLLM Configuration for Phase 3 Hook Integration
+# This configuration enables the Phase 3 LangGraph workflow with conversation memory,
+# conditional routing, error handling, and multi-turn context enhancement
+
+model_list:
+  # OpenAI GPT models with Phase 3 hook integration
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+      max_tokens: 4096
+      temperature: 0.7
+
+  - model_name: gpt-4o  
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      max_tokens: 4096
+      temperature: 0.7
+
+  # Claude models with Phase 3 hook integration
+  - model_name: claude-3-5-sonnet-20241022
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 4096
+      temperature: 0.7
+
+  - model_name: claude-3-5-haiku-20241022
+    litellm_params:
+      model: anthropic/claude-3-5-haiku-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 4096
+      temperature: 0.7
+
+# Phase 3 LangGraph Hook Integration
+litellm_settings:
+  # Enable Phase 3 enhanced hook with conversation memory
+  callbacks: litellm_ha_rag_hooks_phase3.ha_rag_hook_phase3_instance
+  
+  # Performance settings for Phase 3 workflow
+  request_timeout: 60  # Increased timeout for complex workflow processing
+  max_budget: 1000     # Monthly budget limit in USD
+  
+  # Caching for improved performance
+  cache: true
+  cache_params:
+    type: "redis"
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+    password: os.environ/REDIS_PASSWORD
+    ttl: 3600  # 1 hour cache TTL
+  
+  # Request/response logging
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+
+# Environment-specific configuration
+environment_variables:
+  # Phase 3 HA RAG Bridge Configuration
+  HA_RAG_API_URL: "http://ha-rag-bridge:8000"  # Production: bridge service
+  # HA_RAG_API_URL: "http://localhost:8000"    # Development: local testing
+  
+  # Tool execution behavior
+  HA_RAG_TOOL_EXECUTION_MODE: "ha-rag-bridge"  # Options: ha-rag-bridge|caller|both|disabled
+  
+  # Home Assistant API Configuration
+  HA_URL: os.environ/HA_URL
+  HA_TOKEN: os.environ/HA_TOKEN
+  
+  # Database Configuration for Phase 3 features
+  ARANGO_URL: os.environ/ARANGO_URL
+  ARANGO_USER: os.environ/ARANGO_USER  
+  ARANGO_PASS: os.environ/ARANGO_PASS
+  ARANGO_DB: os.environ/ARANGO_DB
+  
+  # Embedding Backend Configuration
+  EMBEDDING_BACKEND: "local"  # Options: local|openai|gemini
+  EMBED_DIM: "384"            # Auto-detected for local models
+  SENTENCE_TRANSFORMER_MODEL: "paraphrase-multilingual-MiniLM-L12-v2"
+  EMBEDDING_CPU_THREADS: "4"
+  
+  # Phase 3 Conversation Memory Settings
+  CONVERSATION_MEMORY_TTL: "15"  # Minutes for conversation persistence
+  
+  # Performance Tuning
+  HTTP_TIMEOUT: "30"
+  SERVICE_CACHE_TTL: "21600"  # 6 hours
+  
+  # Monitoring & Logging
+  LANGFUSE_PUBLIC_KEY: os.environ/LANGFUSE_PUBLIC_KEY
+  LANGFUSE_SECRET_KEY: os.environ/LANGFUSE_SECRET_KEY
+  LANGFUSE_HOST: os.environ/LANGFUSE_HOST
+
+# General Router Settings
+general_settings:
+  # Master key for admin access
+  master_key: os.environ/LITELLM_MASTER_KEY
+  
+  # Database for analytics and user management
+  database_url: os.environ/DATABASE_URL
+  
+  # UI Configuration
+  ui_username: os.environ/LITELLM_UI_USERNAME
+  ui_password: os.environ/LITELLM_UI_PASSWORD
+  
+  # Request handling
+  max_parallel_requests: 100
+  max_request_size_mb: 10
+  
+  # Rate limiting
+  tpm_limit: 10000      # Tokens per minute
+  rpm_limit: 1000       # Requests per minute
+  
+  # Health checks
+  health_check_interval: 300  # 5 minutes
+  
+  # Enable Phase 3 specific features
+  enable_pre_call_hooks: true
+  enable_post_call_hooks: true
+  enable_fallback_models: true
+  
+# Router configuration for load balancing and fallbacks
+router_settings:
+  routing_strategy: "least-busy"
+  enable_fallbacks: true
+  fallback_models: ["gpt-4o-mini", "claude-3-5-haiku-20241022"]
+  context_window_fallbacks: 
+    - model: "gpt-4o-mini"
+      fallback_model: "gpt-4o"
+    - model: "claude-3-5-haiku-20241022"  
+      fallback_model: "claude-3-5-sonnet-20241022"
+
+# OpenWebUI Integration Settings
+openwebui:
+  # Enable forwarding of user info headers for session management
+  forward_user_info_headers: true
+  enable_model_filter: true
+  enable_admin_ui: true
+  
+# Phase 3 Feature Flags
+feature_flags:
+  enable_conversation_memory: true
+  enable_conditional_routing: true
+  enable_error_handling: true
+  enable_multi_turn_enhancement: true
+  enable_workflow_diagnostics: true
+  enable_cluster_based_rag: true
+  enable_fallback_mechanisms: true
+  
+# Monitoring and Observability
+telemetry:
+  enable_prometheus_metrics: true
+  enable_jaeger_tracing: true
+  prometheus_port: 4317
+  jaeger_endpoint: os.environ/JAEGER_ENDPOINT
+  
+# Security Settings
+security:
+  enable_cors: true
+  cors_origins: ["*"]
+  enable_api_key_auth: true
+  enable_jwt_auth: false
+  
+# Development/Debug Settings (disable in production)
+debug:
+  enable_debug_mode: false
+  log_raw_requests: false
+  log_raw_responses: false
+  enable_request_validation: true

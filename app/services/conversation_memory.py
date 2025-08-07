@@ -1,0 +1,510 @@
+"""Conversation memory service for multi-turn RAG optimization."""
+
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Set, Any
+from dataclasses import dataclass
+import os
+from arango import ArangoClient
+
+from ha_rag_bridge.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class ConversationEntity:
+    """Entity stored in conversation memory."""
+
+    entity_id: str
+    relevance_score: float
+    mentioned_at: datetime
+    context: str
+    area: Optional[str] = None
+    domain: Optional[str] = None
+    boost_weight: float = 1.0
+
+
+@dataclass
+class ConversationMemory:
+    """Complete conversation memory state."""
+
+    conversation_id: str
+    entities: List[ConversationEntity]
+    areas_mentioned: Set[str]
+    domains_mentioned: Set[str]
+    last_updated: datetime
+    ttl: datetime
+    query_count: int = 1
+
+
+class ConversationMemoryService:
+    """Service for managing conversation memory with TTL."""
+
+    def __init__(self, ttl_minutes: int = 15):
+        self.ttl_minutes = ttl_minutes
+        self._client = None
+        self._db = None
+
+    async def _ensure_connection(self):
+        """Ensure database connection is established."""
+        if self._db is None:
+            self._client = ArangoClient(hosts=os.environ["ARANGO_URL"])
+            db_name = os.getenv("ARANGO_DB", "_system")
+            self._db = self._client.db(
+                db_name,
+                username=os.environ["ARANGO_USER"],
+                password=os.environ["ARANGO_PASS"],
+            )
+
+    def _generate_ttl(self) -> datetime:
+        """Generate TTL timestamp for conversation memory."""
+        return datetime.utcnow() + timedelta(minutes=self.ttl_minutes)
+
+    async def get_conversation_memory(
+        self, conversation_id: str
+    ) -> Optional[ConversationMemory]:
+        """Retrieve conversation memory if it exists and hasn't expired."""
+        await self._ensure_connection()
+
+        try:
+            collection = self._db.collection("conversation_memory")
+            doc_key = f"conv_{conversation_id}_memory"
+
+            # Try to get the document
+            if collection.has(doc_key):
+                doc = collection.get(doc_key)
+
+                # Check if TTL has expired
+                ttl = datetime.fromisoformat(doc["ttl"].replace("Z", ""))
+                if ttl <= datetime.utcnow():
+                    logger.debug(f"Conversation memory expired for {conversation_id}")
+                    await self._cleanup_expired_memory(conversation_id)
+                    return None
+
+                # Convert to ConversationMemory object
+                entities = [
+                    ConversationEntity(
+                        entity_id=e["entity_id"],
+                        relevance_score=e["relevance_score"],
+                        mentioned_at=datetime.fromisoformat(
+                            e["mentioned_at"].replace("Z", "")
+                        ),
+                        context=e["context"],
+                        area=e.get("area"),
+                        domain=e.get("domain"),
+                        boost_weight=e.get("boost_weight", 1.0),
+                    )
+                    for e in doc["entities"]
+                ]
+
+                return ConversationMemory(
+                    conversation_id=doc["conversation_id"],
+                    entities=entities,
+                    areas_mentioned=set(doc["areas_mentioned"]),
+                    domains_mentioned=set(doc["domains_mentioned"]),
+                    last_updated=datetime.fromisoformat(
+                        doc["last_updated"].replace("Z", "")
+                    ),
+                    ttl=ttl,
+                    query_count=doc.get("query_count", 1),
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error retrieving conversation memory for {conversation_id}: {e}"
+            )
+
+        return None
+
+    async def store_conversation_memory(
+        self,
+        conversation_id: str,
+        entities: List[Dict[str, Any]],
+        areas_mentioned: Set[str],
+        domains_mentioned: Set[str],
+        query_context: str = "",
+    ) -> bool:
+        """Store or update conversation memory with entities and context."""
+        await self._ensure_connection()
+
+        try:
+            current_time = datetime.utcnow()
+            ttl = self._generate_ttl()
+
+            # Get existing memory to merge with
+            existing_memory = await self.get_conversation_memory(conversation_id)
+
+            # Convert entities to ConversationEntity objects
+            new_entities = []
+            for entity in entities:
+                conv_entity = ConversationEntity(
+                    entity_id=entity["entity_id"],
+                    relevance_score=entity.get(
+                        "rerank_score", entity.get("similarity", 0.0)
+                    ),
+                    mentioned_at=current_time,
+                    context=query_context,
+                    area=entity.get("area_name"),
+                    domain=entity.get("domain"),
+                    boost_weight=self._calculate_boost_weight(entity),
+                )
+                new_entities.append(conv_entity)
+
+            # Merge with existing entities
+            if existing_memory:
+                # Keep existing entities that are still relevant
+                merged_entities = []
+                existing_entity_ids = {e.entity_id for e in new_entities}
+
+                for existing_entity in existing_memory.entities:
+                    if existing_entity.entity_id not in existing_entity_ids:
+                        # Decay boost weight for older entities
+                        time_diff = current_time - existing_entity.mentioned_at
+                        decay_factor = max(
+                            0.5, 1.0 - (time_diff.total_seconds() / (10 * 60))
+                        )  # 10 min decay
+                        existing_entity.boost_weight *= decay_factor
+                        merged_entities.append(existing_entity)
+
+                merged_entities.extend(new_entities)
+                all_entities = merged_entities
+                merged_areas = existing_memory.areas_mentioned | areas_mentioned
+                merged_domains = existing_memory.domains_mentioned | domains_mentioned
+                query_count = existing_memory.query_count + 1
+            else:
+                all_entities = new_entities
+                merged_areas = areas_mentioned
+                merged_domains = domains_mentioned
+                query_count = 1
+
+            # Limit to most relevant entities (max 20)
+            all_entities.sort(
+                key=lambda e: e.relevance_score * e.boost_weight, reverse=True
+            )
+            all_entities = all_entities[:20]
+
+            # Create memory document
+            memory = ConversationMemory(
+                conversation_id=conversation_id,
+                entities=all_entities,
+                areas_mentioned=merged_areas,
+                domains_mentioned=merged_domains,
+                last_updated=current_time,
+                ttl=ttl,
+                query_count=query_count,
+            )
+
+            # Convert to ArangoDB document
+            doc = {
+                "_key": f"conv_{conversation_id}_memory",
+                "conversation_id": conversation_id,
+                "entities": [
+                    {
+                        "entity_id": e.entity_id,
+                        "relevance_score": e.relevance_score,
+                        "mentioned_at": e.mentioned_at.isoformat(),
+                        "context": e.context,
+                        "area": e.area,
+                        "domain": e.domain,
+                        "boost_weight": e.boost_weight,
+                    }
+                    for e in memory.entities
+                ],
+                "areas_mentioned": list(memory.areas_mentioned),
+                "domains_mentioned": list(memory.domains_mentioned),
+                "last_updated": memory.last_updated.isoformat(),
+                "ttl": memory.ttl.isoformat(),
+                "query_count": memory.query_count,
+            }
+
+            # Store/update in database
+            collection = self._db.collection("conversation_memory")
+            collection.insert(doc, overwrite=True)
+
+            logger.info(
+                f"Stored conversation memory for {conversation_id}: "
+                f"{len(memory.entities)} entities, {len(memory.areas_mentioned)} areas, "
+                f"expires at {memory.ttl.isoformat()}"
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Error storing conversation memory for {conversation_id}: {e}"
+            )
+            return False
+
+    def _calculate_boost_weight(self, entity: Dict[str, Any]) -> float:
+        """Calculate initial boost weight for an entity based on its characteristics."""
+        base_weight = 1.0
+
+        # Boost primary entities
+        if entity.get("is_primary", False):
+            base_weight *= 1.5
+
+        # Boost entities with high similarity scores
+        similarity = entity.get("similarity", 0.0)
+        if similarity > 0.8:
+            base_weight *= 1.3
+        elif similarity > 0.6:
+            base_weight *= 1.1
+
+        # Boost sensor entities (they provide context)
+        if entity.get("domain") == "sensor":
+            base_weight *= 1.2
+
+        return base_weight
+
+    async def get_relevant_entities(
+        self, conversation_id: str, current_query: str, max_entities: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Get entities from conversation memory that are relevant to current query."""
+        memory = await self.get_conversation_memory(conversation_id)
+
+        if not memory:
+            return []
+
+        logger.debug(
+            f"Checking {len(memory.entities)} entities from memory for relevance to: {current_query}"
+        )
+
+        # Enhanced relevance scoring
+        relevant_entities = []
+        query_lower = current_query.lower()
+        query_words = set(word for word in query_lower.split() if len(word) > 2)
+
+        for entity in memory.entities:
+            relevance_score = 0.0
+            entity_id_lower = entity.entity_id.lower()
+            entity_words = set(
+                word
+                for word in entity_id_lower.replace(".", " ").replace("_", " ").split()
+            )
+
+            # 1. Direct entity ID matching (highest priority)
+            if any(word in entity_id_lower for word in query_words):
+                relevance_score += 2.0
+                logger.debug(
+                    f"Direct match: {entity.entity_id} - query contains entity words"
+                )
+
+            # 2. Area-based relevance
+            if entity.area:
+                area_lower = entity.area.lower()
+                if area_lower in query_lower:
+                    relevance_score += 1.5
+                    logger.debug(
+                        f"Area match: {entity.entity_id} - area '{entity.area}' in query"
+                    )
+                # Check area aliases
+                area_aliases = {
+                    "nappali": ["living", "room"],
+                    "konyha": ["kitchen"],
+                    "kert": ["garden", "outside", "kint", "kültér"],
+                    "fürdőszoba": ["bathroom", "fürdő"],
+                }
+                for area, aliases in area_aliases.items():
+                    if entity.area.lower() == area and any(
+                        alias in query_lower for alias in aliases
+                    ):
+                        relevance_score += 1.3
+                        logger.debug(
+                            f"Area alias match: {entity.entity_id} - {entity.area} matches alias"
+                        )
+
+            # 3. Domain-based relevance
+            if entity.domain:
+                domain_patterns = {
+                    "light": ["lámpa", "light", "világítás", "fény", "kapcsol"],
+                    "sensor": [
+                        "hőmérséklet",
+                        "temperature",
+                        "páratartalom",
+                        "humidity",
+                        "fok",
+                        "sensor",
+                    ],
+                    "switch": ["kapcsoló", "switch", "kapcsol"],
+                    "climate": ["klíma", "climate", "fűtés", "heating"],
+                    "cover": ["redőny", "blind", "shutter", "cover"],
+                }
+                for domain, patterns in domain_patterns.items():
+                    if entity.domain == domain and any(
+                        pattern in query_lower for pattern in patterns
+                    ):
+                        relevance_score += 1.2
+                        logger.debug(
+                            f"Domain match: {entity.entity_id} - domain '{entity.domain}' matches pattern"
+                        )
+
+            # 4. Semantic word overlap
+            word_overlap = len(query_words.intersection(entity_words))
+            if word_overlap > 0:
+                relevance_score += word_overlap * 0.5
+                logger.debug(
+                    f"Word overlap: {entity.entity_id} - {word_overlap} words match"
+                )
+
+            # 5. Recency boost (newer mentions are more relevant)
+            time_diff = datetime.utcnow() - entity.mentioned_at
+            if time_diff.total_seconds() < 300:  # 5 minutes
+                relevance_score += 0.8
+            elif time_diff.total_seconds() < 900:  # 15 minutes
+                relevance_score += 0.4
+
+            # 6. High boost weight entities (previously important)
+            if entity.boost_weight > 1.5:
+                relevance_score += 0.6
+
+            # 7. Follow-up query patterns
+            followup_indicators = ["és", "and", "még", "also", "is", "szintén"]
+            if any(indicator in query_lower for indicator in followup_indicators):
+                # Boost all recent entities for follow-up queries
+                relevance_score += 0.5
+                logger.debug(f"Follow-up boost: {entity.entity_id}")
+
+            # Include entity if it has any relevance
+            if relevance_score > 0.3:
+                relevant_entities.append(
+                    {
+                        "entity_id": entity.entity_id,
+                        "relevance_score": entity.relevance_score,
+                        "boost_weight": entity.boost_weight,
+                        "area": entity.area,
+                        "domain": entity.domain,
+                        "context": entity.context,
+                        "mentioned_at": entity.mentioned_at.isoformat(),
+                        "memory_relevance": relevance_score,
+                        "is_from_memory": True,
+                    }
+                )
+                logger.debug(
+                    f"Added relevant entity: {entity.entity_id} (memory_relevance={relevance_score:.2f})"
+                )
+
+        # Sort by memory relevance combined with boost weight
+        relevant_entities.sort(
+            key=lambda e: e["memory_relevance"] * e["boost_weight"], reverse=True
+        )
+
+        logger.info(
+            f"Found {len(relevant_entities)} relevant entities from memory for query: {current_query}"
+        )
+
+        return relevant_entities[:max_entities]
+
+    async def update_entity_boost(
+        self, conversation_id: str, entity_id: str, boost_multiplier: float
+    ) -> bool:
+        """Update boost weight for a specific entity in conversation memory."""
+        memory = await self.get_conversation_memory(conversation_id)
+
+        if not memory:
+            return False
+
+        # Find and update the entity
+        updated = False
+        for entity in memory.entities:
+            if entity.entity_id == entity_id:
+                entity.boost_weight *= boost_multiplier
+                entity.boost_weight = max(
+                    0.1, min(3.0, entity.boost_weight)
+                )  # Clamp between 0.1-3.0
+                updated = True
+                break
+
+        if updated:
+            # Re-store the updated memory
+            await self.store_conversation_memory(
+                conversation_id=conversation_id,
+                entities=[
+                    {
+                        "entity_id": e.entity_id,
+                        "rerank_score": e.relevance_score,
+                        "area_name": e.area,
+                        "domain": e.domain,
+                    }
+                    for e in memory.entities
+                ],
+                areas_mentioned=memory.areas_mentioned,
+                domains_mentioned=memory.domains_mentioned,
+                query_context="boost_update",
+            )
+
+        return updated
+
+    async def _cleanup_expired_memory(self, conversation_id: str) -> bool:
+        """Clean up expired conversation memory."""
+        await self._ensure_connection()
+
+        try:
+            collection = self._db.collection("conversation_memory")
+            doc_key = f"conv_{conversation_id}_memory"
+
+            if collection.has(doc_key):
+                collection.delete(doc_key)
+                logger.debug(f"Cleaned up expired memory for {conversation_id}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error cleaning up expired memory for {conversation_id}: {e}")
+
+        return False
+
+    async def cleanup_all_expired(self) -> int:
+        """Clean up all expired conversation memories. Returns count of cleaned up records."""
+        await self._ensure_connection()
+
+        try:
+            collection = self._db.collection("conversation_memory")
+            current_time = datetime.utcnow().isoformat()
+
+            # AQL query to find and delete expired documents
+            query = """
+            FOR doc IN conversation_memory
+                FILTER doc.ttl < @current_time
+                REMOVE doc IN conversation_memory
+                RETURN OLD
+            """
+
+            cursor = self._db.aql.execute(
+                query, bind_vars={"current_time": current_time}
+            )
+            deleted_docs = list(cursor)
+            count = len(deleted_docs)
+
+            if count > 0:
+                logger.info(f"Cleaned up {count} expired conversation memories")
+
+            return count
+
+        except Exception as e:
+            logger.error(f"Error during batch cleanup of expired memories: {e}")
+            return 0
+
+    async def get_conversation_stats(
+        self, conversation_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get statistics about a conversation's memory usage."""
+        memory = await self.get_conversation_memory(conversation_id)
+
+        if not memory:
+            return None
+
+        return {
+            "conversation_id": conversation_id,
+            "entity_count": len(memory.entities),
+            "areas_count": len(memory.areas_mentioned),
+            "domains_count": len(memory.domains_mentioned),
+            "query_count": memory.query_count,
+            "last_updated": memory.last_updated.isoformat(),
+            "ttl": memory.ttl.isoformat(),
+            "minutes_remaining": max(
+                0, (memory.ttl - datetime.utcnow()).total_seconds() / 60
+            ),
+            "average_boost_weight": sum(e.boost_weight for e in memory.entities)
+            / len(memory.entities),
+            "top_areas": list(memory.areas_mentioned),
+            "top_domains": list(memory.domains_mentioned),
+        }

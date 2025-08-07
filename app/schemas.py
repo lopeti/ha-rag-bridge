@@ -6,6 +6,7 @@ class Request(BaseModel):
     user_message: str
     conversation_history: Optional[List["ChatMessage"]] = None
     conversation_id: Optional[str] = None
+    session_id: Optional[str] = None  # Added for Phase 3 workflow integration
 
 
 class ChatMessage(BaseModel):
@@ -13,9 +14,24 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class EntityInfo(BaseModel):
+    entity_id: str
+    name: str
+    state: str
+    domain: str
+    area_name: Optional[str] = None
+    similarity: float = 0.0
+    aliases: List[str] = []
+    is_primary: bool = False
+
+
 class ProcessResponse(BaseModel):
     messages: List[ChatMessage]
-    tools: List[Dict]
+    tools: List[Dict] = []
+    relevant_entities: List[EntityInfo] = []
+    formatted_content: str = ""
+    intent: str = "read"
+    metadata: Optional[Dict] = None
 
 
 class LLMToolFunction(BaseModel):

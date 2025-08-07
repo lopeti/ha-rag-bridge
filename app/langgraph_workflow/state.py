@@ -29,6 +29,7 @@ class RAGState(TypedDict):
     # Entity Retrieval
     retrieved_entities: List[Dict[str, Any]]
     cluster_entities: List[Dict[str, Any]]
+    memory_entities: List[Dict[str, Any]]
     reranked_entities: List[Dict[str, Any]]
 
     # Context Building

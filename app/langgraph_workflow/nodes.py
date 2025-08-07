@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 from app.schemas import ChatMessage
 from ha_rag_bridge.logging import get_logger
 from app.services.conversation_analyzer import ConversationAnalyzer
+from app.services.conversation_memory import ConversationMemoryService
 
 from .state import RAGState, QueryScope
 
@@ -165,14 +166,31 @@ async def llm_scope_detection_node(state: RAGState) -> Dict[str, Any]:
 
 
 async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
-    """Entity retrieval with cluster-first logic and vector fallback."""
-    logger.info("EntityRetrieval: Starting cluster-first entity retrieval...")
+    """Entity retrieval with cluster-first logic, conversation memory, and vector fallback."""
+    logger.info(
+        "EntityRetrieval: Starting enhanced entity retrieval with conversation memory..."
+    )
 
     try:
         from arango import ArangoClient
         from app.main import retrieve_entities_with_clusters
         from scripts.embedding_backends import get_backend
         import os
+
+        # Initialize conversation memory service
+        memory_service = ConversationMemoryService()
+        session_id = state.get("session_id", "default")
+
+        # Get conversation memory entities
+        memory_entities = await memory_service.get_relevant_entities(
+            conversation_id=session_id,
+            current_query=state["user_query"],
+            max_entities=5,
+        )
+
+        logger.info(
+            f"Found {len(memory_entities)} relevant entities from conversation memory"
+        )
 
         # Initialize database connection
         arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
@@ -217,12 +235,32 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
 
         scope_config = ScopeConfig()
 
-        # Get conversation context for area/domain boosting
-        conversation_context = state.get("conversation_context", {})
+        # Enhanced conversation context with memory entities
+        conversation_context = state.get("conversation_context", {}).copy()
+        if memory_entities:
+            # Add memory entity areas and domains to conversation context
+            memory_areas = {e.get("area") for e in memory_entities if e.get("area")}
+            memory_domains = {
+                e.get("domain") for e in memory_entities if e.get("domain")
+            }
+
+            existing_areas = set(conversation_context.get("areas_mentioned", []))
+            existing_domains = set(conversation_context.get("domains_mentioned", []))
+
+            conversation_context["areas_mentioned"] = list(
+                existing_areas | memory_areas
+            )
+            conversation_context["domains_mentioned"] = list(
+                existing_domains | memory_domains
+            )
+
+            logger.info(
+                f"Enhanced context with memory: areas={memory_areas}, domains={memory_domains}"
+            )
 
         logger.info(
             f"Retrieving entities: scope={detected_scope}, k={optimal_k}, "
-            f"cluster_types={cluster_types}"
+            f"cluster_types={cluster_types}, memory_boost={len(memory_entities)}"
         )
 
         # Call the enhanced entity retrieval function
@@ -236,6 +274,63 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
             conversation_context=conversation_context,
         )
 
+        # Enhanced conversation memory boosting with better integration
+        memory_boosted_count = 0
+        if memory_entities:
+            memory_entity_ids = {e["entity_id"] for e in memory_entities}
+            memory_data = {e["entity_id"]: e for e in memory_entities}
+
+            # First pass: boost existing entities
+            for entity in retrieved_entities:
+                entity_id = entity.get("entity_id")
+                if entity_id in memory_entity_ids:
+                    memory_info = memory_data[entity_id]
+                    boost_weight = memory_info["boost_weight"]
+                    memory_relevance = memory_info.get("memory_relevance", 1.0)
+
+                    # Enhanced boosting formula
+                    original_score = entity.get("_score", 0.0)
+                    boosted_score = (
+                        original_score * boost_weight * (1.0 + memory_relevance * 0.5)
+                    )
+
+                    entity["_score"] = boosted_score
+                    entity["_memory_boosted"] = True
+                    entity["_memory_boost"] = boost_weight
+                    entity["_memory_relevance"] = memory_relevance
+                    memory_boosted_count += 1
+                    logger.debug(
+                        f"Boosted entity {entity_id}: {original_score:.3f} -> {boosted_score:.3f} (boost={boost_weight:.2f}, relevance={memory_relevance:.2f})"
+                    )
+
+            # Second pass: add highly relevant memory entities not found in search
+            entity_ids_in_results = {e.get("entity_id") for e in retrieved_entities}
+            for memory_entity in memory_entities:
+                if (
+                    memory_entity["entity_id"] not in entity_ids_in_results
+                    and memory_entity.get("memory_relevance", 0) > 1.5
+                ):  # High relevance threshold
+
+                    # Create a synthetic entity from memory
+                    synthetic_entity = {
+                        "entity_id": memory_entity["entity_id"],
+                        "area_name": memory_entity.get("area"),
+                        "domain": memory_entity.get("domain"),
+                        "_score": memory_entity["relevance_score"]
+                        * memory_entity["boost_weight"],
+                        "_memory_boosted": True,
+                        "_memory_boost": memory_entity["boost_weight"],
+                        "_memory_relevance": memory_entity["memory_relevance"],
+                        "_synthetic_from_memory": True,
+                        "state": "unknown",  # Default state for synthetic entities
+                        "attributes": {},
+                    }
+                    retrieved_entities.append(synthetic_entity)
+                    memory_boosted_count += 1
+                    logger.info(
+                        f"Added synthetic entity from memory: {memory_entity['entity_id']} (relevance={memory_entity['memory_relevance']:.2f})"
+                    )
+
         # Separate cluster entities from regular entities
         cluster_entities = []
         regular_entities = []
@@ -246,15 +341,26 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
             else:
                 regular_entities.append(entity)
 
+        # Store current entities in conversation memory for future queries
+        await memory_service.store_conversation_memory(
+            conversation_id=session_id,
+            entities=retrieved_entities[:10],  # Store top 10 entities
+            areas_mentioned=set(conversation_context.get("areas_mentioned", [])),
+            domains_mentioned=set(conversation_context.get("domains_mentioned", [])),
+            query_context=f"Query: {state['user_query']}",
+        )
+
         logger.info(
             f"Retrieved {len(retrieved_entities)} entities: "
             f"{len(cluster_entities)} from clusters, "
-            f"{len(regular_entities)} from vector search"
+            f"{len(regular_entities)} from vector search, "
+            f"{memory_boosted_count} memory boosted"
         )
 
         return {
             "retrieved_entities": retrieved_entities,
             "cluster_entities": cluster_entities,
+            "memory_entities": memory_entities,
         }
 
     except Exception as e:
