@@ -1,6 +1,6 @@
 """LangGraph workflow nodes for HA RAG system."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from app.schemas import ChatMessage
 from ha_rag_bridge.logging import get_logger
 from app.services.conversation_analyzer import ConversationAnalyzer
@@ -192,11 +192,15 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
 
         # Get scope configuration
         detected_scope = state.get("detected_scope")
-        optimal_k = state.get("optimal_k", 15)
+        optimal_k = state.get("optimal_k", 15) or 15
 
         # Define cluster types based on scope
         if detected_scope:
-            scope_value = detected_scope.value if hasattr(detected_scope, "value") else str(detected_scope)
+            scope_value = (
+                detected_scope.value
+                if hasattr(detected_scope, "value")
+                else str(detected_scope)
+            )
             if scope_value == "micro":
                 cluster_types = ["specific", "device"]
             elif scope_value == "macro":
@@ -258,8 +262,7 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
         return {
             "retrieved_entities": [],
             "cluster_entities": [],
-            "errors": state.get("errors", [])
-            + [f"Entity retrieval failed: {str(e)}"],
+            "errors": state.get("errors", []) + [f"Entity retrieval failed: {str(e)}"],
         }
 
 
@@ -269,11 +272,9 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
 
     try:
         from app.services.entity_reranker import entity_reranker
-        from app.services.conversation_analyzer import conversation_analyzer
-        
+
         retrieved_entities = state.get("retrieved_entities", [])
-        conversation_context = state.get("conversation_context", {})
-        
+
         if not retrieved_entities:
             logger.warning("No entities to format")
             return {
@@ -289,10 +290,12 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
                 def __init__(self, entity_data):
                     self.entity = entity_data
                     self.base_score = entity_data.get("_score", 0.0)
-                    self.context_boost = entity_data.get("_cluster_context", {}).get("context_boost", 0.0)
+                    self.context_boost = entity_data.get("_cluster_context", {}).get(
+                        "context_boost", 0.0
+                    )
                     self.final_score = self.base_score + self.context_boost
                     self.ranking_factors = {}
-            
+
             entity_scores.append(MockEntityScore(entity))
 
         # Sort by final score
@@ -300,14 +303,16 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
 
         # Determine primary vs related entities
         # Primary: top 4 entities with highest scores or cluster context
-        primary_entities = []
-        related_entities = []
-        
+        primary_entities: List[Any] = []
+        related_entities: List[Any] = []
+
         for i, es in enumerate(entity_scores):
             has_cluster_context = es.entity.get("_cluster_context") is not None
             high_score = es.final_score > 0.7
-            
-            if (i < 4 and (has_cluster_context or high_score)) or len(primary_entities) == 0:
+
+            if (i < 4 and (has_cluster_context or high_score)) or len(
+                primary_entities
+            ) == 0:
                 primary_entities.append(es)
             else:
                 related_entities.append(es)
@@ -325,13 +330,21 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
         # Override formatter selection based on detected scope for optimization
         detected_scope = state.get("detected_scope")
         if detected_scope:
-            scope_value = detected_scope.value if hasattr(detected_scope, "value") else str(detected_scope)
+            scope_value = (
+                detected_scope.value
+                if hasattr(detected_scope, "value")
+                else str(detected_scope)
+            )
             if scope_value == "micro":
                 # Micro queries: focus on primary entities, less context
                 formatter_type = "compact"
             elif scope_value == "overview":
                 # Overview queries: need structured summary
-                formatter_type = "tldr" if len(primary_entities) + len(related_entities) > 6 else "grouped_by_area"
+                formatter_type = (
+                    "tldr"
+                    if len(primary_entities) + len(related_entities) > 6
+                    else "grouped_by_area"
+                )
 
         logger.info(f"Selected formatter: {formatter_type}")
 
@@ -343,7 +356,7 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
             query=state["user_query"],
             max_primary=len(primary_entities),
             max_related=len(related_entities),
-            force_formatter=formatter_type
+            force_formatter=formatter_type,
         )
 
         return {
