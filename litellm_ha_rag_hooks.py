@@ -259,6 +259,83 @@ def _extract_conversation_insights(
     return " | ".join(insights) if insights else None
 
 
+def _extract_stable_session_id(data: dict, messages: List[Dict[str, Any]]) -> str:
+    """Extract or generate a stable session ID for conversation continuity."""
+    import hashlib
+    from datetime import datetime
+
+    # Priority 1: Look for existing session identifiers from OpenWebUI/LiteLLM
+    potential_session_fields = [
+        "session_id",
+        "conversation_id",
+        "chat_id",
+        "openwebui_session",
+        "user_session",
+        "request_session",
+    ]
+
+    for field in potential_session_fields:
+        session_value = data.get(field)
+        if session_value and isinstance(session_value, str) and len(session_value) > 0:
+            logger.debug(f"Using existing session ID from {field}: {session_value}")
+            return session_value
+
+    # Priority 2: Check headers for session information
+    headers = data.get("headers", {})
+    if isinstance(headers, dict):
+        header_session_fields = [
+            "x-session-id",
+            "openwebui-session",
+            "conversation-id",
+            "x-conversation-id",
+            "session",
+            "chat-session",
+        ]
+        for header_field in header_session_fields:
+            session_value = headers.get(header_field)
+            if (
+                session_value
+                and isinstance(session_value, str)
+                and len(session_value) > 0
+            ):
+                logger.debug(
+                    f"Using session ID from header {header_field}: {session_value}"
+                )
+                return session_value
+
+    # Priority 3: Generate stable session ID from FIRST user message + time window
+    first_user_msg = None
+    for msg in messages:
+        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+            content = msg["content"].strip()
+            # Skip OpenWebUI metadata tasks
+            if not any(
+                pattern in content
+                for pattern in ["### Task:", "Generate a concise", "JSON format:"]
+            ):
+                first_user_msg = content
+                break
+
+    if first_user_msg:
+        # Create time window (hourly sessions for same first question)
+        timestamp_hour = datetime.now().strftime("%Y-%m-%d-%H")
+        stable_seed = f"{first_user_msg}|{timestamp_hour}"
+        session_id = hashlib.md5(stable_seed.encode()).hexdigest()[:16]
+
+        logger.debug(
+            f"Generated stable session ID from first message + hour: {session_id}"
+        )
+        logger.debug(
+            f"Session seed: first_msg='{first_user_msg[:50]}...', hour='{timestamp_hour}'"
+        )
+        return session_id
+
+    # Fallback: Generate from current timestamp (least stable)
+    fallback_id = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:16]
+    logger.warning(f"Using fallback session ID (not stable): {fallback_id}")
+    return fallback_id
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # The main callback class
 # ──────────────────────────────────────────────────────────────────────────────
@@ -299,6 +376,24 @@ class HARagHook(CustomLogger):
 
         messages: List[Dict[str, Any]] = data.get("messages", [])
         logger.info(f"RAG Hook: Received {len(messages)} messages")
+
+        # DEBUG: Log data keys to understand what OpenWebUI sends
+        logger.debug(f"RAG Hook: Data keys available: {list(data.keys())}")
+
+        # DEBUG: Log potential session-related fields
+        potential_session_fields = [
+            "session_id",
+            "conversation_id",
+            "chat_id",
+            "user_id",
+            "headers",
+            "metadata",
+            "request_id",
+            "openwebui_session",
+        ]
+        for field in potential_session_fields:
+            if field in data:
+                logger.debug(f"RAG Hook: Found {field}: {data[field]}")
 
         # Log all messages for debugging
         for i, msg in enumerate(messages):
@@ -342,19 +437,14 @@ class HARagHook(CustomLogger):
                 ),
             }
 
-            # Generate conversation_id from conversation context hash for consistency
-            if conversation_context:
-                import hashlib
+            # Generate stable session ID for conversation continuity
+            stable_session_id = _extract_stable_session_id(data, messages)
+            bridge_payload["session_id"] = stable_session_id
 
-                conv_text = "".join(
-                    [f"{msg['role']}:{msg['content']}" for msg in conversation_context]
-                )
-                bridge_payload["conversation_id"] = hashlib.md5(
-                    conv_text.encode()
-                ).hexdigest()[:16]
-                logger.debug(
-                    f"Generated conversation_id: {bridge_payload['conversation_id']}"
-                )
+            # Keep conversation_id for backward compatibility (but now it's stable)
+            bridge_payload["conversation_id"] = stable_session_id
+
+            logger.debug(f"Using stable session/conversation ID: {stable_session_id}")
 
             async with httpx.AsyncClient(timeout=10) as client:
                 logger.debug(
