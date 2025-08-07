@@ -16,17 +16,15 @@ logger = get_logger(__name__)
 
 
 def create_rag_workflow() -> StateGraph:
-    """Create the RAG workflow graph for Phase 1 (simple linear flow)."""
+    """Create the RAG workflow graph for Phase 2 (full entity retrieval and formatting)."""
 
     workflow = StateGraph(RAGState)
 
-    # Add Phase 1 nodes
+    # Add Phase 2 nodes with full implementations
     workflow.add_node("conversation_analysis", conversation_analysis_node)
     workflow.add_node("scope_detection", llm_scope_detection_node)
-    workflow.add_node("entity_retrieval", entity_retrieval_node)  # Mock implementation
-    workflow.add_node(
-        "context_formatting", context_formatting_node
-    )  # Mock implementation
+    workflow.add_node("entity_retrieval", entity_retrieval_node)
+    workflow.add_node("context_formatting", context_formatting_node)
 
     # Define simple linear flow (no conditional routing yet)
     workflow.set_entry_point("conversation_analysis")
@@ -36,7 +34,7 @@ def create_rag_workflow() -> StateGraph:
     workflow.add_edge("context_formatting", END)
 
     logger.info(
-        "Created Phase 1 RAG workflow: conversation_analysis → scope_detection → entity_retrieval → context_formatting"
+        "Created Phase 2 RAG workflow: conversation_analysis → scope_detection → entity_retrieval → context_formatting"
     )
 
     return workflow.compile()

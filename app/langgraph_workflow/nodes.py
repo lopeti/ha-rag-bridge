@@ -164,26 +164,198 @@ async def llm_scope_detection_node(state: RAGState) -> Dict[str, Any]:
         }
 
 
-# TODO: Implement remaining nodes in subsequent phases
 async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
-    """Placeholder for entity retrieval with clustering."""
-    logger.info("EntityRetrieval: Not implemented yet - using mock data")
+    """Entity retrieval with cluster-first logic and vector fallback."""
+    logger.info("EntityRetrieval: Starting cluster-first entity retrieval...")
 
-    return {
-        "retrieved_entities": [],
-        "cluster_entities": [],
-        "errors": state.get("errors", [])
-        + ["Entity retrieval not implemented in Phase 1"],
-    }
+    try:
+        from arango import ArangoClient
+        from app.main import retrieve_entities_with_clusters
+        from scripts.embedding_backends import get_backend
+        import os
+
+        # Initialize database connection
+        arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
+        db_name = os.getenv("ARANGO_DB", "_system")
+        db = arango.db(
+            db_name,
+            username=os.environ["ARANGO_USER"],
+            password=os.environ["ARANGO_PASS"],
+        )
+
+        # Get embedding backend
+        backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+        embedding_backend = get_backend(backend_name)
+
+        # Generate query embedding
+        query_vector = embedding_backend.embed([state["user_query"]])[0]
+
+        # Get scope configuration
+        detected_scope = state.get("detected_scope")
+        optimal_k = state.get("optimal_k", 15)
+
+        # Define cluster types based on scope
+        if detected_scope:
+            scope_value = detected_scope.value if hasattr(detected_scope, "value") else str(detected_scope)
+            if scope_value == "micro":
+                cluster_types = ["specific", "device"]
+            elif scope_value == "macro":
+                cluster_types = ["area", "domain", "specific"]
+            else:  # overview
+                cluster_types = ["overview", "area", "domain"]
+        else:
+            cluster_types = ["specific", "area", "domain"]
+
+        # Create scope configuration object
+        class ScopeConfig:
+            def __init__(self, threshold: float = 0.7):
+                self.threshold = threshold
+
+        scope_config = ScopeConfig()
+
+        # Get conversation context for area/domain boosting
+        conversation_context = state.get("conversation_context", {})
+
+        logger.info(
+            f"Retrieving entities: scope={detected_scope}, k={optimal_k}, "
+            f"cluster_types={cluster_types}"
+        )
+
+        # Call the enhanced entity retrieval function
+        retrieved_entities = retrieve_entities_with_clusters(
+            db=db,
+            q_vec=query_vector,
+            q_text=state["user_query"],
+            scope_config=scope_config,
+            cluster_types=cluster_types,
+            k=optimal_k,
+            conversation_context=conversation_context,
+        )
+
+        # Separate cluster entities from regular entities
+        cluster_entities = []
+        regular_entities = []
+
+        for entity in retrieved_entities:
+            if entity.get("_cluster_context"):
+                cluster_entities.append(entity)
+            else:
+                regular_entities.append(entity)
+
+        logger.info(
+            f"Retrieved {len(retrieved_entities)} entities: "
+            f"{len(cluster_entities)} from clusters, "
+            f"{len(regular_entities)} from vector search"
+        )
+
+        return {
+            "retrieved_entities": retrieved_entities,
+            "cluster_entities": cluster_entities,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in entity retrieval: {e}", exc_info=True)
+        return {
+            "retrieved_entities": [],
+            "cluster_entities": [],
+            "errors": state.get("errors", [])
+            + [f"Entity retrieval failed: {str(e)}"],
+        }
 
 
 async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
-    """Placeholder for context formatting."""
-    logger.info("ContextFormatting: Not implemented yet")
+    """Context formatting with intelligent formatter selection."""
+    logger.info("ContextFormatting: Starting context formatting...")
 
-    return {
-        "formatted_context": "Mock formatted context for Phase 1 PoC",
-        "formatter_type": "mock",
-        "errors": state.get("errors", [])
-        + ["Context formatting not implemented in Phase 1"],
-    }
+    try:
+        from app.services.entity_reranker import entity_reranker
+        from app.services.conversation_analyzer import conversation_analyzer
+        
+        retrieved_entities = state.get("retrieved_entities", [])
+        conversation_context = state.get("conversation_context", {})
+        
+        if not retrieved_entities:
+            logger.warning("No entities to format")
+            return {
+                "formatted_context": "You are a Home Assistant agent.\n\nNo relevant entities found.",
+                "formatter_type": "empty",
+            }
+
+        # Convert retrieved entities to EntityScore format for compatibility
+        entity_scores = []
+        for entity in retrieved_entities:
+            # Create a mock EntityScore-like object that has the .entity attribute
+            class MockEntityScore:
+                def __init__(self, entity_data):
+                    self.entity = entity_data
+                    self.base_score = entity_data.get("_score", 0.0)
+                    self.context_boost = entity_data.get("_cluster_context", {}).get("context_boost", 0.0)
+                    self.final_score = self.base_score + self.context_boost
+                    self.ranking_factors = {}
+            
+            entity_scores.append(MockEntityScore(entity))
+
+        # Sort by final score
+        entity_scores.sort(key=lambda x: x.final_score, reverse=True)
+
+        # Determine primary vs related entities
+        # Primary: top 4 entities with highest scores or cluster context
+        primary_entities = []
+        related_entities = []
+        
+        for i, es in enumerate(entity_scores):
+            has_cluster_context = es.entity.get("_cluster_context") is not None
+            high_score = es.final_score > 0.7
+            
+            if (i < 4 and (has_cluster_context or high_score)) or len(primary_entities) == 0:
+                primary_entities.append(es)
+            else:
+                related_entities.append(es)
+
+        logger.info(
+            f"Context formatting: {len(primary_entities)} primary, "
+            f"{len(related_entities)} related entities"
+        )
+
+        # Select appropriate formatter based on context
+        formatter_type = entity_reranker._select_formatter(
+            state["user_query"], primary_entities, related_entities
+        )
+
+        # Override formatter selection based on detected scope for optimization
+        detected_scope = state.get("detected_scope")
+        if detected_scope:
+            scope_value = detected_scope.value if hasattr(detected_scope, "value") else str(detected_scope)
+            if scope_value == "micro":
+                # Micro queries: focus on primary entities, less context
+                formatter_type = "compact"
+            elif scope_value == "overview":
+                # Overview queries: need structured summary
+                formatter_type = "tldr" if len(primary_entities) + len(related_entities) > 6 else "grouped_by_area"
+
+        logger.info(f"Selected formatter: {formatter_type}")
+
+        # Generate formatted context using entity reranker's formatter
+        # Combine all entities for the hierarchical prompt
+        all_entity_scores = primary_entities + related_entities
+        formatted_context = entity_reranker.create_hierarchical_system_prompt(
+            ranked_entities=all_entity_scores,
+            query=state["user_query"],
+            max_primary=len(primary_entities),
+            max_related=len(related_entities),
+            force_formatter=formatter_type
+        )
+
+        return {
+            "formatted_context": formatted_context,
+            "formatter_type": formatter_type,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in context formatting: {e}", exc_info=True)
+        return {
+            "formatted_context": f"You are a Home Assistant agent.\n\nError formatting context: {str(e)}",
+            "formatter_type": "error",
+            "errors": state.get("errors", [])
+            + [f"Context formatting failed: {str(e)}"],
+        }
