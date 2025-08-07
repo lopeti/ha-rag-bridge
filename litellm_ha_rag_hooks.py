@@ -260,80 +260,50 @@ def _extract_conversation_insights(
 
 
 def _extract_stable_session_id(data: dict, messages: List[Dict[str, Any]]) -> str:
-    """Extract or generate a stable session ID for conversation continuity."""
-    import hashlib
+    """Extract stable session ID from OpenWebUI standard headers or generate fallback."""
     from datetime import datetime
 
-    # Priority 1: Look for existing session identifiers from OpenWebUI/LiteLLM
-    potential_session_fields = [
-        "session_id",
-        "conversation_id",
-        "chat_id",
-        "openwebui_session",
-        "user_session",
-        "request_session",
-    ]
-
-    for field in potential_session_fields:
-        session_value = data.get(field)
-        if session_value and isinstance(session_value, str) and len(session_value) > 0:
-            logger.debug(f"Using existing session ID from {field}: {session_value}")
-            return session_value
-
-    # Priority 2: Check headers for session information
+    # Priority 1: OpenWebUI Standard Headers (ENABLE_FORWARD_USER_INFO_HEADERS=true)
     headers = data.get("headers", {})
     if isinstance(headers, dict):
-        header_session_fields = [
-            "x-session-id",
-            "openwebui-session",
-            "conversation-id",
-            "x-conversation-id",
-            "session",
-            "chat-session",
-        ]
-        for header_field in header_session_fields:
-            session_value = headers.get(header_field)
-            if (
-                session_value
-                and isinstance(session_value, str)
-                and len(session_value) > 0
-            ):
-                logger.debug(
-                    f"Using session ID from header {header_field}: {session_value}"
-                )
-                return session_value
-
-    # Priority 3: Generate stable session ID from FIRST user message + time window
-    first_user_msg = None
-    for msg in messages:
-        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
-            content = msg["content"].strip()
-            # Skip OpenWebUI metadata tasks
-            if not any(
-                pattern in content
-                for pattern in ["### Task:", "Generate a concise", "JSON format:"]
-            ):
-                first_user_msg = content
-                break
-
-    if first_user_msg:
-        # Create time window (hourly sessions for same first question)
-        timestamp_hour = datetime.now().strftime("%Y-%m-%d-%H")
-        stable_seed = f"{first_user_msg}|{timestamp_hour}"
-        session_id = hashlib.md5(stable_seed.encode()).hexdigest()[:16]
-
-        logger.debug(
-            f"Generated stable session ID from first message + hour: {session_id}"
+        # Check for OpenWebUI standard chat ID header (newest standard)
+        chat_id = headers.get("x-openwebui-chat-id") or headers.get(
+            "X-OpenWebUI-Chat-Id"
         )
-        logger.debug(
-            f"Session seed: first_msg='{first_user_msg[:50]}...', hour='{timestamp_hour}'"
-        )
-        return session_id
+        if chat_id and isinstance(chat_id, str) and len(chat_id) > 0:
+            logger.debug(f"Using OpenWebUI standard chat ID: {chat_id}")
+            return chat_id
 
-    # Fallback: Generate from current timestamp (least stable)
-    fallback_id = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:16]
-    logger.warning(f"Using fallback session ID (not stable): {fallback_id}")
-    return fallback_id
+        # Check for other OpenWebUI headers as fallback
+        user_id = headers.get("x-openwebui-user-id") or headers.get(
+            "X-OpenWebUI-User-Id"
+        )
+        if user_id and isinstance(user_id, str) and len(user_id) > 0:
+            # If no chat_id but have user_id, create session-like ID
+            # This is NOT ideal for multi-chat per user, but better than nothing
+            logger.debug(f"Using OpenWebUI user ID as session fallback: {user_id}")
+            return f"user_{user_id}_session"
+
+    # Priority 2: Look for explicit session fields in data
+    explicit_session_fields = ["session_id", "conversation_id", "chat_id"]
+    for field in explicit_session_fields:
+        session_value = data.get(field)
+        if session_value and isinstance(session_value, str) and len(session_value) > 0:
+            logger.debug(f"Using explicit session ID from {field}: {session_value}")
+            return session_value
+
+    # Priority 3: Generate unique session ID for new conversations
+    # Each new conversation gets a unique ID - no cross-conversation contamination!
+    unique_timestamp = datetime.now().strftime(
+        "%Y%m%d_%H%M%S_%f"
+    )  # microsecond precision
+    session_id = f"generated_{unique_timestamp}"
+
+    logger.debug(f"Generated unique session ID: {session_id}")
+    logger.info(
+        "No OpenWebUI chat_id found - recommend enabling ENABLE_FORWARD_USER_INFO_HEADERS=true"
+    )
+    return session_id
 
 
 # ──────────────────────────────────────────────────────────────────────────────
