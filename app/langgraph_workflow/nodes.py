@@ -1,6 +1,6 @@
 """LangGraph workflow nodes for HA RAG system."""
 
-from typing import Dict, Any, List, Optional, cast
+from typing import Dict, Any
 from app.schemas import ChatMessage
 from ha_rag_bridge.logging import get_logger
 from app.services.conversation_analyzer import ConversationAnalyzer
@@ -23,9 +23,7 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
             ChatMessage(role=msg["role"], content=msg["content"])
             for msg in state["conversation_history"]
         ]
-        context = analyzer.analyze_conversation(
-            state["user_query"], chat_messages
-        )
+        context = analyzer.analyze_conversation(state["user_query"], chat_messages)
 
         logger.debug(f"Conversation analysis result: {context}")
 
@@ -59,18 +57,11 @@ async def llm_scope_detection_node(state: RAGState) -> Dict[str, Any]:
     logger.info("LLM Scope Detection: Classifying query scope...")
 
     try:
-        # Build classification prompt
-        context = state.get("conversation_context", {})
-        areas = context.get("areas_mentioned", []) if context else []
-        domains = context.get("domains_mentioned", []) if context else []
-        is_follow_up = context.get("is_follow_up", False) if context else False
-
-        # Future: LLM classification will use context for better accuracy
-
         # Enhanced classification logic with area + scope interaction
         # This is a temporary implementation for Phase 1 PoC
+        context = state.get("conversation_context", {})
         query_lower = state["user_query"].lower()
-        areas = context.get("areas_mentioned", [])
+        areas = context.get("areas_mentioned", []) if context else []
 
         # Priority 1: Check for area-scoped control actions (should be MACRO, not MICRO)
         has_control_action = any(
