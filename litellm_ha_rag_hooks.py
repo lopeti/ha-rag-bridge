@@ -1,8 +1,12 @@
 """LiteLLM Hook for Home Assistant RAG Bridge integration
 
-This module provides LiteLLM callback hooks that
-1. Inject relevant Home‑Assistant entities into the system prompt (pre‑call)
-2. Optionally execute Home‑Assistant tool calls and attach their results (post‑call)
+This module provides LiteLLM callback hooks that:
+1. Extract the LAST user question from conversations (including OpenWebUI metadata tasks)
+2. Inject conversation-aware context into user messages for cache optimization
+3. Optionally execute Home‑Assistant tool calls and attach their results (post‑call)
+
+Cache-friendly approach: Entities are injected into user messages instead of system 
+messages to maximize LLM KV-cache reuse and improve response times.
 
 The implementation follows LiteLLM's `CustomLogger` interface and must be
 referenced from `litellm_config.yaml` like so:
@@ -25,6 +29,7 @@ from litellm.types.utils import LLMResponseTypes
 
 # Simple type hints without importing proxy server
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from litellm.proxy.proxy_server import DualCache, UserAPIKeyAuth
 else:
@@ -69,13 +74,15 @@ def _find_system_placeholder(messages: List[Dict[str, Any]]) -> int | None:
     return None
 
 
-def _extract_user_question(messages: List[Dict[str, Any]]) -> str | None:
-    """Extract the actual user question, ignoring OpenWebUI metadata tasks."""
+def _extract_user_question_and_context(
+    messages: List[Dict[str, Any]]
+) -> tuple[str | None, List[Dict[str, Any]]]:
+    """Extract the LAST user question and full conversation context."""
     import re
-    
-    logger.debug(f"Extracting user question from {len(messages)} messages")
-    
-    # OpenWebUI metadata task patterns (exact matches from their templates)
+
+    logger.debug(f"Extracting user question and context from {len(messages)} messages")
+
+    # OpenWebUI metadata task patterns
     metadata_patterns = [
         r"### Task:",
         r"Generate a concise, 3-5 word title",
@@ -85,40 +92,171 @@ def _extract_user_question(messages: List[Dict[str, Any]]) -> str | None:
         r"### Output:",
         r"JSON format:",
     ]
-    
-    for i, msg in enumerate(messages):
-        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
-            content = msg["content"]
-            logger.debug(f"Processing message {i} (user): '{content[:100]}...'")
-            
-            # Check if this is an OpenWebUI metadata generation task
-            is_metadata_task = any(re.search(pattern, content, re.IGNORECASE) for pattern in metadata_patterns)
-            
-            if is_metadata_task:
-                logger.debug("Detected OpenWebUI metadata task")
-                # Extract the actual user question from chat history
-                chat_history_match = re.search(r'<chat_history>(.*?)</chat_history>', content, re.DOTALL)
-                if chat_history_match:
-                    chat_content = chat_history_match.group(1)
-                    logger.debug(f"Found chat history: '{chat_content[:200]}...'")
-                    # Find the last USER question (most recent)
-                    user_questions = re.findall(r'USER:\s*(.+?)(?=\nASSISTANT:|$)', chat_content, re.DOTALL | re.MULTILINE)
-                    if user_questions:
-                        # Clean up the extracted question
-                        question = user_questions[-1].strip()
-                        logger.info(f"Extracted user question from metadata task: '{question}'")
-                        return question
-                
-                # If no chat history found, skip this metadata task
-                logger.debug("Skipping OpenWebUI metadata generation task - no chat history")
-                continue
-            
-            # This is likely a direct user question
-            logger.debug(f"Using direct user question: '{content[:50]}...'")
-            return content
-    
-    logger.debug("No user question found in any message")
-    return None
+
+    # Check if the last message is a metadata task
+    if messages:
+        last_msg = messages[-1]
+        if (
+            last_msg.get("role") == "user"
+            and isinstance(last_msg.get("content"), str)
+            and any(
+                re.search(pattern, last_msg["content"], re.IGNORECASE)
+                for pattern in metadata_patterns
+            )
+        ):
+
+            logger.debug("Last message is OpenWebUI metadata task")
+            # Extract the actual conversation from chat history
+            chat_history_match = re.search(
+                r"<chat_history>(.*?)</chat_history>", last_msg["content"], re.DOTALL
+            )
+            if chat_history_match:
+                chat_content = chat_history_match.group(1)
+                logger.debug(f"Found chat history: '{chat_content[:200]}...'")
+                # Find the last USER question (most recent)
+                user_questions = re.findall(
+                    r"USER:\s*(.+?)(?=\nASSISTANT:|$)",
+                    chat_content,
+                    re.DOTALL | re.MULTILINE,
+                )
+                if user_questions:
+                    question = user_questions[-1].strip()
+                    logger.info(
+                        f"Extracted LAST user question from metadata: '{question}'"
+                    )
+                    # Build conversation context from chat history
+                    conversation_context = _parse_chat_history(chat_content)
+                    return question, conversation_context
+
+            logger.debug("No valid chat history in metadata task")
+            return None, []
+
+    # For regular conversations, find the LAST user message
+    last_user_question = None
+    conversation_context = []
+
+    # Build full conversation context and find last user message
+    for msg in messages:
+        if msg.get("role") in ["user", "assistant", "system"]:
+            conversation_context.append(
+                {"role": msg.get("role"), "content": str(msg.get("content", ""))}
+            )
+
+            # Track the last user message
+            if msg.get("role") == "user":
+                last_user_question = str(msg.get("content", "")).strip()
+
+    if last_user_question:
+        logger.info(f"Using LAST user question: '{last_user_question[:100]}...'")
+        return last_user_question, conversation_context
+
+    logger.debug("No user question found in conversation")
+    return None, []
+
+
+def _parse_chat_history(chat_content: str) -> List[Dict[str, Any]]:
+    """Parse OpenWebUI chat history format into conversation context."""
+    import re
+
+    conversation = []
+
+    # Split by USER/ASSISTANT markers
+    parts = re.split(r"\n(USER:|ASSISTANT:)", chat_content)
+
+    current_role = None
+    current_content = ""
+
+    for i, part in enumerate(parts):
+        part = part.strip()
+        if part == "USER:":
+            if current_role and current_content:
+                conversation.append(
+                    {"role": current_role, "content": current_content.strip()}
+                )
+            current_role = "user"
+            current_content = ""
+        elif part == "ASSISTANT:":
+            if current_role and current_content:
+                conversation.append(
+                    {"role": current_role, "content": current_content.strip()}
+                )
+            current_role = "assistant"
+            current_content = ""
+        else:
+            if current_role:
+                current_content += part
+
+    # Add the last message
+    if current_role and current_content:
+        conversation.append({"role": current_role, "content": current_content.strip()})
+
+    return conversation
+
+
+def _extract_conversation_insights(
+    conversation_context: List[Dict[str, Any]]
+) -> str | None:
+    """Extract insights and previously mentioned entities from conversation."""
+    import re
+
+    # Collect entity mentions, areas, and key topics from conversation
+    insights = []
+    mentioned_entities = set()
+    mentioned_areas = set()
+
+    # Common Hungarian area names
+    area_patterns = [
+        r"\b(nappali|nappaliban|nappaliba)\b",
+        r"\b(konyha|konyhában|konyhába)\b",
+        r"\b(hálószoba|hálószobában|hálószobába)\b",
+        r"\b(fürdő|fürdőben|fürdőbe|fürdőszoba)\b",
+        r"\b(iroda|irodában|irodába)\b",
+        r"\b(gyerekszoba|gyerekszobában|gyerekszobába)\b",
+        r"\b(kamra|kamrában|kamrába)\b",
+        r"\b(pince|pincében|pincébe)\b",
+        r"\b(padlás|padláson|padlásra)\b",
+    ]
+
+    # Entity-like patterns
+    entity_patterns = [
+        r"\b(hőmérséklet|fok|°C)\b",
+        r"\b(lámpa|világítás|fény)\b",
+        r"\b(fűtés|klíma|légkondi)\b",
+        r"\b(ajtó|ablak|redőny)\b",
+        r"\b(napelem|battery|akkumulátor)\b",
+        r"\b(szenzor|érzékelő|detector)\b",
+    ]
+
+    for msg in conversation_context[:-1]:  # Exclude the current message
+        if msg.get("role") in ["user", "assistant"]:
+            content = msg.get("content", "").lower()
+
+            # Extract area mentions
+            for pattern in area_patterns:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                for match in matches:
+                    area = match.split("|")[0]  # Take first variant
+                    mentioned_areas.add(area)
+
+            # Extract entity type mentions
+            for pattern in entity_patterns:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                for match in matches:
+                    entity_type = match.split("|")[0]  # Take first variant
+                    mentioned_entities.add(entity_type)
+
+    # Build insights summary
+    if mentioned_areas:
+        insights.append(f"Említett helyiségek: {', '.join(mentioned_areas)}")
+
+    if mentioned_entities:
+        insights.append(f"Tárgyalt eszköz típusok: {', '.join(mentioned_entities)}")
+
+    # Add context about conversation flow
+    if len(conversation_context) > 3:
+        insights.append("Folyamatos beszélgetés - korábbi kontextus figyelembevétele")
+
+    return " | ".join(insights) if insights else None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -128,7 +266,7 @@ def _extract_user_question(messages: List[Dict[str, Any]]) -> str | None:
 
 class HARagHook(CustomLogger):
     """Async LiteLLM callback for Home‑Assistant RAG bridging."""
-    
+
     def __init__(self):
         super().__init__()
         logger.info("HARagHook initialized successfully")
@@ -151,44 +289,88 @@ class HARagHook(CustomLogger):
             "audio_transcription",
             "pass_through_endpoint",
             "rerank",
-            "mcp_call"
+            "mcp_call",
         ],
     ) -> Dict[str, Any]:
         """Inject formatted entity list into the system prompt before the LLM call."""
-        logger.info("HA RAG Hook async_pre_call_hook called with call_type: %s", call_type)
+        logger.info(
+            "HA RAG Hook async_pre_call_hook called with call_type: %s", call_type
+        )
 
         messages: List[Dict[str, Any]] = data.get("messages", [])
         logger.info(f"RAG Hook: Received {len(messages)} messages")
-        
+
         # Log all messages for debugging
         for i, msg in enumerate(messages):
-            logger.info(f"RAG Hook: Message {i}: role={msg.get('role')}, content_preview={str(msg.get('content', ''))[:100]}...")
-        
-        sys_idx = _find_system_placeholder(messages)
-        if sys_idx is None:
-            logger.info("RAG Hook: No system message with placeholder found - EXITING")
-            return data  # nothing to do
+            logger.info(
+                f"RAG Hook: Message {i}: role={msg.get('role')}, content_preview={str(msg.get('content', ''))[:100]}..."
+            )
 
-        logger.info(f"RAG Hook: Found system placeholder at index {sys_idx}")
-        user_question = _extract_user_question(messages)
+        # Cache-friendly approach: extract LAST user question and conversation context
+        user_question, conversation_context = _extract_user_question_and_context(
+            messages
+        )
         if not user_question:
             logger.info("RAG Hook: No user question extracted - EXITING")
             return data
-            
-        logger.info(f"RAG Hook: Extracted user question: '{user_question}'")
+
+        # Find the last user message to inject context into
+        user_idx = None
+        for idx in reversed(range(len(messages))):
+            if messages[idx].get("role") == "user":
+                user_idx = idx
+                break
+
+        if user_idx is None:
+            logger.info("RAG Hook: No user message found - EXITING")
+            return data
+
+        logger.info(
+            f"RAG Hook: Extracted LAST user question: '{user_question[:100]}...'"
+        )
+        logger.info(f"RAG Hook: Conversation has {len(conversation_context)} messages")
 
         logger.debug("Querying HA‑RAG bridge for relevant entities…")
         logger.debug("Using RAG_QUERY_ENDPOINT: %s", RAG_QUERY_ENDPOINT)
         formatted_content: str
         try:
+            # Build conversation-aware payload for bridge
+            bridge_payload = {
+                "user_message": user_question,
+                "conversation_history": (
+                    conversation_context if conversation_context else None
+                ),
+            }
+
+            # Generate conversation_id from conversation context hash for consistency
+            if conversation_context:
+                import hashlib
+
+                conv_text = "".join(
+                    [f"{msg['role']}:{msg['content']}" for msg in conversation_context]
+                )
+                bridge_payload["conversation_id"] = hashlib.md5(
+                    conv_text.encode()
+                ).hexdigest()[:16]
+                logger.debug(
+                    f"Generated conversation_id: {bridge_payload['conversation_id']}"
+                )
+
             async with httpx.AsyncClient(timeout=10) as client:
                 logger.debug(
                     "Sending request to RAG_QUERY_ENDPOINT with payload: %s",
-                    {"user_message": user_question},
+                    {
+                        **bridge_payload,
+                        "conversation_history": (
+                            f"[{len(conversation_context)} messages]"
+                            if conversation_context
+                            else None
+                        ),
+                    },
                 )
                 resp = await client.post(
                     RAG_QUERY_ENDPOINT,
-                    json={"user_message": user_question},
+                    json=bridge_payload,
                 )
                 resp.raise_for_status()
                 logger.debug(
@@ -205,7 +387,7 @@ class HARagHook(CustomLogger):
                 if msg.get("role") == "system":
                     system_message = msg.get("content", "")
                     break
-            
+
             if system_message:
                 formatted_content = system_message
             else:
@@ -230,16 +412,50 @@ class HARagHook(CustomLogger):
             logger.exception("HA‑RAG query failed: %s", exc)
             formatted_content = "Error retrieving Home Assistant entities."
 
-        # Replace the placeholder in‑place
-        original_content = messages[sys_idx]["content"]
-        updated_content = original_content.replace(RAG_PLACEHOLDER, formatted_content)
-        messages[sys_idx]["content"] = updated_content
+        # Cache-friendly approach: inject conversation-aware context into user message
+        original_user_content = messages[user_idx]["content"]
+
+        # Build enhanced context with conversation awareness
+        context_parts = []
+
+        # Add current relevant entities (always with fresh values)
+        if (
+            formatted_content
+            and formatted_content != "Error retrieving Home Assistant entities."
+        ):
+            context_parts.append(f"Aktuálisan releváns eszközök:\n{formatted_content}")
+
+        # Add conversation context if available
+        if len(conversation_context) > 1:  # More than just current message
+            # Extract previously mentioned entities or areas
+            prev_context = _extract_conversation_insights(conversation_context)
+            if prev_context:
+                context_parts.append(
+                    f"A beszélgetés során korábban relevánsnak talált információk:\n{prev_context}"
+                )
+
+        # Combine all context parts
+        if context_parts:
+            combined_context = "\n\n".join(context_parts)
+            updated_user_content = (
+                f"{combined_context}\n\nFelhasználói kérdés: {original_user_content}"
+            )
+        else:
+            updated_user_content = original_user_content
+
+        messages[user_idx]["content"] = updated_user_content
         data["messages"] = messages
-        
-        logger.info(f"RAG Hook: Successfully injected entities. Content length: {len(formatted_content)}")
-        logger.debug(f"RAG Hook: Formatted content: {formatted_content[:200]}...")
-        logger.info(f"RAG Hook: Updated system message length: {len(updated_content)}")
-        
+
+        logger.info(
+            f"RAG Hook: Successfully injected conversation-aware context. Total length: {len(updated_user_content)}"
+        )
+        logger.debug(
+            f"RAG Hook: Enhanced context preview: {updated_user_content[:300]}..."
+        )
+        logger.info(
+            f"RAG Hook: Updated user message length: {len(updated_user_content)}"
+        )
+
         return data
 
     # ────────────────────────────────
@@ -252,23 +468,32 @@ class HARagHook(CustomLogger):
         user_api_key_dict: UserAPIKeyAuth,  # noqa: D401 (unused)
         response: LLMResponseTypes,
     ) -> Any:
-        """Optionally execute Home‑Assistant tool calls after a successful LLM call."""
+        """Execute Home‑Assistant tool calls after a successful LLM call."""
         logger.info("HA RAG Hook async_post_call_success_hook called")
-        logger.debug(f"Post-call hook data keys: {list(data.keys()) if data else 'None'}")
+        logger.debug(
+            f"Post-call hook data keys: {list(data.keys()) if data else 'None'}"
+        )
         logger.debug(f"Response type: {type(response).__name__}")
 
+        # First: Execute HA tool calls if needed
         execution_mode: str = (
             data.get("tool_execution_mode") or TOOL_EXECUTION_MODE
         ).lower()
+
+        # Continue with tool execution if enabled
         if execution_mode == "disabled":
             return response
 
-        # Ensure there is at least one tool call  
+        # Ensure there is at least one tool call
         choices = getattr(response, "choices", [])
         if not choices:
             return response
 
-        tool_calls = getattr(getattr(choices[0], "message", {}), "tool_calls", []) if choices else []
+        tool_calls = (
+            getattr(getattr(choices[0], "message", {}), "tool_calls", [])
+            if choices
+            else []
+        )
         if not tool_calls:
             return response
 
@@ -323,17 +548,19 @@ class HARagHook(CustomLogger):
             if hasattr(response, "__dict__"):
                 if not hasattr(response, "execution_results"):
                     response.execution_results = []
-                response.execution_results.extend(exec_payload["tool_execution_results"])
+                response.execution_results.extend(
+                    exec_payload["tool_execution_results"]
+                )
         return response
 
     # ────────────────────────────────
     # Fallback: basic success logging
     # ────────────────────────────────
-    
+
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         """Basic success logging fallback method."""
         logger.info("HA RAG Hook async_log_success_event called")
-        
+
 
 # Exported instance – reference this in litellm_config.yaml
 ha_rag_hook_instance: HARagHook = HARagHook()
