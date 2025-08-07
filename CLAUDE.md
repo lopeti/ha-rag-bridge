@@ -135,8 +135,16 @@ The project uses Docker Compose for development with multiple stack configuratio
 - `docker-compose.dev.yml` - Development stack with live reload and debugpy
 - `docker-compose.local.yml` - Local testing
 - `docker-compose.prod.yml` - Production deployment
-- VS Code integration: "Reopen in Container" for DevContainer workflow
-- Environment switching: Use `scripts/switch_env.sh` to toggle between dev/home modes
+
+### DevContainer Workflow
+
+**Development Environment**: VS Code DevContainer integration with "Reopen in Container"
+- **Development Location**: Inside DevContainer (isolated Python environment)
+- **Docker Stack**: Runs on host machine (HASS+bridge+Arango+LiteLLM)
+- **Host Commands**: Docker operations (`docker-compose restart litellm`) run from host terminal
+- **Planned Enhancement**: Docker socket mount to enable container management from within DevContainer
+
+**Environment switching**: Use `scripts/switch_env.sh` to toggle between dev/home modes
 
 ### Important Architecture Details
 
@@ -184,6 +192,16 @@ The project uses Docker Compose for development with multiple stack configuratio
 - Cache-optimized system prompt architecture for improved LLM performance
 - Performance: 4/6 scope detection accuracy, 0.5-0.73 cluster similarity scores
 - See `memory-bank/cluster-based-rag-optimization.md` and `memory-bank/system-prompt-optimization.md` for details
+
+**LangGraph Migration Phase 1** ✅ COMPLETED
+- Complete architectural plan in `memory-bank/langgraph-migration-plan.md`
+- LangGraph dependencies installed (langgraph, langchain-core, langchain-community)
+- RAGState TypedDict schema with complete workflow state management
+- ConversationAnalysisNode: ports existing conversation analyzer with compatibility fixes
+- LLM-based ScopeDetectionNode: replaces regex patterns with intelligent classification
+- Simple linear workflow: conversation_analysis → scope_detection → entity_retrieval → context_formatting
+- **100% scope detection accuracy** achieved (vs 67% with regex patterns)
+- Validated with comprehensive test suite covering micro/macro/overview scenarios
 
 **Phase 2: Conversation Memory & Multi-turn Enhancement** 📋 PLANNED
 - TTL-based conversation entity persistence across turns

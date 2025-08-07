@@ -25,6 +25,7 @@ class ConversationContext:
     previous_entities: Set[str]
     is_follow_up: bool
     intent: str
+    confidence: float = 0.8  # Default confidence for compatibility
 
 
 class ConversationAnalyzer:
