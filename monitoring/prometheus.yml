@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+#   # LiteLLM Metrics (Phase 3 Hook)
+#   - job_name: 'litellm'
+#     static_configs:
+#       - targets: ['ha-rag-bridge-litellm-1:4000']  # LiteLLM Prometheus endpoint
+#     scrape_interval: 10s
+#     metrics_path: /metrics
+
+#   # HA-RAG Bridge Metrics  
+#   - job_name: 'ha-rag-bridge'
+#     static_configs:
+#       - targets: ['ha-rag-bridge:8000']
+#     scrape_interval: 15s
+#     metrics_path: /metrics
+    
+  # System Metrics (Optional)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

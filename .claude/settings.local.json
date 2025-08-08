@@ -31,7 +31,13 @@
       "Bash(make:*)",
       "Bash(pgrep:*)",
       "Bash(pip install:*)",
-      "Bash(poetry lock:*)"
+      "Bash(poetry lock:*)",
+      "Bash(docker network create:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker network connect:*)",
+      "Bash(docker restart:*)",
+      "Bash(sudo sed:*)",
+      "Bash(docker compose:*)"
     ],
     "deny": []
   }
