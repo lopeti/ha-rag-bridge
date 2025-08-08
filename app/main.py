@@ -301,11 +301,10 @@ def retrieve_entities_with_clusters(
             if ce["entity"].get("entity_id")
         }
 
-        # Get additional entities via traditional vector search
-        vector_k = max(
-            k - len(cluster_entities), k // 2
-        )  # Ensure we get enough entities
-        vector_entities = query_arango(db, q_vec, q_text, vector_k)
+        # Multi-stage retrieval: broad → rerank → filter
+        # Stage 1: Broad retrieval (3x target k for better candidate pool)
+        broad_k = k * 3  # Get 3x more entities initially
+        vector_entities = query_arango(db, q_vec, q_text, broad_k)
 
         # Combine results, prioritizing cluster entities
         combined_entities = []
@@ -317,8 +316,7 @@ def retrieve_entities_with_clusters(
         for ve in vector_entities:
             if ve.get("entity_id") not in cluster_entity_ids:
                 combined_entities.append(ve)
-                if len(combined_entities) >= k:
-                    break
+                # Don't limit here - we want the full broad candidate pool
 
         # If still not enough entities, use text-only fallback
         if len(combined_entities) < 2:
@@ -327,10 +325,12 @@ def retrieve_entities_with_clusters(
 
         logger.info(
             f"Enhanced retrieval: {len(cluster_entities)} from clusters, "
-            f"{len(combined_entities) - len(cluster_entities)} from vector search"
+            f"{len(combined_entities) - len(cluster_entities)} from vector search, "
+            f"total candidates: {len(combined_entities)} (target: {k})"
         )
 
-        return combined_entities[:k]
+        # Return full candidate pool for reranking - reranker will filter down to k
+        return combined_entities
 
     except Exception as exc:
         logger.warning(

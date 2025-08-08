@@ -112,9 +112,36 @@ class EntityReranker:
             score = self._score_entity(entity, query, context)
             entity_scores.append(score)
 
-        # Sort by final score and return top k
+        # Sort by final score
         entity_scores.sort(key=lambda x: x.final_score, reverse=True)
-        top_entities = entity_scores[:k]
+        
+        # Multi-stage filtering: prefer active entities within top k*2 candidates
+        if len(entity_scores) > k:
+            # Stage 1: Get top k*2 by relevance score
+            candidate_pool = entity_scores[:min(len(entity_scores), k * 2)]
+            
+            # Stage 2: Separate active and inactive entities within candidate pool
+            active_entities = [es for es in candidate_pool if es.ranking_factors.get("has_active_value", 0) > 0]
+            inactive_entities = [es for es in candidate_pool if es.ranking_factors.get("has_active_value", 0) <= 0]
+            
+            # Stage 3: Prioritize active entities, fill remaining with best inactive
+            top_entities = []
+            
+            # Fill with active entities first
+            top_entities.extend(active_entities[:k])
+            
+            # Fill remaining slots with best inactive entities if needed
+            remaining_slots = k - len(top_entities)
+            if remaining_slots > 0:
+                top_entities.extend(inactive_entities[:remaining_slots])
+            
+            logger.debug(
+                f"Multi-stage filtering: {len(active_entities)} active, "
+                f"{len(inactive_entities)} inactive from {len(candidate_pool)} candidates"
+            )
+        else:
+            # Not enough entities for multi-stage filtering
+            top_entities = entity_scores[:k]
 
         # Enhanced logging with context details
         if top_entities:
@@ -354,8 +381,8 @@ class EntityReranker:
                     )
                 else:
                     factors["unavailable_penalty"] = (
-                        -1.0
-                    )  # Penalize unavailable sensors
+                        -0.5  # Lighter penalty - still consider inactive sensors
+                    )  # Penalize unavailable sensors but don't exclude them
             except Exception:
                 pass  # Don't fail ranking on state service errors
 
