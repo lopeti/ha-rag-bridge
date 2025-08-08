@@ -443,13 +443,15 @@ class HARagHook(CustomLogger):
             # Handle new bridge response format with messages array
             messages_from_bridge = rag_payload.get("messages", [])
             user_context = None
-            
+
             # Look for user message with home context from Bridge
             for msg in messages_from_bridge:
-                if msg.get("role") == "user" and "Current home context:" in msg.get("content", ""):
+                if msg.get("role") == "user" and "Current home context:" in msg.get(
+                    "content", ""
+                ):
                     user_context = msg.get("content", "")
                     break
-            
+
             if user_context:
                 formatted_content = user_context
             else:
