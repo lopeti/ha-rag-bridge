@@ -25,6 +25,10 @@ import httpx
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.types.utils import LLMResponseTypes
 
+# Translation service removed - using multilingual embedding approach
+HAS_TRANSLATION = False
+get_translation_service = None
+
 # Simple type hints without importing proxy server
 from typing import TYPE_CHECKING
 
@@ -235,6 +239,11 @@ class HARagHookPhase3(CustomLogger):
 
     def __init__(self):
         super().__init__()
+        
+        # Translation service removed - using multilingual embedding approach
+        self.translation_service = None
+        logger.info("Using multilingual embeddings - no translation needed")
+            
         logger.info(
             "HARagHookPhase3 initialized successfully with LangGraph workflow integration"
         )
@@ -285,6 +294,9 @@ class HARagHookPhase3(CustomLogger):
         if not user_question:
             logger.info("RAG Hook Phase 3: No user question extracted - EXITING")
             return data
+            
+        # Using multilingual embeddings - no translation needed
+        # The RAG system now handles Hungarian queries natively via hybrid embeddings
 
         # Find the last user message to inject context into
         user_idx = None
@@ -318,7 +330,7 @@ class HARagHookPhase3(CustomLogger):
 
             # Build conversation-aware payload for Phase 3 workflow endpoint
             bridge_payload = {
-                "user_message": user_question,
+                "user_message": user_question,  # Hungarian/English - handled by multilingual embeddings
                 "conversation_history": (
                     [
                         {"role": msg["role"], "content": msg["content"]}
@@ -328,8 +340,9 @@ class HARagHookPhase3(CustomLogger):
                     else None
                 ),
                 "session_id": stable_session_id,
-                "conversation_id": stable_session_id,  # Backward compatibility
             }
+            
+            # Translation metadata removed - no longer needed with multilingual embeddings
 
             # Call Phase 3 workflow via HTTP endpoint
             async with httpx.AsyncClient(
@@ -382,32 +395,55 @@ class HARagHookPhase3(CustomLogger):
 
             # Log Phase 3 workflow metrics
             entities_count = len(rag_payload.get("relevant_entities", []))
-            memory_boosted_count = len(
-                [
-                    e
-                    for e in rag_payload.get("relevant_entities", [])
-                    if e.get("is_primary")
-                ]
-            )
-
-            logger.info(
-                f"Phase 3 workflow completed: {entities_count} entities, {memory_boosted_count} memory-boosted"
-            )
-
-            # Log metadata if available
             metadata = rag_payload.get("metadata", {})
+            logger.info(f"Phase 3 workflow completed: {entities_count} entities retrieved")
             if metadata:
-                quality = metadata.get("workflow_quality", 0.0)
-                memory_count = metadata.get("memory_entities_count", 0)
-                logger.info(
-                    f"Phase 3 metrics: quality={quality:.2f}, memory_entities={memory_count}"
-                )
+                logger.debug(f"Phase 3 metadata: {metadata}")
 
         except Exception as exc:  # noqa: BLE001
             logger.exception("HA‑RAG Phase 3 workflow failed: %s", exc)
-            formatted_context = (
-                "Error retrieving Home Assistant entities from Phase 3 workflow."
-            )
+            logger.error(f"Phase 3 workflow error details: {type(exc).__name__}: {str(exc)}")
+            logger.error(f"RAG_QUERY_ENDPOINT: {RAG_QUERY_ENDPOINT}")
+            logger.error(f"bridge_payload: {bridge_payload}")
+            
+            # Fallback to basic RAG endpoint
+            logger.info("Falling back to basic RAG endpoint")
+            try:
+                fallback_endpoint = f"{HA_RAG_API_URL}/process-request"
+                basic_payload = {
+                    "user_message": user_question,
+                    "conversation_history": (
+                        [{"role": msg["role"], "content": msg["content"]}
+                         for msg in conversation_context]
+                        if conversation_context
+                        else None
+                    ),
+                    "conversation_id": stable_session_id,
+                }
+                
+                async with httpx.AsyncClient(timeout=15) as client:
+                    logger.info("Calling basic RAG fallback endpoint...")
+                    resp = await client.post(fallback_endpoint, json=basic_payload)
+                    resp.raise_for_status()
+                    basic_rag_payload = resp.json()
+                    
+                    logger.info(f"Basic RAG fallback successful: {len(basic_rag_payload.get('messages', []))} messages")
+                    
+                    # Extract system message from basic RAG response
+                    messages_from_basic = basic_rag_payload.get("messages", [])
+                    for msg in messages_from_basic:
+                        if msg.get("role") == "system":
+                            formatted_context = msg.get("content", "")
+                            logger.info("Using system message from basic RAG fallback")
+                            break
+                    else:
+                        formatted_context = "Basic RAG fallback: No system message found"
+                        
+            except Exception as fallback_exc:
+                logger.error(f"Basic RAG fallback also failed: {fallback_exc}")
+                formatted_context = (
+                    "Error retrieving Home Assistant entities from both Phase 3 workflow and basic RAG fallback."
+                )
 
         # Cache-friendly approach: inject conversation-aware context into user message
         original_user_content = messages[user_idx]["content"]
@@ -428,14 +464,14 @@ class HARagHookPhase3(CustomLogger):
         # Add conversation continuity note if multi-turn
         if len(conversation_context) > 1:
             context_parts.append(
-                "Folyamatos beszélgetés - a Phase 3 rendszer automatikusan figyelembe veszi a korábbi kontextust és entity memóriát."
+                "Multi-turn conversation - Phase 3 system automatically considers previous context and entity memory."
             )
 
         # Combine all context parts
         if context_parts:
             combined_context = "\n\n".join(context_parts)
             updated_user_content = (
-                f"{combined_context}\n\nFelhasználói kérdés: {original_user_content}"
+                f"{combined_context}\n\nUser question: {original_user_content}"
             )
         else:
             updated_user_content = original_user_content
@@ -462,14 +498,16 @@ class HARagHookPhase3(CustomLogger):
         user_api_key_dict: UserAPIKeyAuth,  # noqa: D401 (unused)
         response: LLMResponseTypes,
     ) -> Any:
-        """Execute Home‑Assistant tool calls after a successful LLM call."""
+        """Execute Home‑Assistant tool calls after a successful LLM call and translate response if needed."""
         logger.info("HA RAG Hook Phase 3 async_post_call_success_hook called")
         logger.debug(
             f"Post-call hook data keys: {list(data.keys()) if data else 'None'}"
         )
         logger.debug(f"Response type: {type(response).__name__}")
 
-        # First: Execute HA tool calls if needed
+        # Response translation removed - LLM handles Hungarian natively with multilingual context
+
+        # Second: Execute HA tool calls if needed
         execution_mode: str = (
             data.get("tool_execution_mode") or TOOL_EXECUTION_MODE
         ).lower()
@@ -478,7 +516,7 @@ class HARagHookPhase3(CustomLogger):
         if execution_mode == "disabled":
             return response
 
-        # Ensure there is at least one tool call
+        # Ensure there is at least one tool call (re-fetch choices after potential translation)
         choices = getattr(response, "choices", [])
         if not choices:
             return response

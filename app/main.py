@@ -30,6 +30,14 @@ from .services.state_service import get_last_state
 from .services.service_catalog import ServiceCatalog
 from .services.entity_reranker import entity_reranker
 
+# Import LangGraph workflow at module level to avoid route registration issues
+try:
+    from .langgraph_workflow.workflow import run_rag_workflow
+    LANGGRAPH_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"LangGraph workflow not available: {e}")
+    LANGGRAPH_AVAILABLE = False
+
 app = FastAPI()
 router = APIRouter()
 logger = get_logger(__name__)
@@ -153,7 +161,7 @@ def query_arango(
         "RETURN e) "
         "LET txt = ("
         "FOR e IN v_meta "
-        "SEARCH ANALYZER(PHRASE(e.text, @msg, 'text_en'), 'text_en') "
+        "SEARCH ANALYZER(PHRASE(e.text_system, @msg, 'text_en'), 'text_en') "
         "SORT BM25(e) DESC "
         "LIMIT @k "
         "RETURN e) "
@@ -168,7 +176,7 @@ def query_arango(
 def query_arango_text_only(db, q_text: str, k: int) -> List[dict]:
     aql = (
         "FOR e IN v_meta "
-        "SEARCH ANALYZER(PHRASE(e.text, @msg, 'text_en'), 'text_en') "
+        "SEARCH ANALYZER(PHRASE(e.text_system, @msg, 'text_en'), 'text_en') "
         "SORT BM25(e) DESC "
         f"LIMIT {k} "
         "RETURN e"
@@ -648,10 +656,15 @@ async def process_response(payload: schemas.LLMResponse):
     return {"status": "ok", "message": message.content}
 
 
+
 @router.post("/process-request-workflow")
 async def process_request_workflow(payload: schemas.Request):
     """Process request using Phase 3 LangGraph workflow (used by hook integration)."""
-    from .langgraph_workflow.workflow import run_rag_workflow
+    logger.info(f"WORKFLOW ENDPOINT CALLED: {payload.user_message if payload else 'no payload'}")
+    
+    if not LANGGRAPH_AVAILABLE:
+        raise HTTPException(status_code=500, detail="LangGraph workflow not available")
+        
     from . import schemas as app_schemas
 
     logger.info(
@@ -678,6 +691,17 @@ async def process_request_workflow(payload: schemas.Request):
             session_id=session_id,
             conversation_history=conversation_history,
         )
+
+        # Check if workflow returned valid result
+        if workflow_result is None:
+            logger.error("LangGraph workflow returned None")
+            workflow_result = {
+                "formatted_context": "Error: Workflow returned empty result",
+                "retrieved_entities": [],
+                "conversation_context": {"intent": "read"},
+                "diagnostics": {"error": "workflow_returned_none"},
+                "errors": ["Workflow execution failed"]
+            }
 
         # Extract results from workflow
         formatted_context = workflow_result.get("formatted_context", "")
@@ -750,6 +774,19 @@ async def process_request_workflow(payload: schemas.Request):
         )
 
 
+logger.info("Including main router with routes")
 app.include_router(router)
+logger.info("Including graph router")
 app.include_router(graph_router)
+logger.info("Including admin router")
 app.include_router(admin_router)
+logger.info("All routers included successfully")
+
+# Print all registered routes for debugging
+for route in app.routes:
+    if hasattr(route, 'path'):
+        logger.info(f"Registered route: {route.methods} {route.path}")
+    elif hasattr(route, 'routes'):
+        for subroute in route.routes:
+            if hasattr(subroute, 'path'):
+                logger.info(f"Registered subroute: {subroute.methods} {subroute.path}")

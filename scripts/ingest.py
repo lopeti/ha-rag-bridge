@@ -158,10 +158,10 @@ def fetch_exposed_entity_ids() -> Optional[set]:
 
 
 def build_text(entity: dict) -> str:
-    """Return the concatenated text used for embedding.
+    """Return the concatenated text optimized for multilingual embeddings.
 
-    Builds a rich, natural language description of the entity
-    optimized for semantic search and multilingual support.
+    Builds a hybrid text combining Hungarian base with English keywords
+    for optimal multilingual semantic matching with single embedding.
     """
     attrs = entity.get("attributes", {})
     entity_id = entity.get("entity_id", "")
@@ -190,7 +190,7 @@ def build_text(entity: dict) -> str:
     # Main entity description
     if friendly_name:
         main_desc = friendly_name
-        if domain and device_class:
+        if domain and device_class and domain != device_class:
             main_desc = f"{friendly_name} ({domain} {device_class})"
         elif domain:
             main_desc = f"{friendly_name} ({domain})"
@@ -230,29 +230,7 @@ def build_text(entity: dict) -> str:
             synonyms = " ".join(synonyms)
         text_parts.append(f"Synonyms: {synonyms}")
 
-    # Add keywords section
-    keywords = []
-    # Add original words from entity ID
-    if entity_name_parts:
-        keywords.extend(entity_name_parts)
-
-    # Add domain and device class
-    if domain:
-        keywords.append(domain)
-    if device_class:
-        keywords.append(device_class)
-
-    # Add area name and ID
-    if area_name and area_name not in keywords:
-        keywords.append(area_name)
-    if area_id and area_id not in keywords and area_id != area_name:
-        keywords.append(area_id)
-
-    # Add friendly name if different
-    if friendly_name and friendly_name not in keywords:
-        keywords.append(friendly_name)
-
-    # Add multilingual support
+    # Hungarian translation support for semantic richness
     translations = []
 
     # Domain translations
@@ -265,23 +243,62 @@ def build_text(entity: dict) -> str:
     elif domain == "climate":
         translations.extend(["klíma", "fűtés", "légkondi", "termosztát"])
 
-    # Measurement translations
-    keywords_text = " ".join(keywords).lower()
-    if "temperature" in keywords_text:
+    # Measurement translations based on context
+    entity_text = " ".join(text_parts).lower()
+    if "temperature" in entity_text or "°c" in entity_text:
         translations.extend(["hőmérséklet", "hőfok"])
-    if "humidity" in keywords_text:
+    if "humidity" in entity_text or "%" in entity_text:
         translations.extend(["páratartalom", "nedvesség"])
-    if "power" in keywords_text:
+    if "power" in entity_text or "watt" in entity_text:
         translations.extend(["fogyasztás", "áramfogyasztás", "energia"])
 
-    # Combine everything
+    # Build hybrid text: Hungarian base + English keywords for multilingual embedding
     result = ". ".join(text_parts)
 
-    if keywords:
-        result += f". Keywords: {', '.join(keywords)}"
+    # Add English keywords for cross-language matching (avoiding duplicates)
+    english_keywords = []
+    
+    # Extract English area names
+    if area_name:
+        english_area = _translate_area_name_to_english(area_name)
+        if english_area != area_name and english_area not in english_keywords:
+            english_keywords.append(english_area)
+    
+    # Add domain (only if different from device_class to avoid duplication)
+    if domain and domain not in english_keywords:
+        if not device_class or domain != device_class:
+            english_keywords.append(domain)
+    if device_class and device_class not in english_keywords:
+        english_keywords.append(device_class)
+    
+    # Add entity name parts translated to English  
+    if entity_name_parts:
+        for part in entity_name_parts:
+            english_term = _translate_term_to_english(part)
+            if english_term != part and english_term not in english_keywords:
+                english_keywords.append(english_term)
+    
+    # Add measurement units (usually already in English)
+    if unit_of_measurement and unit_of_measurement not in english_keywords:
+        english_keywords.append(unit_of_measurement)
+    
+    # Add semantic English terms
+    english_domain_terms = _get_english_domain_terms(domain, unit_of_measurement)
+    for term in english_domain_terms:
+        if term not in english_keywords:
+            english_keywords.append(term)
 
+    # Combine Hungarian text with English keywords for optimal multilingual matching
+    if english_keywords:
+        # Remove duplicates while preserving order
+        unique_keywords = list(dict.fromkeys([k for k in english_keywords if k and k.strip()]))
+        if unique_keywords:
+            # More natural integration without explicit "English:" label
+            result += f". Keywords: {' '.join(unique_keywords)}"
+
+    # Keep original translations for Hungarian semantic richness
     if translations:
-        result += f". Hungarian terms: {', '.join(translations)}"
+        result += f". Hungarian: {', '.join(translations)}"
 
     aliases = attrs.get("area_aliases") or []
     if aliases:
@@ -290,10 +307,190 @@ def build_text(entity: dict) -> str:
     return result
 
 
-def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
-    """Construct the ArangoDB document for an entity."""
+def build_system_text(entity: dict) -> str:
+    """Return the concatenated text for system language (English).
+
+    Builds a clean, English-only description optimized for
+    vector embeddings and semantic search consistency.
+    """
+    attrs = entity.get("attributes", {})
+    entity_id = entity.get("entity_id", "")
+
+    # Collect all available metadata
+    friendly_name = attrs.get("friendly_name", "")
+    area_name = attrs.get("area") or ""
+    area_id = attrs.get("area_id", "")
+    domain = entity_id.split(".")[0] if entity_id else ""
+    device_class = attrs.get("device_class", "")
+    unit_of_measurement = attrs.get("unit_of_measurement", "")
+    entity_category = attrs.get("entity_category", "")
+    icon = attrs.get("icon", "")
+
+    # Extract entity name from ID
+    entity_name_parts = []
+    if "." in entity_id:
+        name_part = entity_id.split(".", 1)[1]
+        entity_name_parts = name_part.replace("_", " ").split()
+
+    # Build English-only text parts
+    text_parts = []
+
+    # Main entity description in English
+    if friendly_name:
+        # Translate Hungarian area names to English
+        english_area_name = _translate_area_name_to_english(area_name)
+        
+        # Use English area name in friendly name if it contains Hungarian
+        english_friendly_name = friendly_name
+        if area_name and area_name in friendly_name and english_area_name != area_name:
+            english_friendly_name = friendly_name.replace(area_name, english_area_name)
+            
+        main_desc = english_friendly_name
+        if domain and device_class:
+            main_desc = f"{english_friendly_name} ({domain} {device_class})"
+        elif domain:
+            main_desc = f"{english_friendly_name} ({domain})"
+        text_parts.append(main_desc)
+
+    # Location information in English
+    if area_name:
+        english_area = _translate_area_name_to_english(area_name)
+        text_parts.append(f"Located in {english_area}")
+    elif area_id:
+        english_area_id = _translate_area_name_to_english(area_id)
+        text_parts.append(f"Located in {english_area_id}")
+
+    # Measurement information
+    if unit_of_measurement:
+        text_parts.append(f"Measures in {unit_of_measurement}")
+
+    # Entity name in English
+    if entity_name_parts:
+        english_entity_parts = [_translate_term_to_english(part) for part in entity_name_parts]
+        text_parts.append(f"Entity name: {' '.join(english_entity_parts)}")
+
+    # Category and device info
+    if entity_category:
+        text_parts.append(f"Category: {entity_category}")
+
+    # Icon information
+    if icon and icon.startswith("mdi:"):
+        icon_name = icon[4:].replace("-", " ")
+        text_parts.append(f"Icon: {icon_name}")
+
+    # English keywords only
+    keywords = []
+    if entity_name_parts:
+        english_parts = [_translate_term_to_english(part) for part in entity_name_parts]
+        keywords.extend(english_parts)
+
+    if domain:
+        keywords.append(domain)
+    if device_class:
+        keywords.append(device_class)
+
+    # English area terms
+    if area_name:
+        english_area = _translate_area_name_to_english(area_name)
+        if english_area not in keywords:
+            keywords.append(english_area)
+
+    # English domain terms
+    english_domain_terms = _get_english_domain_terms(domain, unit_of_measurement)
+    keywords.extend(english_domain_terms)
+
+    # Combine everything
+    result = ". ".join(text_parts)
+    
+    if keywords:
+        # Remove duplicates and empty strings
+        unique_keywords = list(dict.fromkeys([k for k in keywords if k]))
+        result += f". Keywords: {', '.join(unique_keywords)}"
+
+    return result
+
+
+def _translate_area_name_to_english(hungarian_area: str) -> str:
+    """Translate Hungarian area names to English."""
+    area_translations = {
+        "nappali": "living room",
+        "konyha": "kitchen", 
+        "hálószoba": "bedroom",
+        "háló": "bedroom",
+        "fürdőszoba": "bathroom",
+        "fürdő": "bathroom",
+        "dolgozószoba": "office",
+        "iroda": "office", 
+        "előszoba": "hallway",
+        "pince": "basement",
+        "padlás": "attic",
+        "terasz": "terrace",
+        "erkély": "balcony",
+        "garázs": "garage",
+        "kert": "garden",
+        "kerti": "garden",
+        "ház": "house",
+        "otthon": "home"
+    }
+    return area_translations.get(hungarian_area.lower(), hungarian_area)
+
+
+def _translate_term_to_english(hungarian_term: str) -> str:
+    """Translate common Hungarian terms to English."""
+    term_translations = {
+        "lámpa": "light",
+        "világítás": "lighting", 
+        "fény": "light",
+        "szenzor": "sensor",
+        "érzékelő": "sensor",
+        "mérő": "meter",
+        "kapcsoló": "switch",
+        "klíma": "climate",
+        "fűtés": "heating",
+        "termosztát": "thermostat",
+        "hőmérséklet": "temperature",
+        "páratartalom": "humidity",
+        "nedvesség": "humidity",
+        "fogyasztás": "consumption",
+        "energia": "energy",
+        "áram": "power"
+    }
+    return term_translations.get(hungarian_term.lower(), hungarian_term)
+
+
+def _get_english_domain_terms(domain: str, unit_of_measurement: str = "") -> list:
+    """Get English terms for domain and measurement context."""
+    terms = []
+    
+    # Domain-specific English terms
+    domain_terms = {
+        "light": ["light", "lighting", "lamp", "illumination"],
+        "sensor": ["sensor", "detector", "measurement"],
+        "switch": ["switch", "toggle", "control"],
+        "climate": ["climate", "temperature", "hvac", "thermostat"]
+    }
+    
+    if domain in domain_terms:
+        terms.extend(domain_terms[domain])
+    
+    # Unit-based terms
+    if unit_of_measurement:
+        unit_lower = unit_of_measurement.lower()
+        if "°c" in unit_lower or "celsius" in unit_lower:
+            terms.extend(["temperature", "degrees"])
+        elif "%" in unit_lower and any(word in unit_lower for word in ["humidity", "moisture"]):
+            terms.extend(["humidity", "moisture"])
+        elif "w" in unit_lower or "watt" in unit_lower:
+            terms.extend(["power", "consumption", "energy"])
+    
+    return terms
+
+
+def build_doc(entity: dict, embedding: List[float], text: str, text_system: str) -> dict:
+    """Construct the ArangoDB document for an entity with hybrid multilingual text."""
 
     attrs = entity.get("attributes", {})
+    # Hash hybrid text for change detection (text_system is same as text now)
     meta_hash = hashlib.sha256(text.encode()).hexdigest()
 
     # Get area information - prefer the full name over just the ID
@@ -305,7 +502,7 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     entity_id = entity["entity_id"]
     domain = entity_id.split(".")[0] if "." in entity_id else ""
 
-    # Create entity document with all useful fields
+    # Create entity document with bilingual text support
     doc = {
         "_key": entity_id,
         "entity_id": entity_id,
@@ -316,7 +513,10 @@ def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
         "friendly_name": attrs.get("friendly_name"),
         "synonyms": attrs.get("synonyms"),
         "embedding": embedding,
-        "text": text,
+        "text": text,  # UI language text (Hungarian)
+        "text_system": text_system,  # System language text (English) 
+        "language": "hu",  # UI language code
+        "system_language": "en",  # System language code
         "meta_hash": meta_hash,
     }
 
@@ -492,13 +692,15 @@ def ingest(
     total_processed = 0
     for i in range(0, len(states), batch_size):
         batch = states[i : i + batch_size]
-        texts = [build_text(e) for e in batch]
+        # Generate hybrid texts optimized for multilingual embedding
+        hybrid_texts = [build_text(e) for e in batch]
 
-        # Skip unchanged entities unless full ingest
+        # Skip unchanged entities unless full ingest (hash hybrid text)
         filtered_batch = []
-        filtered_texts = []
-        for ent, text in zip(batch, texts):
-            meta_hash = hashlib.sha256(text.encode()).hexdigest()
+        filtered_hybrid_texts = []
+        for ent, hybrid_text in zip(batch, hybrid_texts):
+            # Hash hybrid text for change detection
+            meta_hash = hashlib.sha256(hybrid_text.encode()).hexdigest()
             existing_hash = get_existing_meta_hash(ent["entity_id"], col)
             if not full:
                 if existing_hash == meta_hash:
@@ -510,26 +712,27 @@ def ingest(
             else:
                 changed_count += 1
             filtered_batch.append(ent)
-            filtered_texts.append(text)
+            filtered_hybrid_texts.append(hybrid_text)
             total_processed += 1
 
         if not filtered_batch:
             continue
 
         try:
-            embeddings = emb_backend.embed(filtered_texts)
+            # Use hybrid text (Hungarian + English) for embeddings for optimal multilingual matching
+            embeddings = emb_backend.embed(filtered_hybrid_texts)
         except Exception as exc:  # pragma: no cover - network errors
             logger.warning("embedding error", error=str(exc))
             continue
 
         docs = []
         ents_for_docs = []
-        for ent, emb, text in zip(filtered_batch, embeddings, filtered_texts):
+        for ent, emb, hybrid_text in zip(filtered_batch, embeddings, filtered_hybrid_texts):
             if not emb:
                 logger.warning("missing embedding", entity=ent.get("entity_id"))
                 failed_count += 1
                 continue
-            docs.append(build_doc(ent, emb, text))
+            docs.append(build_doc(ent, emb, hybrid_text, hybrid_text))
             ents_for_docs.append(ent)
 
         if docs:
@@ -575,7 +778,7 @@ def ingest(
                     "upserted entity",
                     entity=d["entity_id"],
                     edges=edge_count,
-                    text=text[:50] + "..." if len(text) > 50 else text,
+                    hybrid_text=d["text"][:50] + "..." if len(d["text"]) > 50 else d["text"],
                     has_area=bool(d.get("area")),
                     has_device=bool(d.get("device_id")),
                 )

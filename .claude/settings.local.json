@@ -37,7 +37,19 @@
       "Bash(docker network connect:*)",
       "Bash(docker restart:*)",
       "Bash(sudo sed:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(pip search:*)",
+      "Bash(pip index versions:*)",
+      "Bash(poetry search:*)",
+      "Bash(sudo chown:*)",
+      "Bash(poetry install:*)",
+      "Bash(sudo apt:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker cp:*)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(docker logs:*)"
     ],
     "deny": []
   }

@@ -89,26 +89,36 @@ async def llm_scope_detection_node(state: RAGState) -> Dict[str, Any]:
         elif has_control_action and not has_area and not has_quantity_modifier:
             # "kapcsold fel a lámpát" → MICRO
             scope = QueryScope.MICRO
-            optimal_k = 7
+            optimal_k = 20
             confidence = 0.8
             reasoning = "Simple control action without area scope"
+        # Temperature-specific queries get climate cluster priority first
+        elif (
+            any(word in query_lower for word in ["hány fok", "hőmérséklet", "temperature"]) 
+            and len(areas) == 1
+        ):
+            # "hány fok van a nappaliban?" → MACRO with climate cluster priority
+            scope = QueryScope.MACRO
+            optimal_k = 22
+            confidence = 0.85
+            reasoning = "Temperature query in specific area (climate cluster priority)"
+        elif len(areas) == 1 and not any(
+            word in query_lower for word in ["otthon", "house", "home"]
+        ):
+            # Single area mentioned → MACRO (prioritize area-specific queries)
+            scope = QueryScope.MACRO
+            optimal_k = 22
+            confidence = 0.8
+            reasoning = "Single area-specific query (takes priority over specific value patterns)"
         elif (
             any(word in query_lower for word in ["mennyi", "hány fok"])
             and not has_quantity_modifier
         ):
-            # "hány fok van a kertben?" → MICRO (specific value query)
+            # "hány fok van?" → MICRO (specific value query without area)
             scope = QueryScope.MICRO
-            optimal_k = 7
-            confidence = 0.8
-            reasoning = "Specific value query"
-        elif len(areas) == 1 and not any(
-            word in query_lower for word in ["otthon", "house", "home"]
-        ):
-            # Single area mentioned → MACRO
-            scope = QueryScope.MACRO
-            optimal_k = 22
+            optimal_k = 20
             confidence = 0.7
-            reasoning = "Single area-specific query"
+            reasoning = "Specific value query without area context"
         elif (
             any(word in query_lower for word in ["otthon", "house", "home"])
             or len(areas) > 1
@@ -219,14 +229,18 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
                 if hasattr(detected_scope, "value")
                 else str(detected_scope)
             )
+            # Enhanced cluster type selection based on query context
+            scope_reasoning = state.get("scope_reasoning", "")
             if scope_value == "micro":
                 cluster_types = ["specific", "device"]
             elif scope_value == "macro":
-                cluster_types = ["area", "domain", "specific"]
+                if "climate cluster priority" in scope_reasoning:
+                    # Temperature queries prioritize climate cluster
+                    cluster_types = ["climate", "area", "domain"]
+                else:
+                    cluster_types = ["area", "domain", "specific"]
             else:  # overview
                 cluster_types = ["overview", "area", "domain"]
-        else:
-            cluster_types = ["specific", "area", "domain"]
 
         # Create scope configuration object
         class ScopeConfig:

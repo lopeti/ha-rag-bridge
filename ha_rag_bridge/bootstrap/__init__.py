@@ -290,7 +290,10 @@ def _bootstrap_impl(
                     "entity": {
                         "includeAllFields": False,
                         "storeValues": "none",
-                        "fields": {"text": {"analyzers": ["text_en"]}},
+                        "fields": {
+                            "text": {"analyzers": ["text_en"]},  # UI language (Hungarian)
+                            "text_system": {"analyzers": ["text_en"]}  # System language (English)
+                        },
                         "features": ["frequency", "norm", "position"],
                     }
                 }

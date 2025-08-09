@@ -41,25 +41,72 @@ model_list:
       model: gemini/gemini-1.5-pro
       api_key: os.environ/GEMINI_API_KEY
 
-  # === LOCAL MISTRAL MODEL ===
-  # Local Mistral 7B - Self-hosted model
-  - model_name: mistral-7b
+  # === PRIMARY LOCAL MODELS (Optimized for English inference) ===
+  # Home LLaMA 3B - Fast, efficient 3B model optimized for English inference
+  - model_name: home-llama-3b
     litellm_params:
-      model: openai/mistral-7b-instruct
-      api_base: http://192.168.1.115:8000/v1
+      model: openai/home-llama-3b
+      api_base: http://192.168.1.115:8001/v1
       api_key: fake-key
-  - model_name: mistral-7b-hass
+      max_tokens: 4096
+      temperature: 0.7
+  - model_name: home-llama-3b-hass
     litellm_params:
-      model: openai/mistral-7b-instruct
-      api_base: http://192.168.1.115:8000/v1
+      model: openai/home-llama-3b
+      api_base: http://192.168.1.115:8001/v1
       api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
+  
+  # Qwen 7B - Larger local model for complex tasks
+  - model_name: qwen-7b
+    litellm_params:
+      model: openai/qwen-7b
+      api_base: http://192.168.1.115:8002/v1
+      api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
+  - model_name: qwen-7b-hass
+    litellm_params:
+      model: openai/qwen-7b
+      api_base: http://192.168.1.115:8002/v1
+      api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
 environment_variables:
   HA_RAG_API_URL: http://bridge:8000
   HA_RAG_PLACEHOLDER: "{{HA_RAG_ENTITIES}}"
   ENABLE_HA_TOOL_EXECUTION: "true"
+  
+  # === ArgosTranslate Configuration ===
+  # Enable automatic Hungarian-English translation in LiteLLM hooks  
+  ENABLE_TRANSLATION: "true"                    # Enable/disable translation service
+  DEFAULT_TARGET_LANGUAGE: "hungarian"         # Default response language for users
+  TRANSLATION_CACHE_TTL: "3600"               # Translation cache TTL in seconds (1 hour)
 general_settings:
   drop_params: true
   add_function_to_prompt: true
   set_verbose: true
+  # Prefer local models for cost and privacy
+  prefer_local_models: true
+  
+router_settings:
+  routing_strategy: "least-busy"
+  enable_fallbacks: true
+  
+  # Fallback chain: Home-Llama -> Qwen -> Gemini Flash -> Gemini Pro
+  fallback_models: ["home-llama-3b", "qwen-7b", "gemini-flash", "gemini-pro"]
+  
+  context_window_fallbacks:
+    - model: "home-llama-3b"
+      fallback_model: "qwen-7b"        # More context if needed
+    - model: "qwen-7b"
+      fallback_model: "gemini-flash"   # Cloud fallback if local unavailable
+    - model: "gemini-flash"
+      fallback_model: "gemini-pro"     # Premium fallback
+  
+  # Fast failover to cloud if local models unavailable
+  local_model_timeout: 10
+  
 litellm_settings:
   callbacks: ["litellm_ha_rag_hooks.ha_rag_hook_instance"]

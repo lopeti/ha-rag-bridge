@@ -3,7 +3,55 @@
 # conditional routing, error handling, and multi-turn context enhancement
 
 model_list:
-  # OpenAI GPT models with Phase 3 hook integration
+  # === PRIMARY LOCAL MODELS (ArgosTranslate + Home-Llama Stack) ===
+  # Home LLaMA 3B - Fast, efficient 3B model optimized for English inference
+  - model_name: home-llama-3b
+    litellm_params:
+      model: openai/home-llama-3b
+      api_base: http://192.168.1.115:8001/v1
+      api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
+  - model_name: home-llama-3b-hass
+    litellm_params:
+      model: openai/home-llama-3b
+      api_base: http://192.168.1.115:8001/v1
+      api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
+  
+  # Qwen 7B - Larger local model for complex tasks
+  - model_name: qwen-7b
+    litellm_params:
+      model: openai/qwen-7b
+      api_base: http://192.168.1.115:8002/v1
+      api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
+  - model_name: qwen-7b-hass
+    litellm_params:
+      model: openai/qwen-7b
+      api_base: http://192.168.1.115:8002/v1
+      api_key: fake-key
+      max_tokens: 4096
+      temperature: 0.7
+
+  # === FALLBACK CLOUD MODELS (for when local models unavailable) ===
+  # Fast Gemini models as primary cloud fallback
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+      max_tokens: 4096
+      temperature: 0.7
+  - model_name: gemini-flash-hass
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+      max_tokens: 4096
+      temperature: 0.7
+
+  # OpenAI models as secondary cloud fallback
   - model_name: gpt-4o-mini
     litellm_params:
       model: openai/gpt-4o-mini
@@ -18,7 +66,7 @@ model_list:
       max_tokens: 4096
       temperature: 0.7
 
-  # Claude models with Phase 3 hook integration
+  # Claude models as premium fallback
   - model_name: claude-3-5-sonnet-20241022
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
@@ -36,33 +84,35 @@ model_list:
 # Phase 3 LangGraph Hook Integration
 litellm_settings:
   # Enable Phase 3 enhanced hook with conversation memory
-  callbacks: litellm_ha_rag_hooks_phase3.ha_rag_hook_phase3_instance
+  callbacks: ["litellm_ha_rag_hooks_phase3.ha_rag_hook_phase3_instance"]
   
   # Performance settings for Phase 3 workflow
   request_timeout: 60  # Increased timeout for complex workflow processing
   max_budget: 1000     # Monthly budget limit in USD
   
-  # Caching for improved performance
-  cache: true
-  cache_params:
-    type: "redis"
-    host: os.environ/REDIS_HOST
-    port: os.environ/REDIS_PORT
-    password: os.environ/REDIS_PASSWORD
-    ttl: 3600  # 1 hour cache TTL
+  # Disable caching for now (no Redis available)
+  # cache: true
+  # cache_params:
+  #   type: "redis"
+  #   host: os.environ/REDIS_HOST
+  #   port: os.environ/REDIS_PORT
+  #   password: os.environ/REDIS_PASSWORD
+  #   ttl: 3600  # 1 hour cache TTL
   
-  # Request/response logging
-  success_callback: ["langfuse"]
-  failure_callback: ["langfuse"]
+  # Request/response logging disabled for testing
+  # success_callback: ["langfuse"]
+  # failure_callback: ["langfuse"]
 
 # Environment-specific configuration
 environment_variables:
-  # Phase 3 HA RAG Bridge Configuration
-  HA_RAG_API_URL: "http://ha-rag-bridge:8000"  # Production: bridge service
+  # Phase 3 HA RAG Bridge Configuration  
+  HA_RAG_API_URL: "http://bridge:8000"         # Development: bridge service
   # HA_RAG_API_URL: "http://localhost:8000"    # Development: local testing
   
   # Tool execution behavior
   HA_RAG_TOOL_EXECUTION_MODE: "ha-rag-bridge"  # Options: ha-rag-bridge|caller|both|disabled
+  
+  # Translation removed - using multilingual embeddings for native Hungarian/English support
   
   # Home Assistant API Configuration
   HA_URL: os.environ/HA_URL
@@ -76,8 +126,8 @@ environment_variables:
   
   # Embedding Backend Configuration
   EMBEDDING_BACKEND: "local"  # Options: local|openai|gemini
-  EMBED_DIM: "384"            # Auto-detected for local models
-  SENTENCE_TRANSFORMER_MODEL: "paraphrase-multilingual-MiniLM-L12-v2"
+  EMBED_DIM: "768"            # Auto-detected for local models
+  SENTENCE_TRANSFORMER_MODEL: "paraphrase-multilingual-mpnet-base-v2"
   EMBEDDING_CPU_THREADS: "4"
   
   # Phase 3 Conversation Memory Settings
@@ -120,16 +170,30 @@ general_settings:
   enable_post_call_hooks: true
   enable_fallback_models: true
   
-# Router configuration for load balancing and fallbacks
+# Router configuration optimized for ArgosTranslate + Home-Llama stack
 router_settings:
   routing_strategy: "least-busy"
   enable_fallbacks: true
-  fallback_models: ["gpt-4o-mini", "claude-3-5-haiku-20241022"]
+  
+  # Primary fallback chain: Home-Llama -> Qwen -> Gemini Flash -> GPT-4o-mini
+  fallback_models: ["home-llama-3b", "qwen-7b", "gemini-flash", "gpt-4o-mini"]
+  
+  # Context window and capability-based fallbacks
   context_window_fallbacks: 
+    - model: "home-llama-3b"
+      fallback_model: "qwen-7b"        # More context if needed
+    - model: "qwen-7b"
+      fallback_model: "gemini-flash"   # Cloud fallback if local unavailable
+    - model: "gemini-flash"
+      fallback_model: "gpt-4o-mini"    # Premium cloud fallback
     - model: "gpt-4o-mini"
-      fallback_model: "gpt-4o"
+      fallback_model: "gpt-4o"         # Ultimate fallback
     - model: "claude-3-5-haiku-20241022"  
       fallback_model: "claude-3-5-sonnet-20241022"
+  
+  # Local model preference settings
+  prefer_local_models: true
+  local_model_timeout: 10  # Fail fast to cloud if local unavailable
 
 # OpenWebUI Integration Settings
 openwebui:

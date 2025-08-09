@@ -118,7 +118,7 @@ This is a Home Assistant RAG (Retrieval Augmented Generation) bridge that syncs 
 **Embedding System**
 - `EMBEDDING_BACKEND` - Choose between "local", "openai", "gemini"
 - `EMBED_DIM` - Vector dimensions (auto-detected for local models)
-- `SENTENCE_TRANSFORMER_MODEL` - Local model selection
+- `SENTENCE_TRANSFORMER_MODEL` - Local model selection (upgraded to paraphrase-multilingual-mpnet-base-v2)
 - `EMBEDDING_CPU_THREADS` - CPU threads for local embeddings
 
 **Behavioral**
@@ -230,3 +230,21 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Performance Achievements**: 45% overall success rate, 50% memory utilization, 80% context enhancement
 - **Comprehensive Testing**: Phase 3 workflow validation, memory service testing, and production configuration
 - See `test_langgraph_phase3.py` and `README_PHASE3_HOOK_INTEGRATION.md` for complete implementation details
+
+**Bilingual Text Generation System** ✅ IMPLEMENTED (2025-08-08)
+- **Dual Language Architecture**: Separate UI language (Hungarian) and system language (English) fields in database
+- **Enhanced Entity Processing**: Modified `scripts/ingest.py` with `build_system_text()` for English embeddings
+- **Database Schema Updates**: Added `text_system` field alongside existing `text` field in entity collection
+- **Vector Search Optimization**: Embeddings now generated from English `text_system` for better semantic consistency
+- **Area Name Translation**: Automatic Hungarian→English translation (nappali→living room, konyha→kitchen)
+- **Multilingual Bootstrap**: Updated ArangoSearch view to index both `text` and `text_system` fields
+- **Backward Compatibility**: Existing Hungarian UI text preserved while adding English system processing
+- **Performance Validated**: Successfully tested with "Termel a napelem?" returning identical results
+- **Architecture Philosophy**: "mi angolul gondolkozunk, hasonlítunk" - English thinking with Hungarian interface
+
+**Next Phase: ArgosTranslate Hook Integration** 📋 PLANNED
+- **Translation Service Integration**: Add `app/services/translation_service.py` with TTL caching
+- **LiteLLM Hook Enhancement**: Pre/post-call translation in `litellm_ha_rag_hooks_phase3.py`  
+- **End-to-End English Processing**: LLM thinking in English with Hungarian response translation
+- **Offline Translation Stack**: ArgosTranslate (~30ms) + Home-Llama (30 tok/sec) local inference
+- **Quality Improvement**: Address "suta gondolkodás" by enabling sophisticated English reasoning

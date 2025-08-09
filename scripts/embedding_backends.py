@@ -39,9 +39,9 @@ class LocalBackend(BaseEmbeddingBackend):
         import os
         import torch
 
-        # Model selection based on environment variable or default to better multilingual model
+        # Model selection based on environment variable or default to best multilingual model
         model_name = os.getenv(
-            "SENTENCE_TRANSFORMER_MODEL", "paraphrase-multilingual-MiniLM-L12-v2"
+            "SENTENCE_TRANSFORMER_MODEL", "paraphrase-multilingual-mpnet-base-v2"
         )
 
         # CPU optimization for VM environment
