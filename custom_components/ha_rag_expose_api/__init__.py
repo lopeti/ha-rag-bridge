@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .http import StaticEntitiesView, StateEntitiesView
+from .http import StaticEntitiesView, StateEntitiesView, UpdateFriendlyNameView, BatchUpdateFriendlyNamesView
 
 
 async def async_setup(hass, config):
@@ -34,3 +34,5 @@ def _register_views(hass):
     if hasattr(http, "register_view"):
         http.register_view(StaticEntitiesView)
         http.register_view(StateEntitiesView)
+        http.register_view(UpdateFriendlyNameView)
+        http.register_view(BatchUpdateFriendlyNamesView)

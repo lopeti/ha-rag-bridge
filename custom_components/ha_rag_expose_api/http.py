@@ -68,6 +68,130 @@ class StateEntitiesView(HomeAssistantView):
         return self.json({"error": "not implemented"}, status_code=501)
 
 
+class UpdateFriendlyNameView(HomeAssistantView):
+    """Update entity friendly names via entity registry."""
+
+    url = "/api/rag/update_friendly_name"
+    name = "api:rag:update_friendly_name"
+    requires_auth = True
+
+    async def post(self, request):  # pragma: no cover - no real request in tests
+        if _helpers is None:
+            return self.json({"error": "Home Assistant helpers not available"}, status_code=500)
+
+        hass = request.app["hass"]
+        try:
+            data = await request.json()
+        except Exception:
+            return self.json({"error": "Invalid JSON"}, status_code=400)
+
+        entity_id = data.get("entity_id")
+        friendly_name = data.get("friendly_name")
+        
+        if not entity_id or not friendly_name:
+            return self.json({
+                "error": "entity_id and friendly_name are required"
+            }, status_code=400)
+
+        # Get entity registry
+        entity_mod = _helpers[2]  # entity_registry from _helpers tuple
+        entity_reg = entity_mod.async_get(hass)
+        
+        # Check if entity exists
+        entity_entry = entity_reg.async_get(entity_id)
+        if not entity_entry:
+            return self.json({
+                "error": f"Entity {entity_id} not found in registry"
+            }, status_code=404)
+        
+        try:
+            # Update the entity name (friendly_name)
+            updated_entry = entity_reg.async_update_entity(
+                entity_id,
+                name=friendly_name
+            )
+            
+            return self.json({
+                "success": True,
+                "entity_id": entity_id,
+                "old_name": entity_entry.name,
+                "new_name": updated_entry.name,
+                "message": f"Updated friendly name for {entity_id}"
+            })
+            
+        except Exception as exc:
+            return self.json({
+                "error": f"Failed to update entity: {str(exc)}"
+            }, status_code=500)
+
+
+class BatchUpdateFriendlyNamesView(HomeAssistantView):
+    """Batch update multiple entity friendly names."""
+
+    url = "/api/rag/batch_update_friendly_names"
+    name = "api:rag:batch_update_friendly_names"
+    requires_auth = True
+
+    async def post(self, request):  # pragma: no cover - no real request in tests
+        if _helpers is None:
+            return self.json({"error": "Home Assistant helpers not available"}, status_code=500)
+
+        hass = request.app["hass"]
+        try:
+            data = await request.json()
+        except Exception:
+            return self.json({"error": "Invalid JSON"}, status_code=400)
+
+        updates = data.get("updates", [])
+        if not isinstance(updates, list):
+            return self.json({"error": "updates must be a list"}, status_code=400)
+
+        # Get entity registry
+        entity_mod = _helpers[2]  # entity_registry
+        entity_reg = entity_mod.async_get(hass)
+        
+        results = []
+        errors = []
+        
+        for update in updates:
+            entity_id = update.get("entity_id")
+            friendly_name = update.get("friendly_name")
+            
+            if not entity_id or not friendly_name:
+                errors.append(f"Missing entity_id or friendly_name in update: {update}")
+                continue
+            
+            # Check if entity exists
+            entity_entry = entity_reg.async_get(entity_id)
+            if not entity_entry:
+                errors.append(f"Entity {entity_id} not found in registry")
+                continue
+            
+            try:
+                # Update the entity name
+                updated_entry = entity_reg.async_update_entity(
+                    entity_id,
+                    name=friendly_name
+                )
+                
+                results.append({
+                    "entity_id": entity_id,
+                    "old_name": entity_entry.name,
+                    "new_name": updated_entry.name,
+                    "success": True
+                })
+                
+            except Exception as exc:
+                errors.append(f"Failed to update {entity_id}: {str(exc)}")
+        
+        return self.json({
+            "success": len(errors) == 0,
+            "updated": len(results),
+            "results": results,
+            "errors": errors
+        })
+
+
 def _collect_static(
     hass: Any, include_all: bool = False
 ) -> dict[str, list[dict[str, Any]]]:
@@ -124,6 +248,7 @@ def _collect_static(
                     "area_id": ent.area_id,
                     "domain": ent.domain,
                     "original_name": ent.original_name,
+                    "friendly_name": ent.name,  # Add friendly name from entity registry
                     "exposed": actual_is_exposed,  # Always show the actual HA exposed status
                 }
             )
