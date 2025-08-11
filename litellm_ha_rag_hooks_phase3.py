@@ -29,6 +29,45 @@ from litellm.types.utils import LLMResponseTypes
 HAS_TRANSLATION = False
 get_translation_service = None
 
+def extract_entity_ids_from_prompt(prompt_text: str) -> List[str]:
+    """Extract entity IDs and entity data from prompt text for entity proof tracking."""
+    import re
+    
+    # Look for explicit entity IDs in common patterns
+    entity_id_patterns = [
+        r'\b(sensor\.[a-zA-Z0-9_]+)',
+        r'\b(light\.[a-zA-Z0-9_]+)',
+        r'\b(switch\.[a-zA-Z0-9_]+)', 
+        r'\b(climate\.[a-zA-Z0-9_]+)',
+        r'\b(cover\.[a-zA-Z0-9_]+)',
+        r'\b(binary_sensor\.[a-zA-Z0-9_]+)',
+    ]
+    
+    entity_ids = set()
+    for pattern in entity_id_patterns:
+        matches = re.findall(pattern, prompt_text, re.IGNORECASE)
+        entity_ids.update(matches)
+    
+    # Also look for entity data patterns from bridge context (like "Temperature: 23.7 °C")
+    entity_data_patterns = [
+        r'Temperature:\s*[\d.]+\s*°C',
+        r'Power:\s*[\d.]+\s*W',
+        r'Humidity:\s*[\d.]+\s*%',
+        r'State:\s*\w+',
+        r'\[P\]\s+\w+:\s*[\d.]+',  # Primary entity format: [P] Temperature: 23.7 °C
+        r'\[R\]\s+[\w\s]+',        # Related entity format: [R] Entity Name
+    ]
+    
+    entity_data_found = []
+    for pattern in entity_data_patterns:
+        matches = re.findall(pattern, prompt_text, re.IGNORECASE)
+        entity_data_found.extend(matches)
+    
+    # Combine entity IDs and entity data indicators
+    all_entities = list(entity_ids) + [f"data:{data}" for data in entity_data_found]
+    
+    return sorted(list(set(all_entities)))[:10]  # Return max 10 unique entities to avoid log spam
+
 # Simple type hints without importing proxy server
 from typing import TYPE_CHECKING
 
@@ -42,7 +81,7 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 
 HA_RAG_API_URL: str = os.getenv("HA_RAG_API_URL", "http://localhost:8000")
-RAG_QUERY_ENDPOINT: str = f"{HA_RAG_API_URL}/process-request-workflow"
+RAG_QUERY_ENDPOINT: str = f"{HA_RAG_API_URL}/process-request-workflow"  # Use Phase 3 workflow endpoint
 TOOL_EXECUTION_ENDPOINT: str = f"{HA_RAG_API_URL}/execute_tool"
 
 # Tool‑execution behaviour: "ha-rag-bridge"|"caller"|"both"|"disabled"
@@ -247,6 +286,15 @@ class HARagHookPhase3(CustomLogger):
         logger.info(
             "HARagHookPhase3 initialized successfully with LangGraph workflow integration"
         )
+        
+        # Debug: list all methods to check what hooks are available
+        hook_methods = [method for method in dir(self) if 'hook' in method.lower()]
+        logger.info(f"🔧 Available hook methods in this class: {hook_methods}")
+        
+    async def async_logging_hook(self, kwargs, result, start_time, end_time):
+        """Debug method to see if ANY async method is being called."""
+        logger.info("🚨 DEBUG: async_logging_hook called - our hook class is active")
+        return await super().async_logging_hook(kwargs, result, start_time, end_time) if hasattr(super(), 'async_logging_hook') else None
 
     # ────────────────────────────────
     # Pre‑call: inject entities using Phase 3 workflow
@@ -317,7 +365,7 @@ class HARagHookPhase3(CustomLogger):
         )
 
         logger.debug("Querying HA‑RAG bridge Phase 3 workflow for relevant entities…")
-        logger.debug("Using RAG_QUERY_ENDPOINT: %s", RAG_QUERY_ENDPOINT)
+        logger.debug("Using Phase 3 workflow endpoint: %s", RAG_QUERY_ENDPOINT)
 
         formatted_context: str
         try:
@@ -344,19 +392,19 @@ class HARagHookPhase3(CustomLogger):
             
             # Translation metadata removed - no longer needed with multilingual embeddings
 
-            # Call Phase 3 workflow via HTTP endpoint
+            # Call RAG bridge via HTTP endpoint
             async with httpx.AsyncClient(
                 timeout=30
             ) as client:  # Increased timeout for complex workflow
-                logger.info("Calling Phase 3 LangGraph workflow endpoint...")
+                logger.info("Calling RAG bridge endpoint...")
 
                 resp = await client.post(
-                    RAG_QUERY_ENDPOINT,  # This is now /process-request-workflow
+                    RAG_QUERY_ENDPOINT,  # This is now /process-request
                     json=bridge_payload,
                 )
                 resp.raise_for_status()
                 logger.debug(
-                    "Received response from Phase 3 workflow endpoint: %s, %s",
+                    "Received response from RAG bridge endpoint: %s, %s",
                     resp.status_code,
                     resp.text[:500],  # Truncate long responses
                 )
@@ -369,6 +417,9 @@ class HARagHookPhase3(CustomLogger):
                 if msg.get("role") == "system":
                     system_message = msg.get("content", "")
                     break
+
+            # DEBUG: Log what we actually got from bridge
+            logger.debug(f"🔍 BRIDGE SYSTEM MESSAGE: {system_message[:200] if system_message else 'None'}...")
 
             if system_message:
                 formatted_context = system_message
@@ -394,8 +445,15 @@ class HARagHookPhase3(CustomLogger):
                         )
 
             # Log Phase 3 workflow metrics
-            entities_count = len(rag_payload.get("relevant_entities", []))
-            metadata = rag_payload.get("metadata", {})
+            # In Phase 3 format, entities are embedded in the system message, not as a separate list
+            # Extract entity count from metadata or estimate from content length
+            metadata = rag_payload.get("metadata") or {}
+            entities_count = metadata.get("entity_count", "unknown") if metadata else "unknown"
+            if entities_count == "unknown" and system_message:
+                # Estimate entity count from system message content length
+                # Typical entity context is ~100-200 chars per entity
+                estimated_count = max(1, len(system_message) // 150) if len(system_message) > 500 else 0
+                entities_count = f"~{estimated_count}"
             logger.info(f"Phase 3 workflow completed: {entities_count} entities retrieved")
             if metadata:
                 logger.debug(f"Phase 3 metadata: {metadata}")
@@ -451,15 +509,15 @@ class HARagHookPhase3(CustomLogger):
         # Build enhanced context with Phase 3 workflow results
         context_parts = []
 
-        # Add Phase 3 workflow context
+        # Add Phase 3 workflow context - preserve original bridge formatting
         if (
             formatted_context
             and formatted_context
             != "Error retrieving Home Assistant entities from Phase 3 workflow."
         ):
-            context_parts.append(
-                f"Smart Home Context (Phase 3 Enhanced):\n{formatted_context}"
-            )
+            # Use the bridge context directly without wrapping it in generic text
+            # This preserves the specific entity data like "Temperature: 23.7 °C"
+            context_parts.append(formatted_context)
 
         # Add conversation continuity note if multi-turn
         if len(conversation_context) > 1:
@@ -479,12 +537,25 @@ class HARagHookPhase3(CustomLogger):
         messages[user_idx]["content"] = updated_user_content
         data["messages"] = messages
 
+        # Entity Proof System: Log what entities are in the final prompt  
+        entities_in_prompt = extract_entity_ids_from_prompt(updated_user_content)
+        
         logger.info(
-            f"RAG Hook Phase 3: Successfully injected workflow context. Total length: {len(updated_user_content)}"
+            f"🔄 RAG Hook Phase 3: Context injected ({len(updated_user_content)} chars, {len(entities_in_prompt)} entities)"
         )
-        logger.debug(
-            f"RAG Hook Phase 3: Enhanced context preview: {updated_user_content[:300]}..."
-        )
+        
+        # System prompt preview for debugging
+        system_msg_preview = formatted_context[:400] if formatted_context else "No system message"
+        logger.info(f"📋 SYSTEM PROMPT PREVIEW: {system_msg_preview}...")
+        
+        # Entity proof tracking
+        if entities_in_prompt:
+            logger.info(f"🎯 ENTITIES IN PROMPT: {entities_in_prompt}")
+        else:
+            logger.warning("⚠️ No entities detected in final prompt - potential entity loss!")
+        
+        # User message for reference
+        logger.debug(f"👤 USER MESSAGE: {user_question[:100]}...")
 
         return data
 
@@ -499,7 +570,26 @@ class HARagHookPhase3(CustomLogger):
         response: LLMResponseTypes,
     ) -> Any:
         """Execute Home‑Assistant tool calls after a successful LLM call and translate response if needed."""
-        logger.info("HA RAG Hook Phase 3 async_post_call_success_hook called")
+        logger.info("🔚 HA RAG Hook Phase 3: Post-call processing started")
+        
+        # Log LLM response preview for debugging
+        if hasattr(response, 'choices') and response.choices:
+            choice = response.choices[0]
+            if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                response_content = choice.message.content or ""
+                logger.info(f"🤖 LLM RESPONSE PREVIEW: {response_content[:200]}...")
+                
+                # Check if response mentions temperature/entities we're looking for
+                if "hőmérséklet" in response_content.lower() or "temperature" in response_content.lower():
+                    logger.info("✅ Response contains temperature information")
+                else:
+                    logger.warning("⚠️ Response may be missing expected temperature data")
+            
+            # Log tool calls if any
+            if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                tool_names = [tc.function.name for tc in choice.message.tool_calls if hasattr(tc, 'function')]
+                logger.info(f"🔧 TOOL CALLS: {tool_names}")
+        
         logger.debug(
             f"Post-call hook data keys: {list(data.keys()) if data else 'None'}"
         )
@@ -596,6 +686,7 @@ class HARagHookPhase3(CustomLogger):
 
 # Exported instance – reference this in litellm_config.yaml
 ha_rag_hook_phase3_instance: HARagHookPhase3 = HARagHookPhase3()
+logger.info(f"🔥 MODULE RELOAD TIMESTAMP: {__import__('time').time()} - Hook instance created")
 logger.info(
     "HA RAG Hook Phase 3 instance created successfully: %s", ha_rag_hook_phase3_instance
 )

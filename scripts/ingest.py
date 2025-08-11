@@ -30,10 +30,93 @@ from .embedding_backends import (
     OpenAIBackend,  # noqa: F401 - used in tests
     get_backend,
 )
+from .friendly_name_generator import FriendlyNameGenerator
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = get_logger(__name__)
+
+
+def _infer_area_from_names(attrs: dict, entity_id: str, area_map: dict) -> Optional[str]:
+    """
+    Intelligently infer area from entity names, device names, and friendly names.
+    
+    Args:
+        attrs: Entity attributes including names and device info
+        entity_id: Full entity ID
+        area_map: Mapping of area_id to area_name
+        
+    Returns:
+        Inferred area_id if found, None otherwise
+    """
+    # Collect all text sources for analysis
+    text_sources = []
+    
+    # Add entity friendly name
+    if attrs.get("friendly_name"):
+        text_sources.append(attrs["friendly_name"].lower())
+        
+    # Add original name  
+    if attrs.get("original_name"):
+        text_sources.append(attrs["original_name"].lower())
+        
+    # Add device name if available
+    if attrs.get("device_name"):
+        text_sources.append(attrs["device_name"].lower())
+        
+    # Add entity_id parts (remove domain prefix)
+    entity_name = entity_id.split(".", 1)[-1] if "." in entity_id else entity_id
+    text_sources.append(entity_name.lower().replace("_", " "))
+    
+    # Hungarian room name patterns with English equivalents
+    room_patterns = {
+        "nappali": ["nappali", "living", "room", "livingroom"],
+        "konyha": ["konyha", "kitchen", "konyhába", "konyhában"],
+        "hálószoba": ["hálószoba", "bedroom", "hálóban", "hálóba", "sleeping"],
+        "fürdőszoba": ["fürdőszoba", "fürdő", "bathroom", "bath", "wc", "klotyó"],
+        "dolgozó": ["dolgozó", "office", "study", "munka", "iroda"],
+        "gyerekszoba": ["gyerek", "gyermek", "child", "kids", "baba"],
+        "előtér": ["előtér", "hall", "hallway", "bejárat", "entrance"],
+        "kert": ["kert", "garden", "outdoor", "outside", "kint", "kültér"],
+        "garázs": ["garázs", "garage", "car"],
+        "pince": ["pince", "basement", "cellar"],
+        "padlás": ["padlás", "attic", "loft"],
+    }
+    
+    # Check each area pattern against all text sources
+    for area_candidate, patterns in room_patterns.items():
+        for text_source in text_sources:
+            for pattern in patterns:
+                if pattern in text_source:
+                    # Check if this area exists in area_map
+                    matching_area_id = None
+                    
+                    # Direct match with area_id
+                    if area_candidate in area_map:
+                        matching_area_id = area_candidate
+                    else:
+                        # Search in area names (case insensitive)
+                        for area_id, area_name in area_map.items():
+                            if (area_name and area_candidate.lower() in area_name.lower()) or \
+                               (area_id and area_candidate.lower() in area_id.lower()):
+                                matching_area_id = area_id
+                                break
+                    
+                    if matching_area_id:
+                        logger.debug(f"Area pattern '{pattern}' in '{text_source}' matched to '{matching_area_id}'")
+                        return matching_area_id
+    
+    # Fallback: direct area name matching
+    for text_source in text_sources:
+        for area_id, area_name in area_map.items():
+            if area_name and area_name.lower() in text_source:
+                logger.debug(f"Direct area name '{area_name}' found in '{text_source}'")
+                return area_id
+            if area_id and area_id.lower() in text_source:
+                logger.debug(f"Direct area ID '{area_id}' found in '{text_source}'")
+                return area_id
+                
+    return None
 
 
 def _retry_get(client: httpx.Client, url: str) -> httpx.Response:
@@ -68,15 +151,27 @@ def fetch_states(entity_id: Optional[str] = None) -> dict:
         base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT
     ) as client:
         if entity_id:
-            # Fallback to original API for specific entity requests
-            url = f"/api/states/{entity_id}"
+            # For specific entity requests, we still need areas and devices for inference
+            # First get the RAG endpoint for full context
+            rag_url = "/api/rag/static/entities"
+            entity_url = f"/api/states/{entity_id}"
+            
             try:
-                resp = _retry_get(client, url)
-                data = resp.json()
-                logger.info("Successfully fetched data for specific entity", url=url)
-                return {"entities": [data], "areas": [], "devices": []}
+                # Get areas and devices from RAG endpoint for inference
+                rag_resp = _retry_get(client, rag_url)
+                rag_data = rag_resp.json()
+                areas = rag_data.get("areas", [])
+                devices = rag_data.get("devices", [])
+                
+                # Get specific entity data
+                entity_resp = _retry_get(client, entity_url)
+                entity_data = entity_resp.json()
+                
+                logger.info("Successfully fetched data for specific entity with context", 
+                          entity_url=entity_url, areas_count=len(areas), devices_count=len(devices))
+                return {"entities": [entity_data], "areas": areas, "devices": devices}
             except Exception as exc:
-                logger.error("Error fetching entity", url=url, error=str(exc))
+                logger.error("Error fetching entity", entity_url=entity_url, error=str(exc))
                 return {"entities": [], "areas": [], "devices": []}
         else:
             # Use the RAG API endpoint for all entities
@@ -157,17 +252,29 @@ def fetch_exposed_entity_ids() -> Optional[set]:
     return None
 
 
-def build_text(entity: dict) -> str:
+def build_text(entity: dict, friendly_name_generator: Optional[FriendlyNameGenerator] = None) -> str:
     """Return the concatenated text optimized for multilingual embeddings.
 
     Builds a hybrid text combining Hungarian base with English keywords
     for optimal multilingual semantic matching with single embedding.
+    
+    Args:
+        entity: Entity data dictionary
+        friendly_name_generator: Optional generator to create friendly names for entities that lack them
     """
     attrs = entity.get("attributes", {})
     entity_id = entity.get("entity_id", "")
 
     # Collect all available metadata
-    friendly_name = attrs.get("friendly_name", "")
+    # Check both RAG API structure and states API structure for friendly_name
+    friendly_name = entity.get("friendly_name", "") or attrs.get("friendly_name", "")
+    
+    # Generate friendly name if missing and generator provided
+    if not friendly_name and friendly_name_generator and entity_id:
+        suggestion = friendly_name_generator.generate_suggestion(entity)
+        if suggestion.confidence >= 0.7:  # Only use high-confidence suggestions
+            friendly_name = suggestion.suggested_name
+            logger.debug(f"Generated friendly name for {entity_id}: '{friendly_name}' (confidence: {suggestion.confidence:.2f})")
     area_name = attrs.get("area") or ""
     area_id = attrs.get("area_id", "")
     domain = entity_id.split(".")[0] if entity_id else ""
@@ -317,7 +424,8 @@ def build_system_text(entity: dict) -> str:
     entity_id = entity.get("entity_id", "")
 
     # Collect all available metadata
-    friendly_name = attrs.get("friendly_name", "")
+    # Check both RAG API structure and states API structure for friendly_name
+    friendly_name = entity.get("friendly_name", "") or attrs.get("friendly_name", "")
     area_name = attrs.get("area") or ""
     area_id = attrs.get("area_id", "")
     domain = entity_id.split(".")[0] if entity_id else ""
@@ -661,6 +769,9 @@ def ingest(
     # Fill missing area information on entities using the device map
     for ent in states:
         attrs = ent.get("attributes", {})
+        eid = ent.get("entity_id", "")
+        
+        # First try: inherit from device
         if not attrs.get("area_id") and attrs.get("device_id"):
             dev = device_map.get(attrs["device_id"])
             if dev:
@@ -668,6 +779,24 @@ def ingest(
                 if inferred:
                     attrs["area_id"] = inferred
                     attrs.setdefault("area", area_map.get(inferred, ""))
+                    logger.info(f"Inherited area '{inferred}' from device for {eid}")
+                    
+        # Second try: smart area inference from names (including device name)
+        if not attrs.get("area_id"):
+            # Get device name for additional context
+            device_name = None
+            if attrs.get("device_id"):
+                dev = device_map.get(attrs["device_id"])
+                if dev and dev.get("name"):
+                    device_name = dev["name"]
+                    attrs["device_name"] = device_name  # Add for inference
+                    
+            inferred_area = _infer_area_from_names(attrs, eid, area_map)
+            if inferred_area:
+                attrs["area_id"] = inferred_area
+                attrs.setdefault("area", area_map.get(inferred_area, inferred_area))
+                logger.info(f"Inferred area '{inferred_area}' from names for {eid}")
+                
         aid = attrs.get("area_id")
         if aid:
             attrs["area_aliases"] = alias_map.get(aid, [])
@@ -684,16 +813,29 @@ def ingest(
                 full = True
                 break
 
+    # Initialize friendly name generator for ingestion-time name generation
+    friendly_name_generator = FriendlyNameGenerator()
+    logger.info("Initialized friendly name generator for ingestion-time enhancement")
+    
     batch_size = 100
     unchanged_count = 0
     changed_count = 0
     new_count = 0
     failed_count = 0
     total_processed = 0
+    generated_names_count = 0
     for i in range(0, len(states), batch_size):
         batch = states[i : i + batch_size]
-        # Generate hybrid texts optimized for multilingual embedding
-        hybrid_texts = [build_text(e) for e in batch]
+        # Generate hybrid texts optimized for multilingual embedding with friendly name enhancement
+        hybrid_texts = []
+        for e in batch:
+            # Count entities without friendly names for statistics  
+            has_friendly_name = bool(e.get("friendly_name", "") or e.get("attributes", {}).get("friendly_name", ""))
+            if not has_friendly_name and friendly_name_generator:
+                generated_names_count += 1
+            
+            hybrid_text = build_text(e, friendly_name_generator)
+            hybrid_texts.append(hybrid_text)
 
         # Skip unchanged entities unless full ingest (hash hybrid text)
         filtered_batch = []
@@ -802,6 +944,7 @@ def ingest(
         changed=changed_count,
         new=new_count,
         failed=failed_count,
+        generated_friendly_names=generated_names_count,
         total=len(states),
     )
 

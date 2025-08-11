@@ -49,7 +49,15 @@
       "Bash(docker cp:*)",
       "Bash(cat:*)",
       "Bash(rm:*)",
-      "Bash(docker logs:*)"
+      "Bash(docker logs:*)",
+      "Bash(poetry show:*)",
+      "Bash(docker:*)",
+      "Bash(compgen -c)",
+      "Bash(PYTHONPATH=:*)",
+      "Bash(source .env)",
+      "Bash(export:*)",
+      "Bash(scripts/advisor.sh:*)",
+      "WebFetch(domain:developers.home-assistant.io)"
     ],
     "deny": []
   }

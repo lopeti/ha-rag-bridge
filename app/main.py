@@ -158,13 +158,13 @@ def query_arango(
         "LET score = COSINE_SIMILARITY(e.embedding, @qv) "
         "SORT score DESC "
         "LIMIT @k "
-        "RETURN e) "
+        "RETURN MERGE(e, {_score: score})) "
         "LET txt = ("
         "FOR e IN v_meta "
         "SEARCH ANALYZER(PHRASE(e.text_system, @msg, 'text_en'), 'text_en') "
         "SORT BM25(e) DESC "
         "LIMIT @k "
-        "RETURN e) "
+        "RETURN MERGE(e, {_score: BM25(e)})) "
         "FOR e IN UNIQUE(UNION(knn, txt)) "
         "LIMIT @k "
         "RETURN e"
@@ -742,6 +742,7 @@ async def process_request_workflow(payload: schemas.Request):
                 "memory_boosted_count": len(
                     [e for e in retrieved_entities if e.get("_memory_boosted")]
                 ),
+                "entity_count": len(relevant_entities),
                 "phase": "3_langgraph_workflow",
             }
 

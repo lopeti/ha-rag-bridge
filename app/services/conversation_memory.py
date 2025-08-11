@@ -22,6 +22,7 @@ class ConversationEntity:
     area: Optional[str] = None
     domain: Optional[str] = None
     boost_weight: float = 1.0
+    context_type: str = "primary"  # "primary", "secondary", "historical"
 
 
 @dataclass
@@ -93,6 +94,7 @@ class ConversationMemoryService:
                         area=e.get("area"),
                         domain=e.get("domain"),
                         boost_weight=e.get("boost_weight", 1.0),
+                        context_type=e.get("context_type", "primary"),
                     )
                     for e in doc["entities"]
                 ]
@@ -136,17 +138,20 @@ class ConversationMemoryService:
 
             # Convert entities to ConversationEntity objects
             new_entities = []
-            for entity in entities:
+            for i, entity in enumerate(entities):
+                # Determine context type based on relevance and position
+                relevance = entity.get("rerank_score", entity.get("similarity", 0.0))
+                context_type = self._determine_context_type(entity, relevance, i, query_context)
+                
                 conv_entity = ConversationEntity(
                     entity_id=entity["entity_id"],
-                    relevance_score=entity.get(
-                        "rerank_score", entity.get("similarity", 0.0)
-                    ),
+                    relevance_score=relevance,
                     mentioned_at=current_time,
                     context=query_context,
                     area=entity.get("area_name"),
                     domain=entity.get("domain"),
                     boost_weight=self._calculate_boost_weight(entity),
+                    context_type=context_type,
                 )
                 new_entities.append(conv_entity)
 
@@ -207,6 +212,7 @@ class ConversationMemoryService:
                         "area": e.area,
                         "domain": e.domain,
                         "boost_weight": e.boost_weight,
+                        "context_type": e.context_type,
                     }
                     for e in memory.entities
                 ],
@@ -235,6 +241,20 @@ class ConversationMemoryService:
             )
             return False
 
+    def _determine_context_type(self, entity: Dict[str, Any], relevance: float, position: int, query_context: str) -> str:
+        """Determine context type (primary/secondary/historical) for an entity."""
+        # Primary: High relevance entities that directly answer the query
+        if relevance > 0.7 or position < 3:
+            return "primary"
+        
+        # Secondary: Medium relevance entities that provide context
+        elif relevance > 0.4 or position < 8:
+            return "secondary"
+        
+        # Historical: Lower relevance entities for background context
+        else:
+            return "historical"
+    
     def _calculate_boost_weight(self, entity: Dict[str, Any]) -> float:
         """Calculate initial boost weight for an entity based on its characteristics."""
         base_weight = 1.0
@@ -377,6 +397,7 @@ class ConversationMemoryService:
                         "mentioned_at": entity.mentioned_at.isoformat(),
                         "memory_relevance": relevance_score,
                         "is_from_memory": True,
+                        "context_type": entity.context_type,
                     }
                 )
                 logger.debug(

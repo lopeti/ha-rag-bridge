@@ -121,15 +121,18 @@ class EntityReranker:
             candidate_pool = entity_scores[: min(len(entity_scores), k * 2)]
 
             # Stage 2: Separate active and inactive entities within candidate pool
+            # An entity is considered inactive if it has either unavailable_penalty or no has_active_value
             active_entities = [
                 es
                 for es in candidate_pool
-                if es.ranking_factors.get("has_active_value", 0) > 0
+                if (es.ranking_factors.get("has_active_value", 0) > 0 and 
+                    es.ranking_factors.get("unavailable_penalty", 0) == 0)
             ]
             inactive_entities = [
                 es
                 for es in candidate_pool
-                if es.ranking_factors.get("has_active_value", 0) <= 0
+                if (es.ranking_factors.get("has_active_value", 0) <= 0 or 
+                    es.ranking_factors.get("unavailable_penalty", 0) < 0)
             ]
 
             # Stage 3: Prioritize active entities, fill remaining with best inactive
@@ -151,24 +154,40 @@ class EntityReranker:
             # Not enough entities for multi-stage filtering
             top_entities = entity_scores[:k]
 
-        # Enhanced logging with context details
+        # Entity Proof System: Comprehensive tracking log
         if top_entities:
             top_entity = top_entities[0]
+            top_5_entities = top_entities[:5]
+            
+            # Primary tracking log - single line with essential data
             logger.info(
-                "Entity reranking completed successfully",
+                "✅ Entity reranking SUCCESSFUL",
+                query=query,
+                top_entity=top_entity.entity.get("entity_id"),
+                top_score=round(top_entity.final_score, 3),
+                ranked_count=len(top_entities),
+                system_prompt_type="hierarchical",
+            )
+            
+            # Detailed tracking for debugging (only top 5 entities)
+            logger.debug(
+                "Entity tracking details",
                 query=query,
                 areas_detected=list(context.areas_mentioned),
                 domains_detected=list(context.domains_mentioned),
                 device_classes_detected=list(context.device_classes_mentioned),
                 intent=context.intent,
                 is_follow_up=context.is_follow_up,
-                top_entity_id=top_entity.entity.get("entity_id"),
-                top_entity_area=top_entity.entity.get("area"),
-                top_entity_score=round(top_entity.final_score, 3),
-                top_entity_base_score=round(top_entity.base_score, 3),
-                top_entity_context_boost=round(top_entity.context_boost, 3),
-                ranking_factors=top_entity.ranking_factors,
-                total_entities_ranked=len(top_entities),
+                top_5_entities=[
+                    {
+                        "entity_id": es.entity.get("entity_id"),
+                        "score": round(es.final_score, 3),
+                        "area": es.entity.get("area"),
+                        "state": es.entity.get("state", "unknown")
+                    }
+                    for es in top_5_entities
+                ],
+                top_entity_ranking_factors=top_entity.ranking_factors,
             )
 
         return top_entities
@@ -194,8 +213,24 @@ class EntityReranker:
         ranking_factors = self._calculate_ranking_factors(entity, context)
         context_boost = sum(ranking_factors.values())
 
-        # Calculate final score - additive instead of multiplicative to handle zero base scores
-        final_score = base_score + context_boost
+        # Calculate final score with enhanced area boosting when areas are mentioned
+        areas_mentioned = context.areas_mentioned if hasattr(context, 'areas_mentioned') else set()
+        
+        # If areas are explicitly mentioned and this entity matches, apply multiplicative area boost
+        entity_area = entity.get("area") or ""
+        area_match = False
+        if entity_area and areas_mentioned:
+            entity_area_lower = entity_area.lower()
+            area_match = any(area.lower() == entity_area_lower or area.lower() in entity_area_lower 
+                           for area in areas_mentioned)
+        
+        if area_match and base_score > 0:
+            # For area matches with explicit mentions, use multiplicative boosting to compete with memory
+            area_multiplier = 1.0 + (context_boost * 0.5)  # Convert additive to multiplicative boost
+            final_score = base_score * area_multiplier
+        else:
+            # Default additive boosting for other cases
+            final_score = base_score + context_boost
 
         return EntityScore(
             entity=entity,
@@ -465,7 +500,7 @@ class EntityReranker:
                     entity = pe.entity
                     name = cls._get_clean_name(entity)
                     area = entity.get("area", "")
-                    value = cls._get_value_str(entity)
+                    value = cls._get_value_str(entity, use_fresh_data=True)
                     primary_strs.append(f"{name} [{area}]{value}")
                 parts.append(f"Primary: {' | '.join(primary_strs)}")
 
@@ -475,7 +510,7 @@ class EntityReranker:
                     entity = re.entity
                     name = cls._get_clean_name(entity)
                     area = entity.get("area", "")
-                    value = cls._get_value_str(entity)
+                    value = cls._get_value_str(entity, use_fresh_data=True)
                     related_strs.append(f"{name} [{area}]{value}")
                 parts.append(f"Related: {' | '.join(related_strs)}")
 
@@ -505,7 +540,7 @@ class EntityReranker:
                     entity = pe.entity
                     name = cls._get_clean_name(entity)
                     area = entity.get("area", "")
-                    value = cls._get_value_str(entity)
+                    value = cls._get_value_str(entity, use_fresh_data=True)
                     parts.append(f"- {name} [{area}]{value}")
 
             if related_entities:
@@ -514,7 +549,7 @@ class EntityReranker:
                     entity = re.entity
                     name = cls._get_clean_name(entity)
                     area = entity.get("area", "")
-                    value = cls._get_value_str(entity)
+                    value = cls._get_value_str(entity, use_fresh_data=True)
                     parts.append(f"- {name} [{area}]{value}")
 
             if areas_info:
@@ -598,11 +633,12 @@ class EntityReranker:
             domain = entity.get("domain", "")
             device_class = entity.get("device_class", "")
 
-            # Use friendly name if available and meaningful
+            # Use friendly name if available and meaningful, but avoid generic names
             if friendly_name and friendly_name.lower() not in [
                 "temperature",
                 "humidity",
                 "pressure",
+                "power",  # Generic "power" should be improved
             ]:
                 return friendly_name
 
@@ -620,6 +656,21 @@ class EntityReranker:
                     return "Ajtó"
                 elif "window" in entity_id.lower():
                     return "Ablak"
+                elif "power" in entity_id.lower():
+                    # Generate descriptive name for power sensors based on entity_id
+                    if "tv" in entity_id.lower():
+                        return "TV fogyasztás"
+                    elif "ejjeliszekren" in entity_id.lower() or "nightstand" in entity_id.lower():
+                        return "Éjjeli szekrény fogyasztás"
+                    elif "konnektor" in entity_id.lower():
+                        # Extract device name from entity_id if possible
+                        parts = entity_id.split("_")
+                        if len(parts) > 2:
+                            device_part = parts[1] if parts[1] != "power" else parts[0]
+                            return f"{device_part.title()} fogyasztás"
+                        return "Konnektor fogyasztás"
+                    else:
+                        return "Power"
                 else:
                     return friendly_name or "Szenzor"
             elif domain == "light":
@@ -632,16 +683,118 @@ class EntityReranker:
                 return friendly_name or entity_id
 
         @classmethod
-        def _get_value_str(cls, entity):
-            """Get formatted value string for entity"""
-            from app.services.state_service import get_last_state
+        def _get_value_str(cls, entity, use_fresh_data: bool = False):
+            """Get formatted value string for entity with optional fresh data"""
+            if use_fresh_data:
+                from app.services.state_service import get_fresh_state
+                get_state_func = get_fresh_state
+            else:
+                from app.services.state_service import get_last_state
+                get_state_func = get_last_state
 
             if entity.get("domain") == "sensor":
                 entity_id = entity.get("entity_id", "")
-                current_value = get_last_state(entity_id)
+                current_value = get_state_func(entity_id)
                 if current_value is not None:
                     return f": {current_value}"
             return ""
+            
+        @classmethod
+        def hierarchical_format(cls, primary_entities, related_entities, areas_info, memory_entities=None):
+            """Hierarchical context format separating primary, secondary, and historical context"""
+            parts = ["You are an intelligent home assistant AI with deep understanding of your user's home environment.\n"]
+            
+            # Group memory entities by context type if provided
+            memory_primary = []
+            memory_secondary = []
+            memory_historical = []
+            
+            if memory_entities:
+                for entity_data in memory_entities:
+                    context_type = entity_data.get("context_type", "primary")
+                    if context_type == "primary":
+                        memory_primary.append(entity_data)
+                    elif context_type == "secondary":
+                        memory_secondary.append(entity_data)
+                    else:
+                        memory_historical.append(entity_data)
+            
+            # Combine fresh entities with memory entities by priority
+            current_primary = [pe.entity for pe in primary_entities]
+            current_related = [re.entity for re in related_entities]
+            
+            # PRIMARY CONTEXT - High relevance to current query
+            if current_primary or memory_primary:
+                parts.append("## Primary Context (High Relevance)")
+                
+                # Current query primary entities (fresh data)
+                if current_primary:
+                    for entity in current_primary:
+                        name = cls._get_clean_name(entity)
+                        area = entity.get("area", "")
+                        value = cls._get_value_str(entity, use_fresh_data=True)
+                        parts.append(f"- [P] {name}: {area} {value}".strip())
+                
+                # Memory primary entities that are still highly relevant
+                if memory_primary:
+                    for mem_entity in memory_primary:
+                        if mem_entity["entity_id"] not in [e.get("entity_id") for e in current_primary]:
+                            name = cls._get_clean_name({"entity_id": mem_entity["entity_id"]})
+                            area = mem_entity.get("area", "")
+                            # Always get fresh value for primary context
+                            value = cls._get_value_str({"entity_id": mem_entity["entity_id"], "domain": mem_entity.get("domain")}, use_fresh_data=True)
+                            parts.append(f"- [P] {name}: {area} {value}".strip())
+                
+                parts.append("")
+            
+            # SECONDARY CONTEXT - Supporting information
+            if current_related or memory_secondary:
+                parts.append("## Secondary Context (Supporting Information)")
+                
+                # Current query related entities
+                if current_related:
+                    for entity in current_related[:3]:  # Limit to avoid clutter
+                        name = cls._get_clean_name(entity)
+                        area = entity.get("area", "")
+                        value = cls._get_value_str(entity, use_fresh_data=True)
+                        parts.append(f"- [S] {name}: {area} {value}".strip())
+                
+                # Memory secondary entities
+                if memory_secondary:
+                    for mem_entity in memory_secondary[:2]:  # Limit secondary memory
+                        if mem_entity["entity_id"] not in [e.get("entity_id") for e in current_related]:
+                            name = cls._get_clean_name({"entity_id": mem_entity["entity_id"]})
+                            area = mem_entity.get("area", "")
+                            value = cls._get_value_str({"entity_id": mem_entity["entity_id"], "domain": mem_entity.get("domain")}, use_fresh_data=True)
+                            parts.append(f"- [S] {name}: {area} {value}".strip())
+                
+                parts.append("")
+            
+            # HISTORICAL CONTEXT - Previously mentioned (only if relevant and not overwhelming)
+            if memory_historical and len(memory_historical) <= 3:  # Only show if manageable
+                parts.append("## Previous Context (Previously Mentioned)")
+                
+                for mem_entity in memory_historical:
+                    if mem_entity["entity_id"] not in [e.get("entity_id") for e in current_primary + current_related]:
+                        name = cls._get_clean_name({"entity_id": mem_entity["entity_id"]})
+                        area = mem_entity.get("area", "")
+                        # For historical context, we can use cached values to save API calls
+                        value = cls._get_value_str({"entity_id": mem_entity["entity_id"], "domain": mem_entity.get("domain")}, use_fresh_data=False)
+                        parts.append(f"- [H] {name}: {area} {value}".strip())
+                
+                parts.append("")
+            
+            # AREAS INFO
+            if areas_info:
+                area_strs = []
+                for area, aliases in areas_info.items():
+                    if aliases:
+                        area_strs.append(f"{area} ({', '.join(aliases)})")
+                    else:
+                        area_strs.append(area)
+                parts.append(f"**Areas**: {', '.join(area_strs)}")
+            
+            return "\n".join(parts)
 
     def _categorize_entities(
         self,
@@ -764,6 +917,8 @@ class EntityReranker:
             return "tldr"
         elif len(areas_mentioned) == 1:
             return "grouped_by_area"
+        elif context.is_follow_up:  # Use hierarchical for follow-up queries
+            return "hierarchical"
         else:
             return "detailed"
 
@@ -845,6 +1000,11 @@ class EntityReranker:
         elif formatter_type == "tldr":
             return self.SystemPromptFormatter.tldr_format(
                 primary_entities, related_entities, areas_info
+            )
+        elif formatter_type == "hierarchical":
+            # Hierarchical format needs memory entities for full context
+            return self.SystemPromptFormatter.hierarchical_format(
+                primary_entities, related_entities, areas_info, memory_entities=None
             )
         else:
             return self.SystemPromptFormatter.detailed_format(

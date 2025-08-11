@@ -15,7 +15,8 @@
         "ghcr.io/devcontainers/features/git:1": {},
         "ghcr.io/devcontainers/features/node:1": {
             "version": "20"
-        }
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
     "postCreateCommand": "pip install poetry && poetry config virtualenvs.create false && poetry install && pre-commit install && git config --global user.name 'lopeti' && git config --global user.email 'lovas.peter.hu@gmail.com' && curl -fsSL https://claude.ai/install.sh | sh",
     "remoteUser": "root",

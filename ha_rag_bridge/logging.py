@@ -5,6 +5,7 @@ from logging.handlers import TimedRotatingFileHandler
 import structlog
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+HA_RAG_LOG_LEVEL = os.getenv("HA_RAG_LOG_LEVEL", "INFO").upper()
 
 handlers: list[logging.Handler] = [logging.StreamHandler()]
 log_file = os.getenv("LOG_FILE")
@@ -24,6 +25,22 @@ for h in handlers:
     h.addFilter(_TokenFilter())
 
 logging.basicConfig(format="%(message)s", level=LOG_LEVEL, handlers=handlers)
+
+# Suppress verbose HTTP request logging from httpx and similar libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+# Set specific log levels for HA-RAG components based on environment
+if HA_RAG_LOG_LEVEL == "SUMMARY":
+    # Summary mode: only show high-level operations and errors
+    logging.getLogger("ha-rag-bridge").setLevel(logging.INFO)
+    logging.getLogger("app").setLevel(logging.INFO)
+elif HA_RAG_LOG_LEVEL == "TRACKING":
+    # Tracking mode: show entity tracking but suppress verbose details
+    logging.getLogger("ha-rag-bridge").setLevel(logging.INFO)
+    logging.getLogger("app").setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.ERROR)  # Suppress all HTTP logs except errors
 
 structlog.configure(
     processors=[

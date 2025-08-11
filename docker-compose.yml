@@ -8,6 +8,10 @@ services:
       - EMBED_DIM=1536
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - AUTO_BOOTSTRAP=1
+      # Log optimization settings
+      - HA_RAG_LOG_LEVEL=TRACKING
+      - HA_RAG_DETAILED_ERRORS=true
+      - LOG_LEVEL=INFO
     command:
       - /bin/sh
       - -c
@@ -31,6 +35,10 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Log control for LiteLLM
+      - LITELLM_LOG_LEVEL=INFO
+      - LOG_PROMPTS=true
+      - LOG_RESPONSES_PREVIEW=true
     env_file:
       - .env
     depends_on:

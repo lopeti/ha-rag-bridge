@@ -23,6 +23,10 @@ services:
       - EMBED_DIM=1536
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - AUTO_BOOTSTRAP=1
+      # Log optimization settings
+      - HA_RAG_LOG_LEVEL=TRACKING
+      - HA_RAG_DETAILED_ERRORS=true
+      - LOG_LEVEL=INFO
     profiles:
       - dev
     env_file:

@@ -106,7 +106,7 @@ router_settings:
       fallback_model: "gemini-pro"     # Premium fallback
   
   # Fast failover to cloud if local models unavailable
-  local_model_timeout: 10
+  local_model_timeout: 30
   
 litellm_settings:
-  callbacks: ["litellm_ha_rag_hooks.ha_rag_hook_instance"]
+  callbacks: ["litellm_ha_rag_hooks_phase3.ha_rag_hook_phase3_instance"]

@@ -199,3 +199,11 @@ def get_last_state(entity_id: str) -> Optional[Any]:
     if value is not None:
         return value
     return _query_ha_state(entity_id)
+
+
+def get_fresh_state(entity_id: str) -> Optional[Any]:
+    """Return the fresh value + unit without caching, or None if unavailable."""
+    value = _query_influx(entity_id)
+    if value is not None:
+        return value
+    return _query_ha_state(entity_id)
