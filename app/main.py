@@ -33,6 +33,7 @@ from .services.entity_reranker import entity_reranker
 # Import LangGraph workflow at module level to avoid route registration issues
 try:
     from .langgraph_workflow.workflow import run_rag_workflow
+
     LANGGRAPH_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"LangGraph workflow not available: {e}")
@@ -656,15 +657,16 @@ async def process_response(payload: schemas.LLMResponse):
     return {"status": "ok", "message": message.content}
 
 
-
 @router.post("/process-request-workflow")
 async def process_request_workflow(payload: schemas.Request):
     """Process request using Phase 3 LangGraph workflow (used by hook integration)."""
-    logger.info(f"WORKFLOW ENDPOINT CALLED: {payload.user_message if payload else 'no payload'}")
-    
+    logger.info(
+        f"WORKFLOW ENDPOINT CALLED: {payload.user_message if payload else 'no payload'}"
+    )
+
     if not LANGGRAPH_AVAILABLE:
         raise HTTPException(status_code=500, detail="LangGraph workflow not available")
-        
+
     from . import schemas as app_schemas
 
     logger.info(
@@ -700,7 +702,7 @@ async def process_request_workflow(payload: schemas.Request):
                 "retrieved_entities": [],
                 "conversation_context": {"intent": "read"},
                 "diagnostics": {"error": "workflow_returned_none"},
-                "errors": ["Workflow execution failed"]
+                "errors": ["Workflow execution failed"],
             }
 
         # Extract results from workflow
@@ -785,9 +787,9 @@ logger.info("All routers included successfully")
 
 # Print all registered routes for debugging
 for route in app.routes:
-    if hasattr(route, 'path'):
+    if hasattr(route, "path"):
         logger.info(f"Registered route: {route.methods} {route.path}")
-    elif hasattr(route, 'routes'):
+    elif hasattr(route, "routes"):
         for subroute in route.routes:
-            if hasattr(subroute, 'path'):
+            if hasattr(subroute, "path"):
                 logger.info(f"Registered subroute: {subroute.methods} {subroute.path}")

@@ -37,37 +37,39 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = get_logger(__name__)
 
 
-def _infer_area_from_names(attrs: dict, entity_id: str, area_map: dict) -> Optional[str]:
+def _infer_area_from_names(
+    attrs: dict, entity_id: str, area_map: dict
+) -> Optional[str]:
     """
     Intelligently infer area from entity names, device names, and friendly names.
-    
+
     Args:
         attrs: Entity attributes including names and device info
         entity_id: Full entity ID
         area_map: Mapping of area_id to area_name
-        
+
     Returns:
         Inferred area_id if found, None otherwise
     """
     # Collect all text sources for analysis
     text_sources = []
-    
+
     # Add entity friendly name
     if attrs.get("friendly_name"):
         text_sources.append(attrs["friendly_name"].lower())
-        
-    # Add original name  
+
+    # Add original name
     if attrs.get("original_name"):
         text_sources.append(attrs["original_name"].lower())
-        
+
     # Add device name if available
     if attrs.get("device_name"):
         text_sources.append(attrs["device_name"].lower())
-        
+
     # Add entity_id parts (remove domain prefix)
     entity_name = entity_id.split(".", 1)[-1] if "." in entity_id else entity_id
     text_sources.append(entity_name.lower().replace("_", " "))
-    
+
     # Hungarian room name patterns with English equivalents
     room_patterns = {
         "nappali": ["nappali", "living", "room", "livingroom"],
@@ -82,7 +84,7 @@ def _infer_area_from_names(attrs: dict, entity_id: str, area_map: dict) -> Optio
         "pince": ["pince", "basement", "cellar"],
         "padlás": ["padlás", "attic", "loft"],
     }
-    
+
     # Check each area pattern against all text sources
     for area_candidate, patterns in room_patterns.items():
         for text_source in text_sources:
@@ -90,22 +92,28 @@ def _infer_area_from_names(attrs: dict, entity_id: str, area_map: dict) -> Optio
                 if pattern in text_source:
                     # Check if this area exists in area_map
                     matching_area_id = None
-                    
+
                     # Direct match with area_id
                     if area_candidate in area_map:
                         matching_area_id = area_candidate
                     else:
                         # Search in area names (case insensitive)
                         for area_id, area_name in area_map.items():
-                            if (area_name and area_candidate.lower() in area_name.lower()) or \
-                               (area_id and area_candidate.lower() in area_id.lower()):
+                            if (
+                                area_name
+                                and area_candidate.lower() in area_name.lower()
+                            ) or (
+                                area_id and area_candidate.lower() in area_id.lower()
+                            ):
                                 matching_area_id = area_id
                                 break
-                    
+
                     if matching_area_id:
-                        logger.debug(f"Area pattern '{pattern}' in '{text_source}' matched to '{matching_area_id}'")
+                        logger.debug(
+                            f"Area pattern '{pattern}' in '{text_source}' matched to '{matching_area_id}'"
+                        )
                         return matching_area_id
-    
+
     # Fallback: direct area name matching
     for text_source in text_sources:
         for area_id, area_name in area_map.items():
@@ -115,7 +123,7 @@ def _infer_area_from_names(attrs: dict, entity_id: str, area_map: dict) -> Optio
             if area_id and area_id.lower() in text_source:
                 logger.debug(f"Direct area ID '{area_id}' found in '{text_source}'")
                 return area_id
-                
+
     return None
 
 
@@ -155,23 +163,29 @@ def fetch_states(entity_id: Optional[str] = None) -> dict:
             # First get the RAG endpoint for full context
             rag_url = "/api/rag/static/entities"
             entity_url = f"/api/states/{entity_id}"
-            
+
             try:
                 # Get areas and devices from RAG endpoint for inference
                 rag_resp = _retry_get(client, rag_url)
                 rag_data = rag_resp.json()
                 areas = rag_data.get("areas", [])
                 devices = rag_data.get("devices", [])
-                
+
                 # Get specific entity data
                 entity_resp = _retry_get(client, entity_url)
                 entity_data = entity_resp.json()
-                
-                logger.info("Successfully fetched data for specific entity with context", 
-                          entity_url=entity_url, areas_count=len(areas), devices_count=len(devices))
+
+                logger.info(
+                    "Successfully fetched data for specific entity with context",
+                    entity_url=entity_url,
+                    areas_count=len(areas),
+                    devices_count=len(devices),
+                )
                 return {"entities": [entity_data], "areas": areas, "devices": devices}
             except Exception as exc:
-                logger.error("Error fetching entity", entity_url=entity_url, error=str(exc))
+                logger.error(
+                    "Error fetching entity", entity_url=entity_url, error=str(exc)
+                )
                 return {"entities": [], "areas": [], "devices": []}
         else:
             # Use the RAG API endpoint for all entities
@@ -252,12 +266,14 @@ def fetch_exposed_entity_ids() -> Optional[set]:
     return None
 
 
-def build_text(entity: dict, friendly_name_generator: Optional[FriendlyNameGenerator] = None) -> str:
+def build_text(
+    entity: dict, friendly_name_generator: Optional[FriendlyNameGenerator] = None
+) -> str:
     """Return the concatenated text optimized for multilingual embeddings.
 
     Builds a hybrid text combining Hungarian base with English keywords
     for optimal multilingual semantic matching with single embedding.
-    
+
     Args:
         entity: Entity data dictionary
         friendly_name_generator: Optional generator to create friendly names for entities that lack them
@@ -268,13 +284,15 @@ def build_text(entity: dict, friendly_name_generator: Optional[FriendlyNameGener
     # Collect all available metadata
     # Check both RAG API structure and states API structure for friendly_name
     friendly_name = entity.get("friendly_name", "") or attrs.get("friendly_name", "")
-    
+
     # Generate friendly name if missing and generator provided
     if not friendly_name and friendly_name_generator and entity_id:
         suggestion = friendly_name_generator.generate_suggestion(entity)
         if suggestion.confidence >= 0.7:  # Only use high-confidence suggestions
             friendly_name = suggestion.suggested_name
-            logger.debug(f"Generated friendly name for {entity_id}: '{friendly_name}' (confidence: {suggestion.confidence:.2f})")
+            logger.debug(
+                f"Generated friendly name for {entity_id}: '{friendly_name}' (confidence: {suggestion.confidence:.2f})"
+            )
     area_name = attrs.get("area") or ""
     area_id = attrs.get("area_id", "")
     domain = entity_id.split(".")[0] if entity_id else ""
@@ -364,31 +382,31 @@ def build_text(entity: dict, friendly_name_generator: Optional[FriendlyNameGener
 
     # Add English keywords for cross-language matching (avoiding duplicates)
     english_keywords = []
-    
+
     # Extract English area names
     if area_name:
         english_area = _translate_area_name_to_english(area_name)
         if english_area != area_name and english_area not in english_keywords:
             english_keywords.append(english_area)
-    
+
     # Add domain (only if different from device_class to avoid duplication)
     if domain and domain not in english_keywords:
         if not device_class or domain != device_class:
             english_keywords.append(domain)
     if device_class and device_class not in english_keywords:
         english_keywords.append(device_class)
-    
-    # Add entity name parts translated to English  
+
+    # Add entity name parts translated to English
     if entity_name_parts:
         for part in entity_name_parts:
             english_term = _translate_term_to_english(part)
             if english_term != part and english_term not in english_keywords:
                 english_keywords.append(english_term)
-    
+
     # Add measurement units (usually already in English)
     if unit_of_measurement and unit_of_measurement not in english_keywords:
         english_keywords.append(unit_of_measurement)
-    
+
     # Add semantic English terms
     english_domain_terms = _get_english_domain_terms(domain, unit_of_measurement)
     for term in english_domain_terms:
@@ -398,7 +416,9 @@ def build_text(entity: dict, friendly_name_generator: Optional[FriendlyNameGener
     # Combine Hungarian text with English keywords for optimal multilingual matching
     if english_keywords:
         # Remove duplicates while preserving order
-        unique_keywords = list(dict.fromkeys([k for k in english_keywords if k and k.strip()]))
+        unique_keywords = list(
+            dict.fromkeys([k for k in english_keywords if k and k.strip()])
+        )
         if unique_keywords:
             # More natural integration without explicit "English:" label
             result += f". Keywords: {' '.join(unique_keywords)}"
@@ -447,12 +467,12 @@ def build_system_text(entity: dict) -> str:
     if friendly_name:
         # Translate Hungarian area names to English
         english_area_name = _translate_area_name_to_english(area_name)
-        
+
         # Use English area name in friendly name if it contains Hungarian
         english_friendly_name = friendly_name
         if area_name and area_name in friendly_name and english_area_name != area_name:
             english_friendly_name = friendly_name.replace(area_name, english_area_name)
-            
+
         main_desc = english_friendly_name
         if domain and device_class:
             main_desc = f"{english_friendly_name} ({domain} {device_class})"
@@ -474,7 +494,9 @@ def build_system_text(entity: dict) -> str:
 
     # Entity name in English
     if entity_name_parts:
-        english_entity_parts = [_translate_term_to_english(part) for part in entity_name_parts]
+        english_entity_parts = [
+            _translate_term_to_english(part) for part in entity_name_parts
+        ]
         text_parts.append(f"Entity name: {' '.join(english_entity_parts)}")
 
     # Category and device info
@@ -509,7 +531,7 @@ def build_system_text(entity: dict) -> str:
 
     # Combine everything
     result = ". ".join(text_parts)
-    
+
     if keywords:
         # Remove duplicates and empty strings
         unique_keywords = list(dict.fromkeys([k for k in keywords if k]))
@@ -522,13 +544,13 @@ def _translate_area_name_to_english(hungarian_area: str) -> str:
     """Translate Hungarian area names to English."""
     area_translations = {
         "nappali": "living room",
-        "konyha": "kitchen", 
+        "konyha": "kitchen",
         "hálószoba": "bedroom",
         "háló": "bedroom",
         "fürdőszoba": "bathroom",
         "fürdő": "bathroom",
         "dolgozószoba": "office",
-        "iroda": "office", 
+        "iroda": "office",
         "előszoba": "hallway",
         "pince": "basement",
         "padlás": "attic",
@@ -538,7 +560,7 @@ def _translate_area_name_to_english(hungarian_area: str) -> str:
         "kert": "garden",
         "kerti": "garden",
         "ház": "house",
-        "otthon": "home"
+        "otthon": "home",
     }
     return area_translations.get(hungarian_area.lower(), hungarian_area)
 
@@ -547,7 +569,7 @@ def _translate_term_to_english(hungarian_term: str) -> str:
     """Translate common Hungarian terms to English."""
     term_translations = {
         "lámpa": "light",
-        "világítás": "lighting", 
+        "világítás": "lighting",
         "fény": "light",
         "szenzor": "sensor",
         "érzékelő": "sensor",
@@ -561,7 +583,7 @@ def _translate_term_to_english(hungarian_term: str) -> str:
         "nedvesség": "humidity",
         "fogyasztás": "consumption",
         "energia": "energy",
-        "áram": "power"
+        "áram": "power",
     }
     return term_translations.get(hungarian_term.lower(), hungarian_term)
 
@@ -569,32 +591,36 @@ def _translate_term_to_english(hungarian_term: str) -> str:
 def _get_english_domain_terms(domain: str, unit_of_measurement: str = "") -> list:
     """Get English terms for domain and measurement context."""
     terms = []
-    
+
     # Domain-specific English terms
     domain_terms = {
         "light": ["light", "lighting", "lamp", "illumination"],
         "sensor": ["sensor", "detector", "measurement"],
         "switch": ["switch", "toggle", "control"],
-        "climate": ["climate", "temperature", "hvac", "thermostat"]
+        "climate": ["climate", "temperature", "hvac", "thermostat"],
     }
-    
+
     if domain in domain_terms:
         terms.extend(domain_terms[domain])
-    
+
     # Unit-based terms
     if unit_of_measurement:
         unit_lower = unit_of_measurement.lower()
         if "°c" in unit_lower or "celsius" in unit_lower:
             terms.extend(["temperature", "degrees"])
-        elif "%" in unit_lower and any(word in unit_lower for word in ["humidity", "moisture"]):
+        elif "%" in unit_lower and any(
+            word in unit_lower for word in ["humidity", "moisture"]
+        ):
             terms.extend(["humidity", "moisture"])
         elif "w" in unit_lower or "watt" in unit_lower:
             terms.extend(["power", "consumption", "energy"])
-    
+
     return terms
 
 
-def build_doc(entity: dict, embedding: List[float], text: str, text_system: str) -> dict:
+def build_doc(
+    entity: dict, embedding: List[float], text: str, text_system: str
+) -> dict:
     """Construct the ArangoDB document for an entity with hybrid multilingual text."""
 
     attrs = entity.get("attributes", {})
@@ -622,7 +648,7 @@ def build_doc(entity: dict, embedding: List[float], text: str, text_system: str)
         "synonyms": attrs.get("synonyms"),
         "embedding": embedding,
         "text": text,  # UI language text (Hungarian)
-        "text_system": text_system,  # System language text (English) 
+        "text_system": text_system,  # System language text (English)
         "language": "hu",  # UI language code
         "system_language": "en",  # System language code
         "meta_hash": meta_hash,
@@ -770,7 +796,7 @@ def ingest(
     for ent in states:
         attrs = ent.get("attributes", {})
         eid = ent.get("entity_id", "")
-        
+
         # First try: inherit from device
         if not attrs.get("area_id") and attrs.get("device_id"):
             dev = device_map.get(attrs["device_id"])
@@ -780,7 +806,7 @@ def ingest(
                     attrs["area_id"] = inferred
                     attrs.setdefault("area", area_map.get(inferred, ""))
                     logger.info(f"Inherited area '{inferred}' from device for {eid}")
-                    
+
         # Second try: smart area inference from names (including device name)
         if not attrs.get("area_id"):
             # Get device name for additional context
@@ -790,13 +816,13 @@ def ingest(
                 if dev and dev.get("name"):
                     device_name = dev["name"]
                     attrs["device_name"] = device_name  # Add for inference
-                    
+
             inferred_area = _infer_area_from_names(attrs, eid, area_map)
             if inferred_area:
                 attrs["area_id"] = inferred_area
                 attrs.setdefault("area", area_map.get(inferred_area, inferred_area))
                 logger.info(f"Inferred area '{inferred_area}' from names for {eid}")
-                
+
         aid = attrs.get("area_id")
         if aid:
             attrs["area_aliases"] = alias_map.get(aid, [])
@@ -816,7 +842,7 @@ def ingest(
     # Initialize friendly name generator for ingestion-time name generation
     friendly_name_generator = FriendlyNameGenerator()
     logger.info("Initialized friendly name generator for ingestion-time enhancement")
-    
+
     batch_size = 100
     unchanged_count = 0
     changed_count = 0
@@ -829,11 +855,14 @@ def ingest(
         # Generate hybrid texts optimized for multilingual embedding with friendly name enhancement
         hybrid_texts = []
         for e in batch:
-            # Count entities without friendly names for statistics  
-            has_friendly_name = bool(e.get("friendly_name", "") or e.get("attributes", {}).get("friendly_name", ""))
+            # Count entities without friendly names for statistics
+            has_friendly_name = bool(
+                e.get("friendly_name", "")
+                or e.get("attributes", {}).get("friendly_name", "")
+            )
             if not has_friendly_name and friendly_name_generator:
                 generated_names_count += 1
-            
+
             hybrid_text = build_text(e, friendly_name_generator)
             hybrid_texts.append(hybrid_text)
 
@@ -869,7 +898,9 @@ def ingest(
 
         docs = []
         ents_for_docs = []
-        for ent, emb, hybrid_text in zip(filtered_batch, embeddings, filtered_hybrid_texts):
+        for ent, emb, hybrid_text in zip(
+            filtered_batch, embeddings, filtered_hybrid_texts
+        ):
             if not emb:
                 logger.warning("missing embedding", entity=ent.get("entity_id"))
                 failed_count += 1
@@ -920,7 +951,9 @@ def ingest(
                     "upserted entity",
                     entity=d["entity_id"],
                     edges=edge_count,
-                    hybrid_text=d["text"][:50] + "..." if len(d["text"]) > 50 else d["text"],
+                    hybrid_text=(
+                        d["text"][:50] + "..." if len(d["text"]) > 50 else d["text"]
+                    ),
                     has_area=bool(d.get("area")),
                     has_device=bool(d.get("device_id")),
                 )

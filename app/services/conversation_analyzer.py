@@ -320,9 +320,17 @@ class ConversationAnalyzer:
         # Look for entity_id patterns in system messages (our responses)
         for message in history[-5:]:  # Last 5 messages for performance
             # Handle both dict and object formats for compatibility
-            role = message.get("role") if isinstance(message, dict) else getattr(message, "role", None)
-            content = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
-            
+            role = (
+                message.get("role")
+                if isinstance(message, dict)
+                else getattr(message, "role", None)
+            )
+            content = (
+                message.get("content")
+                if isinstance(message, dict)
+                else getattr(message, "content", "")
+            )
+
             if role == "system" and "Relevant entities:" in content:
                 # Extract entity IDs from system prompts
                 lines = content.split("\n")
@@ -344,9 +352,17 @@ class ConversationAnalyzer:
         # Look at recent user messages for area context
         for message in reversed(history[-3:]):  # Last 3 messages
             # Handle both dict and object formats for compatibility
-            role = message.get("role") if isinstance(message, dict) else getattr(message, "role", None)
-            content = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
-            
+            role = (
+                message.get("role")
+                if isinstance(message, dict)
+                else getattr(message, "role", None)
+            )
+            content = (
+                message.get("content")
+                if isinstance(message, dict)
+                else getattr(message, "content", "")
+            )
+
             if role == "user":
                 areas.update(self._extract_areas(content))
                 if areas:  # Found areas in recent history

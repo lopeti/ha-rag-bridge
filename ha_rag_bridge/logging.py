@@ -12,6 +12,7 @@ log_file = os.getenv("LOG_FILE")
 if log_file:
     handlers.append(TimedRotatingFileHandler(log_file, when="midnight", backupCount=7))
 
+
 class _TokenFilter(logging.Filter):
     TOKEN_ATTRIBUTES = ["admin_token", "api_token", "auth_token"]
 
@@ -20,6 +21,7 @@ class _TokenFilter(logging.Filter):
             if getattr(record, attr, None):
                 setattr(record, attr, "\u2022\u2022\u2022\u2022\u2022")
         return True
+
 
 for h in handlers:
     h.addFilter(_TokenFilter())
@@ -40,7 +42,9 @@ elif HA_RAG_LOG_LEVEL == "TRACKING":
     # Tracking mode: show entity tracking but suppress verbose details
     logging.getLogger("ha-rag-bridge").setLevel(logging.INFO)
     logging.getLogger("app").setLevel(logging.INFO)
-    logging.getLogger("httpx").setLevel(logging.ERROR)  # Suppress all HTTP logs except errors
+    logging.getLogger("httpx").setLevel(
+        logging.ERROR
+    )  # Suppress all HTTP logs except errors
 
 structlog.configure(
     processors=[

@@ -141,8 +141,10 @@ class ConversationMemoryService:
             for i, entity in enumerate(entities):
                 # Determine context type based on relevance and position
                 relevance = entity.get("rerank_score", entity.get("similarity", 0.0))
-                context_type = self._determine_context_type(entity, relevance, i, query_context)
-                
+                context_type = self._determine_context_type(
+                    entity, relevance, i, query_context
+                )
+
                 conv_entity = ConversationEntity(
                     entity_id=entity["entity_id"],
                     relevance_score=relevance,
@@ -241,20 +243,26 @@ class ConversationMemoryService:
             )
             return False
 
-    def _determine_context_type(self, entity: Dict[str, Any], relevance: float, position: int, query_context: str) -> str:
+    def _determine_context_type(
+        self,
+        entity: Dict[str, Any],
+        relevance: float,
+        position: int,
+        query_context: str,
+    ) -> str:
         """Determine context type (primary/secondary/historical) for an entity."""
         # Primary: High relevance entities that directly answer the query
         if relevance > 0.7 or position < 3:
             return "primary"
-        
+
         # Secondary: Medium relevance entities that provide context
         elif relevance > 0.4 or position < 8:
             return "secondary"
-        
+
         # Historical: Lower relevance entities for background context
         else:
             return "historical"
-    
+
     def _calculate_boost_weight(self, entity: Dict[str, Any]) -> float:
         """Calculate initial boost weight for an entity based on its characteristics."""
         base_weight = 1.0

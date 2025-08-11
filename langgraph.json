@@ -1,0 +1,9 @@
+{
+  "graphs": {
+    "ha_rag_workflow": "app/langgraph_workflow/workflow.py:create_rag_workflow"
+  },
+  "env": ".env.studio",
+  "dependencies": [
+    "./pyproject.toml"
+  ]
+}

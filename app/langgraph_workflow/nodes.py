@@ -94,7 +94,10 @@ async def llm_scope_detection_node(state: RAGState) -> Dict[str, Any]:
             reasoning = "Simple control action without area scope"
         # Temperature-specific queries get climate cluster priority first
         elif (
-            any(word in query_lower for word in ["hány fok", "hőmérséklet", "temperature"]) 
+            any(
+                word in query_lower
+                for word in ["hány fok", "hőmérséklet", "temperature"]
+            )
             and len(areas) == 1
         ):
             # "hány fok van a nappaliban?" → MACRO with climate cluster priority
@@ -406,49 +409,62 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
         conversation_history = state.get("conversation_history", [])
         user_query = state.get("user_query", "")
         session_id = state.get("session_id")
-        
-        logger.info(f"🔄 ContextFormatting INPUT: {len(retrieved_entities)} entities, top: {retrieved_entities[0].get('entity_id', 'unknown') if retrieved_entities else 'none'}")
-        
+
+        logger.info(
+            f"🔄 ContextFormatting INPUT: {len(retrieved_entities)} entities, top: {retrieved_entities[0].get('entity_id', 'unknown') if retrieved_entities else 'none'}"
+        )
+
         # Actually call the entity reranker to apply area/domain boosting
         entity_scores = entity_reranker.rank_entities(
             entities=retrieved_entities,
             query=user_query,
             conversation_history=conversation_history,
             conversation_id=session_id,
-            k=len(retrieved_entities)  # Don't limit here, we want all scored entities
+            k=len(retrieved_entities),  # Don't limit here, we want all scored entities
         )
 
         # ===== MULTI-STAGE FILTERING =====
         # Stage 1: Filter to reasonable size based on original optimal_k + scope
         optimal_k = state.get("optimal_k", 15) or 15
         detected_scope = state.get("detected_scope")
-        
+
         # Calculate target entity count based on scope and optimal_k
         if detected_scope:
-            scope_value = detected_scope.value if hasattr(detected_scope, "value") else str(detected_scope) 
+            scope_value = (
+                detected_scope.value
+                if hasattr(detected_scope, "value")
+                else str(detected_scope)
+            )
             if scope_value == "micro":
-                target_entities = min(8, len(entity_scores))  # Tight filtering for specific queries
-            elif scope_value == "macro": 
+                target_entities = min(
+                    8, len(entity_scores)
+                )  # Tight filtering for specific queries
+            elif scope_value == "macro":
                 target_entities = min(optimal_k, len(entity_scores))  # Use original k
             else:  # overview
-                target_entities = min(optimal_k + 8, len(entity_scores))  # Allow more for house-wide
+                target_entities = min(
+                    optimal_k + 8, len(entity_scores)
+                )  # Allow more for house-wide
         else:
             target_entities = min(optimal_k, len(entity_scores))  # Default fallback
-        
+
         # Apply score-based filtering with minimum threshold
         min_score_threshold = 0.2  # Minimum relevance score
         filtered_entities = [
-            es for es in entity_scores 
-            if es.final_score > min_score_threshold
+            es for es in entity_scores if es.final_score > min_score_threshold
         ][:target_entities]
-        
-        logger.info(f"🎯 Multi-stage filtering: {len(entity_scores)} -> {len(filtered_entities)} entities (target: {target_entities}, scope: {scope_value if detected_scope else 'unknown'})")
+
+        logger.info(
+            f"🎯 Multi-stage filtering: {len(entity_scores)} -> {len(filtered_entities)} entities (target: {target_entities}, scope: {scope_value if detected_scope else 'unknown'})"
+        )
 
         # Stage 2: Determine primary vs related entities from filtered pool
         primary_entities: List[Any] = []
         related_entities: List[Any] = []
 
-        max_primary = min(6, len(filtered_entities) // 2)  # At most half should be primary, max 6
+        max_primary = min(
+            6, len(filtered_entities) // 2
+        )  # At most half should be primary, max 6
         max_related = len(filtered_entities) - max_primary  # Rest are related
 
         for i, es in enumerate(filtered_entities):
@@ -457,21 +473,25 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
 
             # Primary entity criteria: top entities with high scores or cluster context
             if len(primary_entities) < max_primary and (
-                (i < 4 and (has_cluster_context or high_score)) or 
-                len(primary_entities) == 0  # Ensure at least one primary
+                (i < 4 and (has_cluster_context or high_score))
+                or len(primary_entities) == 0  # Ensure at least one primary
             ):
                 primary_entities.append(es)
             else:
                 related_entities.append(es)
 
         # Extract entity IDs for tracking
-        primary_entity_ids = [es.entity.get("entity_id", "unknown") for es in primary_entities[:3]]
-        related_entity_ids = [es.entity.get("entity_id", "unknown") for es in related_entities[:3]]
-        
+        primary_entity_ids = [
+            es.entity.get("entity_id", "unknown") for es in primary_entities[:3]
+        ]
+        related_entity_ids = [
+            es.entity.get("entity_id", "unknown") for es in related_entities[:3]
+        ]
+
         logger.info(
             f"📋 ContextFormatting OUTPUT: {len(primary_entities)} primary + {len(related_entities)} related entities"
         )
-        
+
         logger.debug(
             f"Entity allocation details - Primary: {primary_entity_ids} | Related: {related_entity_ids}"
         )
