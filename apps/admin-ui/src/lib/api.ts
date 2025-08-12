@@ -38,6 +38,8 @@ export interface EntitiesMeta {
   shown: number;
   domain_types: number;
   areas: number;
+  areas_list?: Array<{name: string, id: string}>;
+  domains_list?: Array<{name: string, id: string}>;
 }
 
 export interface Cluster {
@@ -107,6 +109,22 @@ export interface SystemStats {
   database_size?: string;
 }
 
+export interface PromptFormat {
+  entity_id: string;
+  clean_name: string;
+  area: string;
+  current_value?: any;
+  unit?: string;
+  prompt_formats: {
+    compact: string;
+    detailed: string;
+    grouped_by_area: string;
+    hierarchical: string;
+  };
+  embedded_text: string;
+  last_updated: string;
+}
+
 // Create axios instance
 const api = axios.create({
   baseURL: '/admin',
@@ -144,6 +162,11 @@ export const adminApi = {
 
   getEntitiesMeta: async (): Promise<EntitiesMeta> => {
     const response = await api.get('/entities/meta');
+    return response.data;
+  },
+
+  getEntityPromptFormat: async (entityId: string): Promise<PromptFormat> => {
+    const response = await api.get(`/entities/${encodeURIComponent(entityId)}/prompt-format`);
     return response.data;
   },
 

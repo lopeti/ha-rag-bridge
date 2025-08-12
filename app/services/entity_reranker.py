@@ -509,7 +509,7 @@ class EntityReranker:
                 for pe in primary_entities:
                     entity = pe.entity
                     name = cls._get_clean_name(entity)
-                    area = entity.get("area", "")
+                    area = cls._get_area_display_name(entity)
                     value = cls._get_value_str(entity, use_fresh_data=True)
                     primary_strs.append(f"{name} [{area}]{value}")
                 parts.append(f"Primary: {' | '.join(primary_strs)}")
@@ -519,7 +519,7 @@ class EntityReranker:
                 for re in related_entities:
                     entity = re.entity
                     name = cls._get_clean_name(entity)
-                    area = entity.get("area", "")
+                    area = cls._get_area_display_name(entity)
                     value = cls._get_value_str(entity, use_fresh_data=True)
                     related_strs.append(f"{name} [{area}]{value}")
                 parts.append(f"Related: {' | '.join(related_strs)}")
@@ -549,7 +549,7 @@ class EntityReranker:
                 for pe in primary_entities:
                     entity = pe.entity
                     name = cls._get_clean_name(entity)
-                    area = entity.get("area", "")
+                    area = cls._get_area_display_name(entity)
                     value = cls._get_value_str(entity, use_fresh_data=True)
                     parts.append(f"- {name} [{area}]{value}")
 
@@ -558,7 +558,7 @@ class EntityReranker:
                 for re in related_entities:
                     entity = re.entity
                     name = cls._get_clean_name(entity)
-                    area = entity.get("area", "")
+                    area = cls._get_area_display_name(entity)
                     value = cls._get_value_str(entity, use_fresh_data=True)
                     parts.append(f"- {name} [{area}]{value}")
 
@@ -634,6 +634,21 @@ class EntityReranker:
                 return detailed + tldr
 
             return detailed
+
+        @classmethod
+        def _get_area_display_name(cls, entity):
+            """Get human-readable area name, preferring area_name over area ID"""
+            area_name = entity.get("area_name", "")
+            area_id = entity.get("area", "")
+
+            # Prefer friendly area name if available
+            if area_name:
+                return area_name
+            # Fall back to area ID if no friendly name
+            elif area_id:
+                return area_id
+            else:
+                return ""
 
         @classmethod
         def _get_clean_name(cls, entity):
@@ -750,7 +765,7 @@ class EntityReranker:
                 if current_primary:
                     for entity in current_primary:
                         name = cls._get_clean_name(entity)
-                        area = entity.get("area", "")
+                        area = cls._get_area_display_name(entity)
                         value = cls._get_value_str(entity, use_fresh_data=True)
                         parts.append(f"- [P] {name}: {area} {value}".strip())
 
@@ -784,7 +799,7 @@ class EntityReranker:
                 if current_related:
                     for entity in current_related[:3]:  # Limit to avoid clutter
                         name = cls._get_clean_name(entity)
-                        area = entity.get("area", "")
+                        area = cls._get_area_display_name(entity)
                         value = cls._get_value_str(entity, use_fresh_data=True)
                         parts.append(f"- [S] {name}: {area} {value}".strip())
 

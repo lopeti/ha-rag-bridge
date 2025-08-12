@@ -46,6 +46,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `poetry run python scripts/watch_entities.py` - Watch entity updates
 - `poetry run python scripts/ingest_docs.py --file path --device_id id` - Ingest device manuals
 
+### Admin UI & Monitoring
+- **Access**: `http://localhost:8001` (when FastAPI server is running)
+- **Entity Management**: `/entities` - Advanced entity browser with debugging tools
+- **System Overview**: `/overview` - Health status, database metrics, and system statistics
+- **Real-time Monitoring**: `/monitoring` - Live log streaming and performance metrics
+- **Cluster Management**: `/clusters` - Semantic entity cluster configuration
+- **Maintenance Tools**: Built-in bootstrap, reindex, cleanup operations
+- **Debug Features**: 
+  - Prompt format preview showing exact LLM input with real-time values
+  - Embedding text analysis for semantic search quality
+  - Friendly name quality scoring with improvement suggestions
+  - Area name resolution (friendly names vs IDs) for better LLM understanding
+
 ### Configuration Analysis & Optimization
 - `scripts/advisor.sh --detailed` - Run HA Configuration Advisor with detailed analysis
 - `scripts/advisor.sh --format json --output report.json` - Generate JSON report
@@ -308,4 +321,14 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Docker Integration**: Live container log access via Docker socket mounting
 - **Performance Metrics**: Basic CPU/memory/latency monitoring with 5-second polling
 - **📋 PLANNED**: Stream-based metrics system for real-time charts (see `memory-bank/stream-metrics-optimization.md`)
+
+**Advanced Entity Management & Debugging System** ✅ IMPLEMENTED (2025-08-12)
+- **Rich Entity Cards**: Comprehensive metadata display with device/area names, technical details, and attributes
+- **Smart Friendly Name Analysis**: Real-time quality scoring with improvement suggestions and issue detection
+- **Prompt Format Debugging**: Live LLM prompt preview showing exactly how entities appear in prompts with current values
+- **Embedding Text Display**: Hungarian/English text debug view for semantic search quality analysis
+- **Dynamic Filter System**: Real-time area/domain loading with JOIN-enhanced entity data
+- **Domain-Specific Styling**: Color-coded entity cards with appropriate icons based on entity type
+- **Area Name Resolution**: Intelligent area display using friendly names instead of IDs in all prompt formats
+- **Real-time Value Refresh**: Current sensor values with 30-second caching and manual refresh capability
 

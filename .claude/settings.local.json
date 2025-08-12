@@ -64,7 +64,8 @@
       "Bash(npm install:*)",
       "Bash(npx tailwindcss init:*)",
       "Bash(npm run build:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": []
   }

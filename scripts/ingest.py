@@ -619,9 +619,9 @@ def _get_english_domain_terms(domain: str, unit_of_measurement: str = "") -> lis
 
 
 def build_doc(
-    entity: dict, embedding: List[float], text: str, text_system: str
+    entity: dict, embedding: List[float], text: str
 ) -> dict:
-    """Construct the ArangoDB document for an entity with hybrid multilingual text."""
+    """Construct the ArangoDB document for an entity with multilingual text."""
 
     attrs = entity.get("attributes", {})
     # Hash hybrid text for change detection (text_system is same as text now)
@@ -647,10 +647,7 @@ def build_doc(
         "friendly_name": attrs.get("friendly_name"),
         "synonyms": attrs.get("synonyms"),
         "embedding": embedding,
-        "text": text,  # UI language text (Hungarian)
-        "text_system": text_system,  # System language text (English)
-        "language": "hu",  # UI language code
-        "system_language": "en",  # System language code
+        "text": text,  # Multilingual text (Hungarian + English keywords)
         "meta_hash": meta_hash,
     }
 
@@ -905,7 +902,7 @@ def ingest(
                 logger.warning("missing embedding", entity=ent.get("entity_id"))
                 failed_count += 1
                 continue
-            docs.append(build_doc(ent, emb, hybrid_text, hybrid_text))
+            docs.append(build_doc(ent, emb, hybrid_text))
             ents_for_docs.append(ent)
 
         if docs:
