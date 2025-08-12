@@ -40,11 +40,14 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top Navigation */}
-      <header className="border-b bg-card">
+      {/* Home Assistant style header */}
+      <header className="border-b bg-primary text-primary-foreground shadow-sm">
         <div className="flex h-16 items-center px-6">
           <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-semibold">HA-RAG Admin</h1>
+            <div className="w-8 h-8 bg-primary-foreground rounded-md flex items-center justify-center">
+              <span className="text-primary font-bold text-lg">🏠</span>
+            </div>
+            <h1 className="text-xl font-semibold text-primary-foreground">HA-RAG Admin</h1>
           </div>
           
           <nav className="flex items-center space-x-6 ml-8">
@@ -56,8 +59,8 @@ export function Layout() {
                   cn(
                     'flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors',
                     isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      ? 'bg-primary-foreground/20 text-primary-foreground border border-primary-foreground/30'
+                      : 'text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10'
                   )
                 }
               >
@@ -73,6 +76,7 @@ export function Layout() {
               variant="ghost"
               size="icon"
               onClick={() => setIsDark(!isDark)}
+              className="text-primary-foreground hover:bg-primary-foreground/10"
             >
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>

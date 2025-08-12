@@ -14,5 +14,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        // Force new filename on each build for cache busting
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name?.split('.') || [];
+          const ext = info[info.length - 1];
+          if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
+            return `assets/[name]-[hash][extname]`;
+          }
+          // For CSS and JS, include timestamp for better cache busting
+          const timestamp = Date.now();
+          return `assets/[name]-${timestamp}-[hash][extname]`;
+        },
+        entryFileNames: () => {
+          const timestamp = Date.now();
+          return `assets/[name]-${timestamp}-[hash].js`;
+        }
+      }
+    }
   },
 })

@@ -2,48 +2,70 @@
 
 @layer base {
   :root {
+    /* Home Assistant hivatalos színpaletta */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 213 27% 12%; /* HA dark text */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 213 27% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.75rem;
+    --popover-foreground: 213 27% 12%;
+    
+    /* HA klasszikus kék primary szín */
+    --primary: 214 84% 56%; /* #3b82f6 HA blue */
+    --primary-foreground: 0 0% 100%;
+    
+    /* HA-stílusú secondary */
+    --secondary: 210 40% 96%; /* Light gray */
+    --secondary-foreground: 213 27% 12%;
+    --muted: 210 40% 98%;
+    --muted-foreground: 213 9% 40%; /* HA muted text */
+    
+    /* HA accent colors */
+    --accent: 214 84% 95%; /* Light blue */
+    --accent-foreground: 214 84% 40%;
+    
+    /* HA red for destructive */
+    --destructive: 358 75% 59%; /* HA red */
+    --destructive-foreground: 0 0% 100%;
+    
+    /* HA borders - subtle and clean */
+    --border: 214 32% 91%; /* Light blue-gray */
+    --input: 214 32% 91%;
+    --ring: 214 84% 56%;
+    --radius: 0.5rem; /* HA uses smaller radius */
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* Home Assistant dark mode colors */
+    --background: 220 13% 9%; /* HA dark bg */
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 220 13% 11%; /* HA card dark */
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 220 13% 11%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
+    
+    /* HA dark mode primary - lighter blue */
+    --primary: 214 84% 66%;
+    --primary-foreground: 220 13% 9%;
+    
+    /* HA dark secondary */
+    --secondary: 220 13% 15%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --muted: 220 13% 15%;
+    --muted-foreground: 217 10% 64%; /* HA muted dark */
+    
+    /* HA dark accent */
+    --accent: 220 13% 15%;
+    --accent-foreground: 214 84% 66%;
+    
+    /* HA dark destructive */
+    --destructive: 358 75% 59%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    
+    /* HA dark borders */
+    --border: 220 13% 15%;
+    --input: 220 13% 15%;
+    --ring: 214 84% 66%;
   }
 }
 
@@ -53,10 +75,15 @@
   }
   
   body {
+    /* Home Assistant style clean background */
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: system-ui, -apple-system, sans-serif;
+    /* HA uses Roboto but Inter is similar and more modern */
+    font-family: 'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    min-height: 100vh;
+    /* Subtle HA-style pattern */
+    background-image: radial-gradient(circle at 20% 20%, hsl(214 84% 56% / 0.03) 0%, transparent 50%);
   }
 }
 

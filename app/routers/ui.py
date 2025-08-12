@@ -9,9 +9,19 @@ router = APIRouter(tags=["ui"])
 # Get the admin UI build directory
 ADMIN_UI_DIR = Path(__file__).parent.parent.parent / "apps" / "admin-ui" / "dist"
 
+# Custom StaticFiles with no-cache headers for CSS/JS
+class NoCacheStaticFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        # Add cache control headers to prevent aggressive caching in development
+        if response.headers.get('content-type', '').startswith(('text/css', 'application/javascript')):
+            response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+            response.headers['Expires'] = '0'
+        return response
+
 # Mount static files if the build directory exists
 if ADMIN_UI_DIR.exists():
-    router.mount("/admin/assets", StaticFiles(directory=str(ADMIN_UI_DIR / "assets")), name="admin-assets")
+    router.mount("/admin/assets", NoCacheStaticFiles(directory=str(ADMIN_UI_DIR / "assets")), name="admin-assets")
 
 @router.get("/admin")
 @router.get("/admin/")
