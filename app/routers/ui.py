@@ -21,13 +21,13 @@ class NoCacheStaticFiles(StaticFiles):
 
 # Mount static files if the build directory exists
 if ADMIN_UI_DIR.exists():
-    router.mount("/admin/assets", NoCacheStaticFiles(directory=str(ADMIN_UI_DIR / "assets")), name="admin-assets")
+    router.mount("/admin/ui/assets", NoCacheStaticFiles(directory=str(ADMIN_UI_DIR / "assets")), name="admin-assets")
 
-@router.get("/admin")
-@router.get("/admin/")
-@router.get("/admin/{full_path:path}")
+@router.get("/admin/ui")
+@router.get("/admin/ui/")
+@router.get("/admin/ui/{full_path:path}")
 async def serve_admin_ui(full_path: str = ""):
-    """Serve the admin UI for all /admin routes"""
+    """Serve the admin UI for all /admin/ui routes"""
     
     # If build directory doesn't exist, return a message
     if not ADMIN_UI_DIR.exists():

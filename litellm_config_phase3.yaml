@@ -106,8 +106,8 @@ litellm_settings:
 # Environment-specific configuration
 environment_variables:
   # Phase 3 HA RAG Bridge Configuration  
-  HA_RAG_API_URL: "http://bridge:8000"         # Development: bridge service
-  # HA_RAG_API_URL: "http://localhost:8000"    # Development: local testing
+  HA_RAG_API_URL: "http://bridge:3100"         # Development: bridge service
+  # HA_RAG_API_URL: "http://localhost:3100"    # Development: local testing
   
   # Tool execution behavior
   HA_RAG_TOOL_EXECUTION_MODE: "ha-rag-bridge"  # Options: ha-rag-bridge|caller|both|disabled

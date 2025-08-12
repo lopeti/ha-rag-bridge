@@ -11,7 +11,11 @@ import { adminApi } from '../lib/api';
 
 export function Monitoring() {
   const [logLevel, setLogLevel] = useState('all');
+  const [selectedContainer, setSelectedContainer] = useState('bridge');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamLogs, setStreamLogs] = useState<any[]>([]);
   const [metricsHistory, setMetricsHistory] = useState<any[]>([]);
+  const [currentEventSource, setCurrentEventSource] = useState<EventSource | null>(null);
 
   const { data: metrics } = useQuery({
     queryKey: ['metrics'],
@@ -20,10 +24,82 @@ export function Monitoring() {
   });
 
   const { data: logs, isLoading: logsLoading } = useQuery({
-    queryKey: ['logs', logLevel],
-    queryFn: () => adminApi.getLogs({ level: logLevel === 'all' ? undefined : logLevel }),
-    refetchInterval: 10000, // Refresh every 10 seconds
+    queryKey: ['logs', logLevel, selectedContainer],
+    queryFn: () => adminApi.getLogs({ level: logLevel === 'all' ? undefined : logLevel, container: selectedContainer }),
+    refetchInterval: isStreaming ? false : 10000, // Disable polling when streaming
+    enabled: !isStreaming, // Don't fetch when streaming
   });
+
+  // Container options with emojis
+  const containerOptions = [
+    { value: 'bridge', label: '🌉 HA-RAG Bridge', description: 'Main application server' },
+    { value: 'litellm', label: '🤖 LiteLLM Proxy', description: 'LLM API gateway' },
+    { value: 'homeassistant', label: '🏠 Home Assistant', description: 'Smart home platform' },
+    { value: 'arangodb', label: '🗄️ ArangoDB', description: 'Graph database' }
+  ];
+
+  // Close current stream
+  const closeCurrentStream = () => {
+    if (currentEventSource) {
+      currentEventSource.close();
+      setCurrentEventSource(null);
+    }
+  };
+
+  // Start/stop log streaming
+  const toggleStreaming = () => {
+    if (isStreaming) {
+      setIsStreaming(false);
+      setStreamLogs([]);
+      closeCurrentStream();
+    } else {
+      setIsStreaming(true);
+      startLogStreaming();
+    }
+  };
+
+  const startLogStreaming = () => {
+    // Close any existing stream
+    closeCurrentStream();
+
+    const levelParam = logLevel === 'all' ? 'all' : logLevel;
+    const eventSource = new EventSource(
+      `/admin/monitoring/logs/stream?container=${selectedContainer}&level=${levelParam}`
+    );
+
+    setCurrentEventSource(eventSource);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const logEntry = JSON.parse(event.data);
+        setStreamLogs(prev => [logEntry, ...prev.slice(0, 99)]); // Keep last 100 entries
+      } catch (error) {
+        console.error('Error parsing log stream:', error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('Log streaming error:', error);
+      setIsStreaming(false);
+      closeCurrentStream();
+    };
+  };
+
+  // Restart streaming when container or level changes
+  useEffect(() => {
+    if (isStreaming) {
+      console.log(`Restarting stream due to parameter change: container=${selectedContainer}, level=${logLevel}`);
+      setStreamLogs([]); // Clear previous logs
+      startLogStreaming();
+    }
+  }, [selectedContainer, logLevel]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      closeCurrentStream();
+    };
+  }, []);
 
   // Collect metrics history for charts
   useEffect(() => {
@@ -248,6 +324,22 @@ export function Monitoring() {
           <CardTitle className="flex items-center justify-between">
             <span>Rendszer logok</span>
             <div className="flex items-center gap-2">
+              <Select value={selectedContainer} onValueChange={setSelectedContainer}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {containerOptions.map(container => (
+                    <SelectItem key={container.value} value={container.value}>
+                      <div className="flex flex-col">
+                        <span>{container.label}</span>
+                        <span className="text-xs text-muted-foreground">{container.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
               <Select value={logLevel} onValueChange={setLogLevel}>
                 <SelectTrigger className="w-40">
                   <SelectValue />
@@ -260,35 +352,83 @@ export function Monitoring() {
                   <SelectItem value="debug">Debug</SelectItem>
                 </SelectContent>
               </Select>
+              
+              <button
+                onClick={toggleStreaming}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isStreaming 
+                    ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                }`}
+              >
+                {isStreaming ? 'Stop Stream' : 'Start Stream'}
+              </button>
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-96">
-            {logsLoading ? (
-              <div className="flex items-center justify-center h-32">
-                <RefreshCw className="h-6 w-6 animate-spin" />
-              </div>
-            ) : logs?.items && logs.items.length > 0 ? (
+            {isStreaming ? (
+              // Show streaming logs
               <div className="space-y-2">
-                {logs.items.map((log, index) => (
-                  <div key={index} className="border-b pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {getLogLevelBadge(log.level)}
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {log.ts}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm mt-1 font-mono">{log.msg}</p>
+                {streamLogs.length === 0 ? (
+                  <div className="flex items-center justify-center h-32 text-muted-foreground">
+                    <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                    Várakozás streaming logokra...
                   </div>
-                ))}
+                ) : (
+                  streamLogs.map((log, index) => (
+                    <div key={index} className="border-b pb-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {getLogLevelBadge(log.level)}
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {log.timestamp}
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {log.container}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-sm mt-1 font-mono">{log.message}</p>
+                    </div>
+                  ))
+                )}
               </div>
             ) : (
-              <div className="flex items-center justify-center h-32 text-muted-foreground">
-                Nincsenek logok
-              </div>
+              // Show static logs
+              <>
+                {logsLoading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <RefreshCw className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : logs?.items && logs.items.length > 0 ? (
+                  <div className="space-y-2">
+                    {logs.items.map((log, index) => (
+                      <div key={index} className="border-b pb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {getLogLevelBadge(log.level)}
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {log.ts}
+                            </span>
+                            {log.container && (
+                              <Badge variant="outline" className="text-xs">
+                                {log.container}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-sm mt-1 font-mono">{log.msg}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-muted-foreground">
+                    Nincsenek logok
+                  </div>
+                )}
+              </>
             )}
           </ScrollArea>
         </CardContent>

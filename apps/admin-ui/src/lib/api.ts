@@ -78,6 +78,7 @@ export interface LogEntry {
   ts: string;
   level: 'debug' | 'info' | 'warning' | 'error';
   msg: string;
+  container?: string;
 }
 
 export interface LogsResponse {
@@ -209,7 +210,7 @@ export const adminApi = {
     return response.data;
   },
 
-  getLogs: async (params?: { level?: string; cursor?: string }): Promise<LogsResponse> => {
+  getLogs: async (params?: { level?: string; cursor?: string; container?: string }): Promise<LogsResponse> => {
     const response = await api.get('/monitoring/logs', { params });
     return response.data;
   },

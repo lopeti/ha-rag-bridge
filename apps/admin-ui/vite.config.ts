@@ -10,7 +10,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  base: '/admin/', // Set base URL for assets
+  base: '/admin/ui/', // Set base URL for assets
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
