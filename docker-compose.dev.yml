@@ -21,7 +21,7 @@ services:
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_OUTPUT_DIM=1536
-      - EMBED_DIM=1536
+      - EMBED_DIM=768
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - AUTO_BOOTSTRAP=1
       # Log optimization settings
