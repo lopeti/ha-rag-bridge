@@ -57,7 +57,14 @@
       "Bash(source .env)",
       "Bash(export:*)",
       "Bash(scripts/advisor.sh:*)",
-      "WebFetch(domain:developers.home-assistant.io)"
+      "WebFetch(domain:developers.home-assistant.io)",
+      "Bash(npm install)",
+      "Bash(git clean:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(npm run build:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

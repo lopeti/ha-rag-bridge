@@ -4,6 +4,7 @@ import json
 from typing import List, Sequence, Dict, Any, Optional
 from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
@@ -13,6 +14,7 @@ from app.middleware.request_id import request_id_middleware
 
 from .routers.graph import router as graph_router
 from .routers.admin import router as admin_router
+from .routers.ui import router as ui_router
 from ha_rag_bridge.utils.env import env_true
 import httpx
 
@@ -42,6 +44,16 @@ except ImportError as e:
 app = FastAPI()
 router = APIRouter()
 logger = get_logger(__name__)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify actual origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.add_middleware(BaseHTTPMiddleware, dispatch=request_id_middleware)
 
 
@@ -783,6 +795,7 @@ logger.info("Including graph router")
 app.include_router(graph_router)
 logger.info("Including admin router")
 app.include_router(admin_router)
+app.include_router(ui_router)
 logger.info("All routers included successfully")
 
 # Print all registered routes for debugging

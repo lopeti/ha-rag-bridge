@@ -11,11 +11,12 @@ services:
         context: .
         dockerfile: Dockerfile     # Point to the Dockerfile
         target: dev                # Use the dev stage
-    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini
+    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 3100 --log-config docker/uvicorn_log.ini
     volumes:
       - .:/app
     ports:
       - "5678:5678"
+      - "3100:3100"
     environment:
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -41,6 +42,29 @@ services:
       - arangodb_dev:/var/lib/arangodb3
     env_file:
       - .env
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config_phase3.yaml:/app/config.yaml
+      - ./litellm_ha_rag_hooks_phase3.py:/app/litellm_ha_rag_hooks_phase3.py
+    command: ["--config", "/app/config.yaml", "--detailed_debug"]
+    environment:
+      - HA_RAG_API_URL=http://bridge:3100
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LITELLM_LOG_LEVEL=INFO
+      - LOG_PROMPTS=true
+      - LOG_RESPONSES_PREVIEW=true
+    profiles:
+      - dev
+    env_file:
+      - .env
+    depends_on:
+      - bridge
+
 volumes:
   arangodb_dev:
   ha_config:

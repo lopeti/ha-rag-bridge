@@ -294,9 +294,3 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Performance Metrics**: 79% workflow quality, 94% entity retrieval, perfect temperature sensor selection
 - **Multi-turn Memory**: 15-minute TTL conversation persistence with 50% memory utilization
 
-**Next Phase: ArgosTranslate Hook Integration** 📋 PLANNED
-- **Translation Service Integration**: Add `app/services/translation_service.py` with TTL caching
-- **LiteLLM Hook Enhancement**: Pre/post-call translation in `litellm_ha_rag_hooks_phase3.py`  
-- **End-to-End English Processing**: LLM thinking in English with Hungarian response translation
-- **Offline Translation Stack**: ArgosTranslate (~30ms) + Home-Llama (30 tok/sec) local inference
-- **Quality Improvement**: Address "suta gondolkodás" by enabling sophisticated English reasoning

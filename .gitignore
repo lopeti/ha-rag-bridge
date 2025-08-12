@@ -1,19 +1,86 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.pyc
 .pytest_cache/
-*.log
+.coverage
+htmlcov/
+*.egg-info/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Poetry virtualenv
+# Logs
+*.log
+*.log.*
+
+# Poetry & Python environments
 .venv/
+venv/
+env/
+ENV/
+
+# Environment variables
 .env
-.env.core
-.env.home
-.env.prod
-.env.dev
-.env.backup
+.env.*
+!.env.example
+
+# IDE & Editor
 .vscode/launch.json
+.idea/
+*.swp
+*.swo
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Output & temporary files
 terminal_output.txt
+*.backup
+*.bak
+
+# Frontend & Node.js
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# UI legacy (if exists)
+ui/node_modules/
 
 # Memory bank conversations
 memory-bank/conversations/
+
+# Core directory
 core
+
+# Docker & Deployment
+.dockerignore
+docker-compose.override.yml
+
+# Testing & Coverage
+.coverage
+.pytest_cache/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Documentation builds
+docs/_build/
+docs/build/
+
+# Local development
+*.local
+.cache/

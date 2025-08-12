@@ -10,10 +10,13 @@ docs: docs/architecture.svg
 
 COMPOSE_DEV = docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile dev
 
-.PHONY: dev-up dev-down dev-shell
+.PHONY: dev-up dev-up-with-ui dev-down dev-shell
 
 dev-up:
 	$(COMPOSE_DEV) up -d
+
+dev-up-with-ui:
+	$(COMPOSE_DEV) up -d --build
 
 dev-down:
 	$(COMPOSE_DEV) down
@@ -84,3 +87,24 @@ docker-system-info:
 	@echo ""
 	@echo "🖼️  Images count:"
 	docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | head -20
+
+# UI Development Commands
+.PHONY: ui-deps ui-dev ui-build ui-up ui-down ui-logs
+
+ui-deps: ## Install frontend dependencies
+	cd frontend && npm install
+
+ui-dev: ## Start UI development server  
+	cd frontend && npm start
+
+ui-build: ## Build UI for production
+	cd frontend && npm run build
+
+ui-up: ## Start full stack with UI
+	docker-compose -f docker-compose.ui.yml up -d
+
+ui-down: ## Stop UI stack
+	docker-compose -f docker-compose.ui.yml down
+
+ui-logs: ## View UI logs
+	docker-compose -f docker-compose.ui.yml logs -f ha-rag-ui
