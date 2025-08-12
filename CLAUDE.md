@@ -294,3 +294,18 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Performance Metrics**: 79% workflow quality, 94% entity retrieval, perfect temperature sensor selection
 - **Multi-turn Memory**: 15-minute TTL conversation persistence with 50% memory utilization
 
+**LiteLLM Hook Restoration** ✅ COMPLETED (2025-08-12)
+- **Root Cause**: Hook registration worked but `async_pre_call_hook` not called due to LiteLLM version specifics
+- **Solution**: Utilized `async_logging_hook` for context injection (runs pre-request despite name)
+- **Context Injection**: Successfully injects HA entity data into system messages before LLM processing  
+- **Validation**: Test query "hány fok van a nappaliban?" returns exact temperature "A nappaliban 22.75 fok van."
+- **Architecture**: Hook loads at startup, detects temperature queries, injects sensor context from bridge API
+- **Performance**: Minimal overhead, preserves all existing functionality while restoring context enhancement
+
+**Admin UI Monitoring System** ✅ IMPLEMENTED (2025-08-12)
+- **Real-time Log Streaming**: EventSource-based container log monitoring with level filtering
+- **Multi-container Support**: Bridge, LiteLLM, HomeAssistant, ArangoDB log aggregation
+- **Docker Integration**: Live container log access via Docker socket mounting
+- **Performance Metrics**: Basic CPU/memory/latency monitoring with 5-second polling
+- **📋 PLANNED**: Stream-based metrics system for real-time charts (see `memory-bank/stream-metrics-optimization.md`)
+

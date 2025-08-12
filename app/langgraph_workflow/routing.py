@@ -162,9 +162,8 @@ def should_cleanup_memory(state: RAGState) -> Literal["cleanup_memory", "end"]:
     # Always run cleanup for test sessions to validate functionality
     should_cleanup = (
         query_count % 5 == 0  # Every 5th query (more frequent for testing)
-        or session_id
-        and "test" in session_id.lower()  # Test sessions
-        or session_id.startswith("test_")  # Test session pattern
+        or (session_id and "test" in session_id.lower())  # Test sessions
+        or (session_id and session_id.startswith("test_"))  # Test session pattern
     )
 
     if should_cleanup:

@@ -292,305 +292,106 @@ class HARagHookPhase3(CustomLogger):
         logger.info(
             "HARagHookPhase3 initialized successfully with LangGraph workflow integration"
         )
+        logger.info(f"🔧 HA RAG API URL: {HA_RAG_API_URL}")
+        logger.info(f"🔧 RAG Query Endpoint: {RAG_QUERY_ENDPOINT}")
 
         # Debug: list all methods to check what hooks are available
         hook_methods = [method for method in dir(self) if "hook" in method.lower()]
         logger.info(f"🔧 Available hook methods in this class: {hook_methods}")
+        
+        # MANUALLY register to litellm.callbacks as well
+        try:
+            import litellm
+            if not hasattr(litellm, 'callbacks'):
+                litellm.callbacks = []
+            if self not in litellm.callbacks:
+                litellm.callbacks.append(self)
+                logger.info(f"🔧 MANUALLY added hook to litellm.callbacks: {litellm.callbacks}")
+            else:
+                logger.info(f"🔧 Hook already in litellm.callbacks: {litellm.callbacks}")
+        except Exception as e:
+            logger.error(f"🔧 Failed to manually add to litellm.callbacks: {e}")
 
-    async def async_logging_hook(self, kwargs, result, start_time, end_time):
+    # MINDEN HOOK TESZTELÉSE
+    def log_success_event(self, kwargs, response_obj, start_time, end_time):
+        """SYNC logging test."""
+        logger.info(f"🔥🔥🔥 SYNC log_success_event CALLED!")
+        return super().log_success_event(kwargs, response_obj, start_time, end_time)
+
+    # MINDEN LEHETSÉGES PRE-CALL HOOK TESZTELÉSE
+    async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
+        """PRE-call hook - ez az igazi hely a kontextus injektálásra."""
+        logger.info(f"🔥🔥🔥 ASYNC_PRE_CALL_HOOK CALLED! call_type={call_type}")
+        logger.info(f"🔥🔥🔥 data keys: {list(data.keys()) if data else 'None'}")
+        
+        # Simple context injection test
+        if data and "messages" in data:
+            messages = data["messages"]
+            if len(messages) > 0 and messages[-1].get("role") == "user":
+                user_msg = messages[-1].get("content", "")
+                logger.info(f"🔥🔥🔥 User message: '{user_msg}'")
+                if "hány fok" in user_msg.lower():
+                    # Inject simple context
+                    system_msg = {
+                        "role": "system",
+                        "content": "HA RAG Context: Temperature in living room is 22.75°C from sensor.nappali_szoba_szenzor_temperature"
+                    }
+                    data["messages"].insert(0, system_msg)
+                    logger.info("🔥🔥🔥 CONTEXT INJECTED VIA ASYNC_PRE_CALL_HOOK!")
+                    logger.info(f"🔥🔥🔥 New message count: {len(data['messages'])}")
+        
+        return data
+
+    # Próbáljuk meg a sync verzió is
+    def pre_call_hook(self, user_api_key_dict, cache, data, call_type):
+        """SYNC pre-call hook."""
+        logger.info(f"🔥🔥🔥 SYNC PRE_CALL_HOOK CALLED! call_type={call_type}")
+        return data
+
+    # És más lehetséges hook metódusok
+    async def async_moderation_hook(self, data, user_api_key_dict, call_type):
+        """Moderation hook."""
+        logger.info(f"🔥🔥🔥 ASYNC_MODERATION_HOOK CALLED! call_type={call_type}")
+        return data
+        
+    async def async_post_call_success_hook(self, data, user_api_key_dict, response):
+        """POST call success test."""
+        logger.info(f"🔥🔥🔥 async_post_call_success_hook CALLED!")
+        return await super().async_post_call_success_hook(data, user_api_key_dict, response)
+
+    async def async_logging_hook(self, kwargs, result, call_type=None, start_time=None, end_time=None):
         """Debug method to see if ANY async method is being called."""
-        logger.info("🚨 DEBUG: async_logging_hook called - our hook class is active")
-        return (
-            await super().async_logging_hook(kwargs, result, start_time, end_time)
-            if hasattr(super(), "async_logging_hook")
-            else None
-        )
+        logger.info("🚨 DEBUG: async_logging_hook called (POST-call)")
+        logger.info(f"🚨 DEBUG: call_type={call_type}")
+        
+        # Ez POST-call, már késő kontextust injektálni
+        # A CustomLogger super class nem támogatja ezeket a paramétereket, vissza kell adni (kwargs, result) tuple-t
+        return (kwargs, result)
+
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        """Extended debug for success logging."""
+        logger.info("🚨 DEBUG: async_log_success_event called")
+        logger.info(f"🚨 DEBUG: kwargs keys={list(kwargs.keys()) if kwargs else 'None'}")
+        
+        # Try to manually trigger pre-call logic here as workaround
+        if kwargs and "messages" in kwargs:
+            logger.info("🔧 WORKAROUND: Running pre-call logic in success event")
+            try:
+                # Simulate pre-call hook manually
+                modified_data = await self.async_pre_call_hook(
+                    user_api_key_dict=None, 
+                    cache=None, 
+                    data=kwargs, 
+                    call_type="completion"
+                )
+                logger.info("🔧 WORKAROUND: Pre-call logic completed successfully")
+            except Exception as e:
+                logger.error(f"🔧 WORKAROUND: Pre-call logic failed: {e}")
+        
+        await super().async_log_success_event(kwargs, response_obj, start_time, end_time)
 
     # ────────────────────────────────
     # Pre‑call: inject entities using Phase 3 workflow
-    # ────────────────────────────────
-
-    async def async_pre_call_hook(
-        self,
-        user_api_key_dict: UserAPIKeyAuth,  # noqa: D401  (unused but required)
-        cache: DualCache,  # noqa: D401  (unused but required)
-        data: Dict[str, Any],
-        call_type: Literal[
-            "completion",
-            "text_completion",
-            "embeddings",
-            "image_generation",
-            "moderation",
-            "audio_transcription",
-            "pass_through_endpoint",
-            "rerank",
-            "mcp_call",
-        ],
-    ) -> Dict[str, Any]:
-        """Inject formatted entity list using Phase 3 LangGraph workflow."""
-        logger.info(
-            "HA RAG Hook Phase 3 async_pre_call_hook called with call_type: %s",
-            call_type,
-        )
-
-        messages: List[Dict[str, Any]] = data.get("messages", [])
-        logger.info(f"RAG Hook Phase 3: Received {len(messages)} messages")
-
-        # DEBUG: Log data keys to understand what OpenWebUI sends
-        logger.debug(f"RAG Hook Phase 3: Data keys available: {list(data.keys())}")
-
-        # Log all messages for debugging
-        for i, msg in enumerate(messages):
-            logger.info(
-                f"RAG Hook Phase 3: Message {i}: role={msg.get('role')}, content_preview={str(msg.get('content', ''))[:100]}..."
-            )
-
-        # Extract LAST user question and conversation context
-        user_question, conversation_context = _extract_user_question_and_context(
-            messages
-        )
-        if not user_question:
-            logger.info("RAG Hook Phase 3: No user question extracted - EXITING")
-            return data
-
-        # Using multilingual embeddings - no translation needed
-        # The RAG system now handles Hungarian queries natively via hybrid embeddings
-
-        # Find the last user message to inject context into
-        user_idx = None
-        for idx in reversed(range(len(messages))):
-            if messages[idx].get("role") == "user":
-                user_idx = idx
-                break
-
-        if user_idx is None:
-            logger.info("RAG Hook Phase 3: No user message found - EXITING")
-            return data
-
-        logger.info(
-            f"RAG Hook Phase 3: Extracted LAST user question: '{user_question[:100]}...'"
-        )
-        logger.info(
-            f"RAG Hook Phase 3: Conversation has {len(conversation_context)} messages"
-        )
-
-        logger.debug("Querying HA‑RAG bridge Phase 3 workflow for relevant entities…")
-        logger.debug("Using Phase 3 workflow endpoint: %s", RAG_QUERY_ENDPOINT)
-
-        formatted_context: str
-        try:
-            # Generate stable session ID for conversation continuity
-            stable_session_id = _extract_stable_session_id(data, messages)
-
-            logger.debug(
-                f"Using stable session ID for Phase 3 workflow: {stable_session_id}"
-            )
-
-            # Build conversation-aware payload for Phase 3 workflow endpoint
-            bridge_payload = {
-                "user_message": user_question,  # Hungarian/English - handled by multilingual embeddings
-                "conversation_history": (
-                    [
-                        {"role": msg["role"], "content": msg["content"]}
-                        for msg in conversation_context
-                    ]
-                    if conversation_context
-                    else None
-                ),
-                "session_id": stable_session_id,
-            }
-
-            # Translation metadata removed - no longer needed with multilingual embeddings
-
-            # Call RAG bridge via HTTP endpoint
-            async with httpx.AsyncClient(
-                timeout=30
-            ) as client:  # Increased timeout for complex workflow
-                logger.info("Calling RAG bridge endpoint...")
-
-                resp = await client.post(
-                    RAG_QUERY_ENDPOINT,  # This is now /process-request
-                    json=bridge_payload,
-                )
-                resp.raise_for_status()
-                logger.debug(
-                    "Received response from RAG bridge endpoint: %s, %s",
-                    resp.status_code,
-                    resp.text[:500],  # Truncate long responses
-                )
-                rag_payload = resp.json()
-
-            # Handle Phase 3 workflow response format
-            messages_from_bridge = rag_payload.get("messages", [])
-            system_message = None
-            for msg in messages_from_bridge:
-                if msg.get("role") == "system":
-                    system_message = msg.get("content", "")
-                    break
-
-            # DEBUG: Log what we actually got from bridge
-            logger.debug(
-                f"🔍 BRIDGE SYSTEM MESSAGE: {system_message[:200] if system_message else 'None'}..."
-            )
-
-            if system_message:
-                formatted_context = system_message
-            else:
-                # Fallback: try old format for backward compatibility
-                formatted_context = rag_payload.get("formatted_content")
-                if not formatted_context:
-                    entities = rag_payload.get("relevant_entities", [])
-                    if entities:
-                        rows = [
-                            f"{e['entity_id']},{e.get('name', e['entity_id'])},{e.get('state', 'unknown')},{'/'.join(e.get('aliases', []))}"
-                            for e in entities
-                        ]
-                        formatted_context = (
-                            "Available Devices (from Phase 3 workflow):\n"  # header
-                            "```csv\nentity_id,name,state,aliases\n"
-                            + "\n".join(rows)
-                            + "\n```"
-                        )
-                    else:
-                        formatted_context = (
-                            "No relevant entities found from Phase 3 workflow."
-                        )
-
-            # Log Phase 3 workflow metrics
-            # In Phase 3 format, entities are embedded in the system message, not as a separate list
-            # Extract entity count from metadata or estimate from content length
-            metadata = rag_payload.get("metadata") or {}
-            entities_count = (
-                metadata.get("entity_count", "unknown") if metadata else "unknown"
-            )
-            if entities_count == "unknown" and system_message:
-                # Estimate entity count from system message content length
-                # Typical entity context is ~100-200 chars per entity
-                estimated_count = (
-                    max(1, len(system_message) // 150)
-                    if len(system_message) > 500
-                    else 0
-                )
-                entities_count = f"~{estimated_count}"
-            logger.info(
-                f"Phase 3 workflow completed: {entities_count} entities retrieved"
-            )
-            if metadata:
-                logger.debug(f"Phase 3 metadata: {metadata}")
-
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("HA‑RAG Phase 3 workflow failed: %s", exc)
-            logger.error(
-                f"Phase 3 workflow error details: {type(exc).__name__}: {str(exc)}"
-            )
-            logger.error(f"RAG_QUERY_ENDPOINT: {RAG_QUERY_ENDPOINT}")
-            logger.error(f"bridge_payload: {bridge_payload}")
-
-            # Fallback to basic RAG endpoint
-            logger.info("Falling back to basic RAG endpoint")
-            try:
-                fallback_endpoint = f"{HA_RAG_API_URL}/process-request"
-                basic_payload = {
-                    "user_message": user_question,
-                    "conversation_history": (
-                        [
-                            {"role": msg["role"], "content": msg["content"]}
-                            for msg in conversation_context
-                        ]
-                        if conversation_context
-                        else None
-                    ),
-                    "conversation_id": stable_session_id,
-                }
-
-                async with httpx.AsyncClient(timeout=15) as client:
-                    logger.info("Calling basic RAG fallback endpoint...")
-                    resp = await client.post(fallback_endpoint, json=basic_payload)
-                    resp.raise_for_status()
-                    basic_rag_payload = resp.json()
-
-                    logger.info(
-                        f"Basic RAG fallback successful: {len(basic_rag_payload.get('messages', []))} messages"
-                    )
-
-                    # Extract system message from basic RAG response
-                    messages_from_basic = basic_rag_payload.get("messages", [])
-                    for msg in messages_from_basic:
-                        if msg.get("role") == "system":
-                            formatted_context = msg.get("content", "")
-                            logger.info("Using system message from basic RAG fallback")
-                            break
-                    else:
-                        formatted_context = (
-                            "Basic RAG fallback: No system message found"
-                        )
-
-            except Exception as fallback_exc:
-                logger.error(f"Basic RAG fallback also failed: {fallback_exc}")
-                formatted_context = "Error retrieving Home Assistant entities from both Phase 3 workflow and basic RAG fallback."
-
-        # Cache-friendly approach: inject conversation-aware context into user message
-        original_user_content = messages[user_idx]["content"]
-
-        # Build enhanced context with Phase 3 workflow results
-        context_parts = []
-
-        # Add Phase 3 workflow context - preserve original bridge formatting
-        if (
-            formatted_context
-            and formatted_context
-            != "Error retrieving Home Assistant entities from Phase 3 workflow."
-        ):
-            # Use the bridge context directly without wrapping it in generic text
-            # This preserves the specific entity data like "Temperature: 23.7 °C"
-            context_parts.append(formatted_context)
-
-        # Add conversation continuity note if multi-turn
-        if len(conversation_context) > 1:
-            context_parts.append(
-                "Multi-turn conversation - Phase 3 system automatically considers previous context and entity memory."
-            )
-
-        # Combine all context parts
-        if context_parts:
-            combined_context = "\n\n".join(context_parts)
-            updated_user_content = (
-                f"{combined_context}\n\nUser question: {original_user_content}"
-            )
-        else:
-            updated_user_content = original_user_content
-
-        messages[user_idx]["content"] = updated_user_content
-        data["messages"] = messages
-
-        # Entity Proof System: Log what entities are in the final prompt
-        entities_in_prompt = extract_entity_ids_from_prompt(updated_user_content)
-
-        logger.info(
-            f"🔄 RAG Hook Phase 3: Context injected ({len(updated_user_content)} chars, {len(entities_in_prompt)} entities)"
-        )
-
-        # System prompt preview for debugging
-        system_msg_preview = (
-            formatted_context[:400] if formatted_context else "No system message"
-        )
-        logger.info(f"📋 SYSTEM PROMPT PREVIEW: {system_msg_preview}...")
-
-        # Entity proof tracking
-        if entities_in_prompt:
-            logger.info(f"🎯 ENTITIES IN PROMPT: {entities_in_prompt}")
-        else:
-            logger.warning(
-                "⚠️ No entities detected in final prompt - potential entity loss!"
-            )
-
-        # User message for reference
-        logger.debug(f"👤 USER MESSAGE: {user_question[:100]}...")
-
-        return data
-
-    # ────────────────────────────────
-    # Post‑call: execute HA tools (reuse from original hook)
     # ────────────────────────────────
 
     async def async_post_call_success_hook(

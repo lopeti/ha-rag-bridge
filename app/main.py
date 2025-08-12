@@ -716,6 +716,17 @@ async def process_request_workflow(payload: schemas.Request):
                 "diagnostics": {"error": "workflow_returned_none"},
                 "errors": ["Workflow execution failed"],
             }
+        
+        # Ensure workflow_result has required fields with safe defaults
+        if not isinstance(workflow_result, dict):
+            logger.error(f"Invalid workflow result type: {type(workflow_result)}")
+            workflow_result = {
+                "formatted_context": "Error: Invalid workflow result",
+                "retrieved_entities": [],
+                "conversation_context": {"intent": "read"},
+                "diagnostics": {"error": "invalid_workflow_result_type"},
+                "errors": ["Invalid workflow result type"],
+            }
 
         # Extract results from workflow
         formatted_context = workflow_result.get("formatted_context", "")
@@ -764,7 +775,7 @@ async def process_request_workflow(payload: schemas.Request):
         response = schemas.ProcessResponse(
             relevant_entities=relevant_entities,
             formatted_content=formatted_context,
-            intent=workflow_result.get("conversation_context", {}).get(
+            intent=(workflow_result.get("conversation_context") or {}).get(
                 "intent", "read"
             ),
             messages=[
@@ -795,6 +806,7 @@ logger.info("Including graph router")
 app.include_router(graph_router)
 logger.info("Including admin router")
 app.include_router(admin_router)
+logger.info("Including UI router")
 app.include_router(ui_router)
 logger.info("All routers included successfully")
 
