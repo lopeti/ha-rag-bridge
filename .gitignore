@@ -84,3 +84,6 @@ docs/build/
 # Local development
 *.local
 .cache/
+
+# Screenshots and temporary captures
+screenshots/.tmp/

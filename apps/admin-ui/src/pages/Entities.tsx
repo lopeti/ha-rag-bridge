@@ -1,21 +1,72 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
-import { Search, Filter, ChevronDown, X, Lightbulb, Thermometer, Zap, Wifi, Camera, Home, Gauge, Power, RefreshCw, Bug } from 'lucide-react';
-import { adminApi, type PromptFormat } from '../lib/api';
+import { Search, Filter, X, Lightbulb, Thermometer, Zap, Wifi, Camera, Home, Gauge, Power, Bug, Eye } from 'lucide-react';
+import { adminApi } from '../lib/api';
 import { SearchDebugger } from '../components/SearchDebugger';
+import { EntityModal } from '../components/EntityModal';
 
 export function Entities() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
   const [activeTab, setActiveTab] = useState<'browse' | 'debug'>('browse');
+  const [selectedEntity, setSelectedEntity] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Handle modal entity from URL
+  const entityIdFromUrl = searchParams.get('entity');
+  
+  const domain = searchParams.get('domain') || '';
+  const area = searchParams.get('area') || '';
+
+  const { data: entities, isLoading: entitiesLoading } = useQuery({
+    queryKey: ['entities', { q: debouncedQuery, domain, area, limit: 50 }],
+    queryFn: () => adminApi.getEntities({
+      q: debouncedQuery || undefined,
+      domain: domain || undefined,
+      area: area || undefined,
+      limit: 50,
+    }),
+  });
+
+  const { data: meta } = useQuery({
+    queryKey: ['entities-meta'],
+    queryFn: adminApi.getEntitiesMeta,
+  });
+
+  // Query for individual entity when accessing via URL
+  const { data: urlEntity } = useQuery({
+    queryKey: ['entity', entityIdFromUrl],
+    queryFn: () => adminApi.getEntities({ q: entityIdFromUrl || '', limit: 1 }),
+    enabled: !!entityIdFromUrl && (!entities?.items || !entities.items.find((e: any) => e.id === entityIdFromUrl)),
+  });
+
+  // Find entity by ID when URL changes
+  useEffect(() => {
+    if (entityIdFromUrl) {
+      // First try to find in current list
+      let entity = entities?.items?.find((e: any) => e.id === entityIdFromUrl);
+      
+      // If not found, try the URL-specific query result
+      if (!entity && urlEntity?.items && urlEntity.items.length > 0) {
+        entity = urlEntity.items[0];
+      }
+      
+      if (entity) {
+        setSelectedEntity(entity);
+        setIsModalOpen(true);
+      }
+    } else if (!entityIdFromUrl && isModalOpen) {
+      setIsModalOpen(false);
+      setSelectedEntity(null);
+    }
+  }, [entityIdFromUrl, entities?.items, urlEntity?.items, isModalOpen]);
 
   // Debounce search
   useEffect(() => {
@@ -36,24 +87,6 @@ export function Entities() {
     setSearchParams(params, { replace: true });
   }, [debouncedQuery, setSearchParams, searchParams]);
 
-  const domain = searchParams.get('domain') || '';
-  const area = searchParams.get('area') || '';
-
-  const { data: entities, isLoading: entitiesLoading } = useQuery({
-    queryKey: ['entities', { q: debouncedQuery, domain, area, limit: 50 }],
-    queryFn: () => adminApi.getEntities({
-      q: debouncedQuery || undefined,
-      domain: domain || undefined,
-      area: area || undefined,
-      limit: 50,
-    }),
-  });
-
-  const { data: meta } = useQuery({
-    queryKey: ['entities-meta'],
-    queryFn: adminApi.getEntitiesMeta,
-  });
-
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -71,178 +104,193 @@ export function Entities() {
     setDebouncedQuery('');
   };
 
+  const openEntityModal = (entity: any) => {
+    if (!entity || !entity.id) {
+      console.warn('Cannot open modal for entity without ID:', entity);
+      return;
+    }
+    const params = new URLSearchParams(searchParams);
+    params.set('entity', entity.id);
+    setSearchParams(params);
+    setSelectedEntity(entity);
+    setIsModalOpen(true);
+  };
+
+  const closeEntityModal = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('entity');
+    setSearchParams(params);
+    setIsModalOpen(false);
+    setSelectedEntity(null);
+  };
+
   const hasFilters = searchQuery || domain || area;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Entitások</h1>
-        {hasFilters && activeTab === 'browse' && (
-          <Button variant="outline" onClick={clearFilters}>
-            <X className="h-4 w-4 mr-2" />
-            Szűrők törlése
-          </Button>
-        )}
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="border-b">
-        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-          <button
-            onClick={() => setActiveTab('browse')}
-            className={`${
-              activeTab === 'browse'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-          >
-            <Search className="w-4 h-4" />
-            Entity böngésző
-          </button>
-          <button
-            onClick={() => setActiveTab('debug')}
-            className={`${
-              activeTab === 'debug'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-          >
-            <Bug className="w-4 h-4" />
-            Pipeline Debug
-          </button>
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === 'browse' && (
-        <>
-          {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Megjelenített</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{entities?.items.length || 0}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Összes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{meta?.total || 0}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Domain típusok</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{meta?.domain_types || 0}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Területek</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{meta?.areas || 0}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="h-5 w-5 mr-2" />
-            Szűrők
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Keresés..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            
-            <Select value={domain || 'all'} onValueChange={(value) => updateFilter('domain', value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Domain kiválasztása" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Minden domain</SelectItem>
-                {meta?.domains_list?.map((d: any) => (
-                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select value={area || 'all'} onValueChange={(value) => updateFilter('area', value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Terület kiválasztása" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Minden terület</SelectItem>
-                {meta?.areas_list?.map((a: any) => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Entities List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Entitások listája</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {entitiesLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="border rounded-lg p-4">
-                  <div className="space-y-2">
-                    <div className="h-5 bg-muted animate-pulse rounded w-1/3" />
-                    <div className="h-4 bg-muted animate-pulse rounded w-2/3" />
-                    <div className="flex gap-2">
-                      <div className="h-6 bg-muted animate-pulse rounded w-16" />
-                      <div className="h-6 bg-muted animate-pulse rounded w-20" />
-                    </div>
-                  </div>
+    <>
+      {/* Sticky Header with KPIs and Filters - Outside container */}
+      <div className="sticky top-16 z-40 bg-white border-b shadow-lg -mt-8 mb-8">
+        <div className="max-w-7xl mx-auto px-6 py-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-3xl font-bold">Entitások</h1>
+              {/* Always visible KPI badges when in browse mode */}
+              {activeTab === 'browse' && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
+                    {entities?.items?.filter(e => e && e.id).length || 0} megjelenített
+                  </Badge>
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                    {meta?.total || 0} összes
+                  </Badge>
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 px-2 py-1 hidden sm:inline-flex">
+                    {meta?.domain_types || 0} domain
+                  </Badge>
+                  <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 px-2 py-1 hidden md:inline-flex">
+                    {meta?.areas || 0} terület
+                  </Badge>
                 </div>
-              ))}
+              )}
             </div>
-          ) : (
-            <div className="space-y-3 max-h-[600px] overflow-auto">
-              {entities?.items.map((entity) => (
-                <EntityItem
-                  key={entity.id}
-                  entity={entity}
-                />
-              ))}
+            {hasFilters && activeTab === 'browse' && (
+              <Button variant="outline" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-2" />
+                Szűrők törlése
+              </Button>
+            )}
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="border-b">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('browse')}
+                className={`${
+                  activeTab === 'browse'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              >
+                <Search className="w-4 h-4" />
+                Entity böngésző
+              </button>
+              <button
+                onClick={() => setActiveTab('debug')}
+                className={`${
+                  activeTab === 'debug'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              >
+                <Bug className="w-4 h-4" />
+                Pipeline Debug
+              </button>
+            </nav>
+          </div>
+
+
+          {/* Filters - Only visible in browse mode */}
+          {activeTab === 'browse' && (
+            <div className="bg-gray-50 rounded-lg p-2 border">
+              <div className="flex items-center gap-2 mb-2">
+                <Filter className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">Szűrők</span>
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    placeholder="Keresés..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 bg-white"
+                  />
+                </div>
+                
+                <Select value={domain || 'all'} onValueChange={(value) => updateFilter('domain', value)}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Domain kiválasztása" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Minden domain</SelectItem>
+                    {meta?.domains_list?.map((d: any) => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <Select value={area || 'all'} onValueChange={(value) => updateFilter('area', value)}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Terület kiválasztása" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Minden terület</SelectItem>
+                    {meta?.areas_list?.map((a: any) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-        </>
-      )}
+        </div>
+      </div>
 
-      {/* Pipeline Debug Tab */}
-      {activeTab === 'debug' && (
-        <SearchDebugger />
-      )}
-    </div>
+      {/* Main Content */}
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          {/* Tab Content */}
+          {activeTab === 'browse' && (
+            <div>
+              {/* Entities Grid */}
+              {entitiesLoading ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <Card key={i} className="p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-muted animate-pulse rounded-full" />
+                          <div className="flex-1">
+                            <div className="h-4 bg-muted animate-pulse rounded w-3/4 mb-2" />
+                            <div className="h-3 bg-muted animate-pulse rounded w-1/2" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="h-5 bg-muted animate-pulse rounded w-16" />
+                          <div className="h-5 bg-muted animate-pulse rounded w-12" />
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {entities?.items?.filter(entity => entity && entity.id).map((entity) => (
+                    <EntityCard
+                      key={entity.id}
+                      entity={entity}
+                      onClick={() => openEntityModal(entity)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pipeline Debug Tab */}
+          {activeTab === 'debug' && (
+            <SearchDebugger />
+          )}
+        </div>
+
+        {/* Entity Modal */}
+        <EntityModal
+          entity={selectedEntity}
+          isOpen={isModalOpen}
+          onClose={closeEntityModal}
+        />
+      </div>
+    </>
   );
 }
 
@@ -315,17 +363,10 @@ function getDomainInfo(domain: string, deviceClass?: string) {
   return domainConfigs[domain as keyof typeof domainConfigs] || domainConfigs.default;
 }
 
-function EntityItem({ entity }: { entity: any }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [showPromptFormat, setShowPromptFormat] = useState(false);
-
-  // Query for prompt format when needed
-  const { data: promptFormat, isLoading: promptLoading, refetch: refetchPrompt } = useQuery<PromptFormat>({
-    queryKey: ['entity-prompt-format', entity.id],
-    queryFn: () => adminApi.getEntityPromptFormat(entity.id),
-    enabled: isOpen && showPromptFormat,
-    staleTime: 30000, // Cache for 30 seconds
-  });
+function EntityCard({ entity, onClick }: { entity: any; onClick: () => void }) {
+  if (!entity) {
+    return null;
+  }
 
   // Smart friendly name fallback
   const displayName = entity.friendly_name || 
@@ -343,291 +384,88 @@ function EntityItem({ entity }: { entity: any }) {
   );
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className={`border rounded-lg p-4 ${domainInfo.bgColor} hover:opacity-90 transition-all duration-200 shadow-sm hover:shadow-md`}>
-        <CollapsibleTrigger className="w-full text-left">
-          <div className="flex items-center justify-between">
+    <Card 
+      className={`${domainInfo.bgColor} hover:shadow-lg transition-all duration-200 cursor-pointer group border-2`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="space-y-3">
+          {/* Header */}
+          <div className="flex items-start gap-3">
+            <div className={`p-2 rounded-full bg-white ${domainInfo.color} border-2 group-hover:scale-110 transition-transform`}>
+              <DomainIcon size={20} />
+            </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-1">
-                <div className={`p-2 rounded-full bg-white ${domainInfo.color} border`}>
-                  <DomainIcon size={16} />
-                </div>
-                <p className="font-semibold text-foreground truncate text-base">
-                  {displayName}
-                </p>
-                {entity.state && (
-                  <Badge variant="outline" className="text-xs">
+              <h3 className="font-semibold text-foreground truncate text-sm mb-1 group-hover:text-blue-600 transition-colors">
+                {displayName}
+              </h3>
+              <p className="text-xs text-muted-foreground truncate">
+                {entity.area_name || entity.area || 'Unknown Area'}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+              }}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Current State */}
+          {entity.state && (
+            <div className="bg-white/50 rounded-lg p-2 border">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-600">Current</span>
+                <div className="flex items-center gap-1">
+                  <span className="font-mono font-bold text-sm">
                     {entity.state}
-                  </Badge>
-                )}
-                {/* Friendly name quality indicator */}
-                <Badge 
-                  variant="outline" 
-                  className={`text-xs ${
-                    qualityAnalysis.quality === 'good' ? 'bg-green-100 text-green-700 border-green-300' :
-                    qualityAnalysis.quality === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                    'bg-red-100 text-red-700 border-red-300'
-                  }`}
-                >
-                  {qualityAnalysis.score}% 
-                  {qualityAnalysis.quality === 'good' ? ' ✅' : 
-                   qualityAnalysis.quality === 'medium' ? ' ⚠️' : ' ❌'}
-                </Badge>
-              </div>
-              
-              <div className="text-sm text-muted-foreground space-y-1">
-                <p className="truncate">
-                  {entity.domain} · {entity.area_name || entity.area || 'Unknown Area'}
-                </p>
-                {entity.device_name && (
-                  <p className="truncate text-xs">
-                    Device: {entity.device_name}
-                  </p>
-                )}
-                <p className="truncate text-xs">
-                  ID: {entity.id}
-                </p>
-              </div>
-              
-              <div className="flex gap-2 mt-2 flex-wrap">
-                <Badge variant="secondary" className={`${domainInfo.color} bg-white/50`}>
-                  {entity.domain}
-                </Badge>
-                {entity.device_class && (
-                  <Badge variant="outline" className="text-xs bg-white/50">
-                    {entity.device_class}
-                  </Badge>
-                )}
-                {entity.unit_of_measurement && (
-                  <Badge variant="outline" className="text-xs bg-white/70 font-mono">
-                    {entity.unit_of_measurement}
-                  </Badge>
-                )}
-                {entity.tags?.map((tag: string) => (
-                  <Badge key={tag} variant="outline" className="text-xs bg-white/50">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            <ChevronDown 
-              className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''} flex-shrink-0`}
-            />
-          </div>
-        </CollapsibleTrigger>
-        
-        <CollapsibleContent className="space-y-0 data-[state=open]:mt-4">
-          <div className="pt-4 border-t space-y-4">
-            {/* Toggle between Embedded Text and Prompt Format */}
-            <div className="flex gap-2 mb-4">
-              <Button
-                variant={!showPromptFormat ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowPromptFormat(false)}
-                className="text-xs"
-              >
-                🔍 Embedded Text
-              </Button>
-              <Button
-                variant={showPromptFormat ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowPromptFormat(true)}
-                className="text-xs"
-              >
-                🤖 LLM Prompt Format
-              </Button>
-              {showPromptFormat && promptFormat && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetchPrompt()}
-                  disabled={promptLoading}
-                  className="text-xs"
-                >
-                  <RefreshCw className={`h-3 w-3 ${promptLoading ? 'animate-spin' : ''}`} />
-                </Button>
-              )}
-            </div>
-
-            {/* Embedded Text Panel */}
-            {!showPromptFormat && entity.text && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <h4 className="font-medium text-sm mb-2 text-amber-800 flex items-center gap-2">
-                  🔍 Embedded Text (Search Quality Debug)
-                </h4>
-                <div className="text-sm space-y-2">
-                  <div>
-                    <span className="font-medium text-amber-700">Embedded Text (Multilingual):</span>
-                    <p className="mt-1 p-2 bg-white rounded border text-xs font-mono leading-relaxed">
-                      {entity.text}
-                    </p>
-                  </div>
-                  <div className="text-xs text-amber-600 italic">
-                    💡 Ez a szöveg alapján történik a szemantikus keresés. Ha túl általános vagy nem kifejező, 
-                    javítani kell a friendly name-et vagy az embedding logikát.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Prompt Format Panel */}
-            {showPromptFormat && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <h4 className="font-medium text-sm mb-2 text-blue-800 flex items-center gap-2">
-                  🤖 LLM Prompt Format (Real-time)
-                </h4>
-                {promptLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-blue-600">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Loading fresh data...
-                  </div>
-                ) : promptFormat ? (
-                  <div className="text-sm space-y-3">
-                    {/* Current Value Section */}
-                    <div className="bg-white rounded border p-2">
-                      <div className="font-medium text-blue-700 mb-1">Current State:</div>
-                      <div className="text-xs space-y-1">
-                        <div><span className="font-medium">Clean Name:</span> {promptFormat.clean_name}</div>
-                        <div><span className="font-medium">Area:</span> {promptFormat.area}</div>
-                        {promptFormat.current_value !== null && (
-                          <div>
-                            <span className="font-medium">Current Value:</span> 
-                            <span className="ml-1 font-mono bg-green-100 px-1 rounded">
-                              {promptFormat.current_value}
-                              {promptFormat.unit && ` ${promptFormat.unit}`}
-                            </span>
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-500">
-                          Last updated: {new Date(promptFormat.last_updated).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Prompt Format Examples */}
-                    <div>
-                      <div className="font-medium text-blue-700 mb-2">LLM Prompt Formats:</div>
-                      <div className="space-y-2">
-                        {Object.entries(promptFormat.prompt_formats).map(([formatType, formatText]) => (
-                          <div key={formatType} className="bg-white rounded border p-2">
-                            <div className="text-xs font-medium text-gray-600 mb-1 capitalize">
-                              {formatType.replace('_', ' ')}:
-                            </div>
-                            <code className="text-xs bg-gray-100 p-1 rounded font-mono block">
-                              {formatText}
-                            </code>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-xs text-blue-600 italic">
-                      💡 Ez pontosan így jelenik meg az LLM prompt-jában. A current value valós időben frissül.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-red-600">
-                    Failed to load prompt format
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Friendly Name Quality Analysis */}
-            <div className={`rounded-lg p-3 ${
-              qualityAnalysis.quality === 'good' ? 'bg-green-50 border border-green-200' :
-              qualityAnalysis.quality === 'medium' ? 'bg-yellow-50 border border-yellow-200' :
-              'bg-red-50 border border-red-200'
-            }`}>
-              <h4 className={`font-medium text-sm mb-2 flex items-center gap-2 ${
-                qualityAnalysis.quality === 'good' ? 'text-green-800' :
-                qualityAnalysis.quality === 'medium' ? 'text-yellow-800' :
-                'text-red-800'
-              }`}>
-                📝 Friendly Name Quality ({qualityAnalysis.score}%)
-              </h4>
-              <div className="text-sm space-y-2">
-                <div>
-                  <span className="font-medium">Current Name:</span>
-                  <span className="ml-2 font-mono bg-white px-2 py-1 rounded border text-xs">
-                    {displayName}
                   </span>
+                  {entity.unit_of_measurement && (
+                    <span className="text-xs text-gray-500">
+                      {entity.unit_of_measurement}
+                    </span>
+                  )}
                 </div>
-                
-                {qualityAnalysis.issues.length > 0 && (
-                  <div>
-                    <span className="font-medium">Issues:</span>
-                    <ul className="mt-1 space-y-1">
-                      {qualityAnalysis.issues.map((issue, idx) => (
-                        <li key={idx} className="text-xs">{issue}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {qualityAnalysis.suggestions.length > 0 && (
-                  <div>
-                    <span className="font-medium">Suggestions:</span>
-                    <ul className="mt-1 space-y-1">
-                      {qualityAnalysis.suggestions.map((suggestion, idx) => (
-                        <li key={idx} className="text-xs bg-white p-1 rounded border font-mono">
-                          {suggestion}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             </div>
+          )}
 
-            {/* Device Information */}
-            {(entity.device_name || entity.manufacturer || entity.model) && (
-              <div>
-                <h4 className="font-medium text-sm mb-2 text-primary">Device Info</h4>
-                <div className="text-sm space-y-1">
-                  {entity.device_name && <p><span className="font-medium">Name:</span> {entity.device_name}</p>}
-                  {entity.manufacturer && <p><span className="font-medium">Manufacturer:</span> {entity.manufacturer}</p>}
-                  {entity.model && <p><span className="font-medium">Model:</span> {entity.model}</p>}
-                  {entity.device_id && <p><span className="font-medium">ID:</span> {entity.device_id}</p>}
-                </div>
-              </div>
+          {/* Badges */}
+          <div className="flex flex-wrap gap-1">
+            <Badge variant="secondary" className={`${domainInfo.color} bg-white/50 text-xs`}>
+              {entity.domain}
+            </Badge>
+            {entity.device_class && (
+              <Badge variant="outline" className="text-xs bg-white/50">
+                {entity.device_class}
+              </Badge>
             )}
-
-            {/* Area Information */}
-            <div>
-              <h4 className="font-medium text-sm mb-2 text-primary">Location</h4>
-              <div className="text-sm space-y-1">
-                <p><span className="font-medium">Area:</span> {entity.area_name || entity.area || 'Unknown'}</p>
-                {entity.area_id && <p><span className="font-medium">Area ID:</span> {entity.area_id}</p>}
-              </div>
-            </div>
-
-            {/* Technical Details */}
-            <div>
-              <h4 className="font-medium text-sm mb-2 text-primary">Technical Details</h4>
-              <div className="text-sm space-y-1">
-                <p><span className="font-medium">Domain:</span> {entity.domain}</p>
-                {entity.device_class && <p><span className="font-medium">Device Class:</span> {entity.device_class}</p>}
-                {entity.entity_category && <p><span className="font-medium">Category:</span> {entity.entity_category}</p>}
-                {entity.icon && <p><span className="font-medium">Icon:</span> {entity.icon}</p>}
-                {entity.last_updated && <p><span className="font-medium">Last Updated:</span> {new Date(entity.last_updated).toLocaleString()}</p>}
-              </div>
-            </div>
-
-            {/* Attributes */}
-            <div>
-              <h4 className="font-medium text-sm mb-2 text-primary">Attributes</h4>
-              {entity.attributes && Object.keys(entity.attributes).length > 0 ? (
-                <pre className="text-xs bg-muted p-3 rounded overflow-x-auto border">
-                  {JSON.stringify(entity.attributes, null, 2)}
-                </pre>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No additional attributes</p>
-              )}
-            </div>
+            {/* Quality indicator */}
+            <Badge 
+              variant="outline" 
+              className={`text-xs ${
+                qualityAnalysis.quality === 'good' ? 'bg-green-100 text-green-700 border-green-300' :
+                qualityAnalysis.quality === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                'bg-red-100 text-red-700 border-red-300'
+              }`}
+            >
+              {qualityAnalysis.score}%
+            </Badge>
           </div>
-        </CollapsibleContent>
-      </div>
-    </Collapsible>
+
+          {/* Device info */}
+          {entity.device_name && (
+            <div className="text-xs text-muted-foreground truncate">
+              Device: {entity.device_name}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
