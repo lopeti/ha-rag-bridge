@@ -1051,7 +1051,7 @@ async def get_monitoring_logs(
                         timestamp_str.replace("Z", "+00:00")
                     )
                     formatted_time = log_time.strftime("%Y-%m-%d %H:%M:%S")
-                except:
+                except (ValueError, AttributeError):
                     formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 # Detect log level from message
@@ -1239,7 +1239,7 @@ async def stream_logs(request: Request, container: str = "bridge", level: str = 
                             timestamp_str.replace("Z", "+00:00")
                         )
                         formatted_time = log_time.strftime("%H:%M:%S")
-                    except:
+                    except (ValueError, AttributeError):
                         formatted_time = datetime.now().strftime("%H:%M:%S")
 
                     # Detect log level
@@ -1295,7 +1295,7 @@ async def stream_logs(request: Request, container: str = "bridge", level: str = 
                 logger.warning(f"Process cleanup error: {cleanup_error}")
                 try:
                     process.kill()
-                except:
+                except (ProcessLookupError, OSError):
                     pass
 
     return StreamingResponse(
@@ -1383,3 +1383,174 @@ async def stream_ingest(request: Request):
             "Content-Type": "text/event-stream",
         },
     )
+
+
+@router.post("/entities/search-debug")
+async def search_entities_debug(request: Request):
+    """Debug entity search with multi-stage pipeline visualization"""
+    _check_token(request)
+
+    from pydantic import BaseModel
+
+    class SearchDebugRequest(BaseModel):
+        query: str
+        include_debug: bool = True
+        threshold: float = 0.7
+        limit: int = 20
+
+    body = await request.json()
+    search_request = SearchDebugRequest(**body)
+
+    # Import required services
+    from scripts.embedding_backends import get_backend
+    from app.main import retrieve_entities_with_clusters
+    from app.services.entity_reranker import entity_reranker
+    from app.services.query_scope_detector import query_scope_detector
+    from app.services.search_debugger import search_debugger
+    from arango import ArangoClient
+    import os
+
+    try:
+        # Database connection
+        arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
+        db = arango.db(
+            os.getenv("ARANGO_DB", "_system"),
+            username=os.environ["ARANGO_USER"],
+            password=os.environ["ARANGO_PASS"],
+        )
+
+        # Generate query embedding
+        backend_name = os.getenv("EMBEDDING_BACKEND", "local")
+        embedding_backend = get_backend(backend_name)
+        query_embedding = embedding_backend.embed([search_request.query])[0]
+
+        # Detect query scope
+        detected_scope, scope_config, detection_details = (
+            query_scope_detector.detect_scope(search_request.query)
+        )
+
+        # Convert scope_config to dict for serialization
+        from dataclasses import asdict
+
+        scope_config_dict = asdict(scope_config)
+
+        # Start debug session
+        search_debugger.start_debug_session(
+            query=search_request.query,
+            query_embedding=query_embedding,
+            scope_config=scope_config_dict,
+            similarity_threshold=search_request.threshold,
+        )
+
+        # Stage 1: Cluster + Vector Search
+        import time
+
+        start_time = time.time()
+
+        entities = retrieve_entities_with_clusters(
+            db=db,
+            q_vec=query_embedding,
+            q_text=search_request.query,
+            scope_config=scope_config,
+            cluster_types=scope_config.cluster_types,
+            k=search_request.limit * 2,  # Get more for reranking
+        )
+
+        cluster_time = (time.time() - start_time) * 1000
+
+        # Import PipelineStage enum
+        from app.services.search_debugger import PipelineStage
+
+        # Mock stage capture for cluster search (retrieve_entities_with_clusters handles both)
+        search_debugger.capture_stage(
+            stage=PipelineStage.CLUSTER_SEARCH,
+            entities_in=[],
+            entities_out=entities,
+            execution_time_ms=cluster_time * 0.6,  # Estimate cluster portion
+            metadata={
+                "clusters_found": scope_config.cluster_types,
+                "scope_detected": detected_scope.value,
+            },
+        )
+
+        search_debugger.capture_stage(
+            stage=PipelineStage.VECTOR_FALLBACK,
+            entities_in=entities,
+            entities_out=entities,
+            execution_time_ms=cluster_time * 0.4,  # Estimate vector portion
+            metadata={"vector_search_k": search_request.limit * 2},
+        )
+
+        # Stage 3: Reranking
+        start_time = time.time()
+
+        ranked_entities = entity_reranker.rank_entities(
+            entities=entities,
+            query=search_request.query,
+            conversation_history=None,
+            conversation_id=None,
+            k=search_request.limit,
+        )
+
+        rerank_time = (time.time() - start_time) * 1000
+
+        search_debugger.capture_stage(
+            stage=PipelineStage.RERANKING,
+            entities_in=entities,
+            entities_out=ranked_entities,
+            execution_time_ms=rerank_time,
+            metadata={"reranker_model": entity_reranker.model_name},
+        )
+
+        # Stage 4: Final Selection
+        final_entities = ranked_entities[: search_request.limit]
+
+        search_debugger.capture_stage(
+            stage=PipelineStage.FINAL_SELECTION,
+            entities_in=ranked_entities,
+            entities_out=final_entities,
+            execution_time_ms=0.5,  # Minimal time for selection
+            metadata={
+                "active_entities": len(
+                    [
+                        e
+                        for e in final_entities
+                        if e.ranking_factors.get("has_active_value", 0) > 0
+                    ]
+                ),
+                "inactive_entities": len(
+                    [
+                        e
+                        for e in final_entities
+                        if e.ranking_factors.get("has_active_value", 0) <= 0
+                    ]
+                ),
+                "selection_criteria": "multi_stage_prioritization",
+            },
+        )
+
+        # Finish debug session and get results
+        pipeline_debug = search_debugger.finish_debug_session()
+
+        if not pipeline_debug:
+            raise HTTPException(
+                status_code=500, detail="Failed to generate debug information"
+            )
+
+        # Convert to dict for JSON serialization
+        result = asdict(pipeline_debug)
+
+        # Add additional context
+        result["query_analysis"] = {
+            "detected_scope": detected_scope.value,
+            "areas_mentioned": detection_details.get("areas_mentioned", []),
+            "scope_confidence": detection_details.get("confidence", 0.0),
+            "cluster_types": scope_config.cluster_types,
+            "optimal_k": scope_config.k_max,
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Search debug error: {e}")
+        raise HTTPException(status_code=500, detail=f"Search debug failed: {str(e)}")

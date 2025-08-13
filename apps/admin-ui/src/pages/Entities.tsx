@@ -7,13 +7,15 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
-import { Search, Filter, ChevronDown, X, Lightbulb, Thermometer, Zap, Wifi, Camera, Home, Gauge, Power, RefreshCw } from 'lucide-react';
+import { Search, Filter, ChevronDown, X, Lightbulb, Thermometer, Zap, Wifi, Camera, Home, Gauge, Power, RefreshCw, Bug } from 'lucide-react';
 import { adminApi, type PromptFormat } from '../lib/api';
+import { SearchDebugger } from '../components/SearchDebugger';
 
 export function Entities() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
+  const [activeTab, setActiveTab] = useState<'browse' | 'debug'>('browse');
 
   // Debounce search
   useEffect(() => {
@@ -75,7 +77,7 @@ export function Entities() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Entitások</h1>
-        {hasFilters && (
+        {hasFilters && activeTab === 'browse' && (
           <Button variant="outline" onClick={clearFilters}>
             <X className="h-4 w-4 mr-2" />
             Szűrők törlése
@@ -83,8 +85,39 @@ export function Entities() {
         )}
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      {/* Tab Navigation */}
+      <div className="border-b">
+        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+          <button
+            onClick={() => setActiveTab('browse')}
+            className={`${
+              activeTab === 'browse'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            <Search className="w-4 h-4" />
+            Entity böngésző
+          </button>
+          <button
+            onClick={() => setActiveTab('debug')}
+            className={`${
+              activeTab === 'debug'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            <Bug className="w-4 h-4" />
+            Pipeline Debug
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'browse' && (
+        <>
+          {/* KPI Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Megjelenített</CardTitle>
@@ -202,6 +235,13 @@ export function Entities() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
+
+      {/* Pipeline Debug Tab */}
+      {activeTab === 'debug' && (
+        <SearchDebugger />
+      )}
     </div>
   );
 }

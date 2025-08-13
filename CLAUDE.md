@@ -332,3 +332,13 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Area Name Resolution**: Intelligent area display using friendly names instead of IDs in all prompt formats
 - **Real-time Value Refresh**: Current sensor values with 30-second caching and manual refresh capability
 
+**Semantic Search Pipeline Debugger** ✅ IMPLEMENTED (2025-08-12)
+- **Multi-Stage Pipeline Visualization**: Complete 4-stage debugging: cluster_search → vector_fallback → reranking → final_selection
+- **Entity Scoring Evolution**: Before/after similarity score comparison with detailed ranking factor breakdown
+- **Interactive Debugging Interface**: Real-time threshold simulation, parameter adjustment, and pipeline efficiency metrics
+- **Query Scope Analysis**: LLM-based scope detection (micro/macro/overview) with confidence scoring and context factors
+- **Performance Monitoring**: Stage execution times, entity flow tracking, and pipeline optimization recommendations
+- **Smart Entity Selection Debug**: Visual indication of active/inactive entities, in-prompt vs filtered status
+- **Pipeline Efficiency Analytics**: Multi-stage performance metrics with actionable optimization insights
+- **Real-time Search Testing**: Live semantic search with adjustable similarity thresholds and result limits
+

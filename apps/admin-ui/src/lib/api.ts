@@ -125,6 +125,83 @@ export interface PromptFormat {
   last_updated: string;
 }
 
+// Search Debug Types
+export interface EntityDebugInfo {
+  entity_id: string;
+  entity_name: string;
+  domain: string;
+  area: string;
+  
+  // Stage 1: Cluster search
+  cluster_score?: number;
+  source_cluster?: string;
+  cluster_relevance?: number;
+  
+  // Stage 2: Vector search  
+  vector_score?: number;
+  embedding_similarity?: number;
+  
+  // Stage 3: Reranking
+  base_score?: number;
+  context_boost?: number;
+  final_score?: number;
+  ranking_factors?: Record<string, number>;
+  
+  // Stage 4: Selection
+  is_active?: boolean;
+  is_selected?: boolean;
+  selection_rank?: number;
+  in_prompt?: boolean;
+  
+  // Metadata
+  pipeline_stage_reached?: 'cluster_search' | 'vector_fallback' | 'reranking' | 'final_selection';
+  score_delta?: number; // final_score - vector_score
+}
+
+export interface StageResult {
+  stage: 'cluster_search' | 'vector_fallback' | 'reranking' | 'final_selection';
+  stage_name: string;
+  entities_in: number;
+  entities_out: number;
+  execution_time_ms: number;
+  metadata: Record<string, any>;
+}
+
+export interface PipelineDebugInfo {
+  query: string;
+  query_embedding?: number[];
+  scope_config: Record<string, any>;
+  
+  // Stage results
+  stage_results: StageResult[];
+  entities: EntityDebugInfo[];
+  
+  // Summary statistics
+  total_execution_time_ms: number;
+  pipeline_efficiency: Record<string, number>;
+  final_entity_count: number;
+  similarity_threshold: number;
+  
+  // Query analysis
+  detected_scope?: string;
+  areas_mentioned?: string[];
+  conversation_context?: Record<string, any>;
+  query_analysis?: {
+    detected_scope: string;
+    areas_mentioned: string[];
+    scope_confidence: number;
+    cluster_types: string[];
+    optimal_k: number;
+  };
+}
+
+export interface SearchDebugRequest {
+  query: string;
+  include_debug?: boolean;
+  threshold?: number;
+  limit?: number;
+}
+
 // Create axios instance
 const api = axios.create({
   baseURL: '/admin',
@@ -261,6 +338,12 @@ export const adminApi = {
 
   reindexVectors: async (): Promise<void> => {
     await api.post('/maintenance/reindex-vectors');
+  },
+
+  // Search Debug
+  searchEntitiesDebug: async (searchRequest: SearchDebugRequest): Promise<PipelineDebugInfo> => {
+    const response = await api.post('/entities/search-debug', searchRequest);
+    return response.data;
   },
 };
 
