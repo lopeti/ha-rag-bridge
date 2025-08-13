@@ -407,3 +407,35 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Pipeline Efficiency Analytics**: Multi-stage performance metrics with actionable optimization insights
 - **Real-time Search Testing**: Live semantic search with adjustable similarity thresholds and result limits
 
+**Configuration Management System Cleanup** ✅ COMPLETED (2025-08-13)
+- **Legacy Model Removal**: Eliminated deprecated `embedding_model` and phantom `embedding_model_name` fields
+- **Streamlined Configuration**: Clean embedding config with only active fields: `sentence_transformer_model`, `embedding_backend`, `embedding_cpu_threads`
+- **Automatic Configuration Reload**: Fixed config save/reload cycle - values now refresh immediately after save in admin UI
+- **Environment Variable Synchronization**: Enhanced `reload_settings()` to manually update `os.environ` from .env file changes
+- **Field Metadata Enhancement**: Improved backend to use actual field metadata instead of request payload for validation
+- **Configuration Persistence**: Complete end-to-end flow from UI save → .env file update → automatic reload → immediate reflection in GET endpoint
+
+**External Service Connection Testing** ✅ IMPLEMENTED (2025-08-13)
+- **Individual Service Tests**: `/admin/test-connection/{service}` endpoints for ArangoDB, Home Assistant, InfluxDB, OpenAI, Gemini
+- **Comprehensive Health Check**: `/admin/test-all-connections` tests all configured services in parallel
+- **Response Time Monitoring**: Each test includes millisecond-precision response time measurement
+- **Service Status Detection**: Differentiates between connected, failed, and not_configured states
+- **API Key Validation**: Tests API keys for OpenAI and Gemini with model enumeration
+- **Configuration Guidance**: Updated embedding field descriptions to clarify reindex requirements vs restart requirements
+- **Visual UI Integration**: Connection test buttons next to relevant configuration fields with real-time feedback
+  - 🟢 Green checkmark badge for successful connections (auto-hides after 5 seconds)
+  - 🔴 Red X badge with error message for failed connections
+  - 🟡 Gray badge for not configured services
+  - 📶 WiFi icon button to trigger connection tests
+  - Loading spinner during active tests
+- **Smart Value Override**: Connection tests use current form values (unsaved changes), not saved configuration
+  - Backend `/test-connection/{service}` endpoint accepts `overrides` parameter
+  - Frontend automatically passes modified field values for testing
+  - No need to save configuration before testing connectivity
+  - Instant feedback on configuration changes before committing
+- **Improved UX Design**: Streamlined service-centric connection testing
+  - One connection test button per service (not per field) in category headers
+  - Manual badge dismissal with × button for failed/successful states
+  - Service-specific components with proper state management
+  - Clear visual feedback with proper auto-hide timers
+  - Contextual positioning in configuration category headers

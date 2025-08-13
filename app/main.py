@@ -1,4 +1,3 @@
-import os
 import re
 import json
 from typing import List, Sequence, Dict, Any, Optional
@@ -8,29 +7,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ha_rag_bridge.logging import get_logger
-from ha_rag_bridge.settings import HTTP_TIMEOUT
+from ha_rag_bridge.config import get_settings
 from ha_rag_bridge.similarity_config import get_current_config
 from app.middleware.request_id import request_id_middleware
 
-from .routers.graph import router as graph_router
-from .routers.admin import router as admin_router
-from .routers.ui import router as ui_router
-from ha_rag_bridge.utils.env import env_true
-import httpx
+logger = get_logger(__name__)
 
-from arango import ArangoClient
+from .routers.graph import router as graph_router  # noqa: E402
+from .routers.admin import router as admin_router  # noqa: E402
+from .routers.ui import router as ui_router  # noqa: E402
+import httpx  # noqa: E402
 
-from . import schemas
-from scripts.embedding_backends import (
+from arango import ArangoClient  # noqa: E402
+
+from . import schemas  # noqa: E402
+from scripts.embedding_backends import (  # noqa: E402
     BaseEmbeddingBackend as EmbeddingBackend,
     LocalBackend,
     OpenAIBackend,
     GeminiBackend,
     get_backend,
 )
-from .services.state_service import get_last_state
-from .services.service_catalog import ServiceCatalog
-from .services.entity_reranker import entity_reranker
+from .services.state_service import get_last_state  # noqa: E402
+from .services.service_catalog import ServiceCatalog  # noqa: E402
+from .services.entity_reranker import entity_reranker  # noqa: E402
 
 # Import LangGraph workflow at module level to avoid route registration issues
 try:
@@ -43,7 +43,6 @@ except ImportError as e:
 
 app = FastAPI()
 router = APIRouter()
-logger = get_logger(__name__)
 
 # Add CORS middleware
 app.add_middleware(
@@ -72,17 +71,20 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-service_catalog = ServiceCatalog(int(os.getenv("SERVICE_CACHE_TTL", str(6 * 3600))))
+# Initialize settings
+settings = get_settings()
+
+service_catalog = ServiceCatalog(settings.service_cache_ttl)
 
 # Cache embedding backends globally to avoid reloading models
 _cached_backends: Dict[str, EmbeddingBackend] = {}
 
-if env_true("AUTO_BOOTSTRAP", True):
+if settings.auto_bootstrap:
     from ha_rag_bridge.bootstrap import bootstrap
 
     bootstrap()
 
-backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+backend_name = settings.embedding_backend.lower()
 if backend_name == "gemini":
     backend_dim = GeminiBackend.DIMENSION
 elif backend_name == "openai":
@@ -91,14 +93,14 @@ else:
     backend_dim = LocalBackend.DIMENSION
 HEALTH_ERROR: str | None = None
 
-if not os.getenv("SKIP_ARANGO_HEALTHCHECK"):
+if not settings.skip_arango_healthcheck:
     try:
-        arango_url = os.environ["ARANGO_URL"]
-        arango_user = os.environ["ARANGO_USER"]
-        arango_pass = os.environ["ARANGO_PASS"]
+        arango_url = settings.arango_url
+        arango_user = settings.arango_user
+        arango_pass = settings.arango_pass
 
         arango = ArangoClient(hosts=arango_url)
-        db_name = os.getenv("ARANGO_DB", "_system")
+        db_name = settings.arango_db
         db = arango.db(
             db_name,
             username=arango_user,
@@ -376,7 +378,7 @@ async def get_similarity_config():
 
 @router.post("/process-request", response_model=schemas.ProcessResponse)
 async def process_request(payload: schemas.Request):
-    backend_name = os.getenv("EMBEDDING_BACKEND", "local").lower()
+    backend_name = settings.embedding_backend.lower()
     emb_backend = get_embedding_backend(backend_name)
 
     try:
@@ -397,12 +399,12 @@ async def process_request(payload: schemas.Request):
         )
         raise HTTPException(status_code=500, detail=f"Embedding error: {str(exc)}")
 
-    arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
-    db_name = os.getenv("ARANGO_DB", "_system")
+    arango = ArangoClient(hosts=settings.arango_url)
+    db_name = settings.arango_db
     db = arango.db(
         db_name,
-        username=os.environ["ARANGO_USER"],
-        password=os.environ["ARANGO_PASS"],
+        username=settings.arango_user,
+        password=settings.arango_pass,
     )
 
     intent = detect_intent(payload.user_message)
@@ -634,8 +636,8 @@ User question: {payload.user_message}"""
 @router.post("/process-response", response_model=schemas.ExecResult)
 async def process_response(payload: schemas.LLMResponse):
     """Execute tool-calls returned by the LLM and respond with a summary."""
-    ha_url = os.getenv("HA_URL")
-    token = os.getenv("HA_TOKEN")
+    ha_url = settings.ha_url
+    token = settings.ha_token
     if not ha_url or not token:
         raise HTTPException(status_code=500, detail="Missing HA configuration")
 
@@ -645,7 +647,7 @@ async def process_response(payload: schemas.LLMResponse):
     errors: List[str] = []
 
     async with httpx.AsyncClient(
-        base_url=ha_url, headers=headers, timeout=HTTP_TIMEOUT
+        base_url=ha_url, headers=headers, timeout=settings.http_timeout
     ) as client:
         for call in tool_calls:
             func = call.function
@@ -716,7 +718,7 @@ async def process_request_workflow(payload: schemas.Request):
                 "diagnostics": {"error": "workflow_returned_none"},
                 "errors": ["Workflow execution failed"],
             }
-        
+
         # Ensure workflow_result has required fields with safe defaults
         if not isinstance(workflow_result, dict):
             logger.error(f"Invalid workflow result type: {type(workflow_result)}")

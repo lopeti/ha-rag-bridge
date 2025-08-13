@@ -6,6 +6,7 @@ import { Entities } from './pages/Entities';
 import { Clusters } from './pages/Clusters';
 import { Maintenance } from './pages/Maintenance';
 import { Monitoring } from './pages/Monitoring';
+import { Settings } from './pages/SettingsNew';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,7 @@ function App() {
             <Route path="clusters" element={<Clusters />} />
             <Route path="maintenance" element={<Maintenance />} />
             <Route path="monitoring" element={<Monitoring />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </BrowserRouter>

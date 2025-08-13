@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from cachetools import TTLCache  # type: ignore
 
 from ha_rag_bridge.logging import get_logger
+from ha_rag_bridge.config import get_settings
 from app.schemas import ChatMessage
 from app.services.conversation_analyzer import (
     conversation_analyzer,
@@ -50,10 +51,17 @@ class EntityReranker:
         self.model_name = model_name
         self._model = None
         self._tokenizer = None
+        self.settings = get_settings()
 
         # Performance optimizations - TTL cache for cross-encoder scores
-        self._score_cache = TTLCache(maxsize=1000, ttl=300)  # 5 minute TTL
-        self._context_cache = TTLCache(maxsize=500, ttl=300)
+        self._score_cache = TTLCache(
+            maxsize=self.settings.entity_score_cache_maxsize,
+            ttl=self.settings.entity_reranker_cache_ttl,
+        )
+        self._context_cache = TTLCache(
+            maxsize=self.settings.entity_context_cache_maxsize,
+            ttl=self.settings.entity_reranker_cache_ttl,
+        )
 
         self._load_model()
 

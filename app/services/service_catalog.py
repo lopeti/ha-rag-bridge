@@ -6,7 +6,7 @@ import asyncio
 from typing import Dict
 
 from ha_rag_bridge.logging import get_logger
-from ha_rag_bridge.settings import HTTP_TIMEOUT
+from ha_rag_bridge.config import get_settings
 
 import httpx
 
@@ -28,7 +28,9 @@ class ServiceCatalog:
         token = os.environ.get("HA_TOKEN")
         if not base_url or not token:
             logger.warning(
-                "service catalog empty", missing_url=not bool(base_url), missing_token=not bool(token)
+                "service catalog empty",
+                missing_url=not bool(base_url),
+                missing_token=not bool(token),
             )
             self._cache = {}
             self._ts = time.time()
@@ -36,7 +38,7 @@ class ServiceCatalog:
 
         headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(
-            base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT
+            base_url=base_url, headers=headers, timeout=get_settings().http_timeout
         ) as client:
             resp = await client.get("/api/services")
             resp.raise_for_status()

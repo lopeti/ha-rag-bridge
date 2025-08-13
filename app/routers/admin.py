@@ -25,10 +25,12 @@ logger = get_logger(__name__)
 
 def _check_token(request: Request) -> None:
     # Skip token check in debug mode
-    if env_true("DEBUG"):
+    from ha_rag_bridge.config import get_settings
+    settings = get_settings()
+    if settings.debug:
         return
 
-    token = os.getenv("ADMIN_TOKEN", "")
+    token = settings.admin_token
     if request.headers.get("X-Admin-Token") != token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
@@ -1560,3 +1562,730 @@ async def search_entities_debug(request: Request):
     except Exception as e:
         logger.error(f"Search debug error: {e}")
         raise HTTPException(status_code=500, detail=f"Search debug failed: {str(e)}")
+
+
+# Configuration Management Endpoints
+
+
+@router.get("/config")
+async def get_config(request: Request):
+    """Get current application configuration with metadata"""
+    _check_token(request)
+
+    from ha_rag_bridge.config import get_settings
+
+    settings = get_settings()
+
+    # Get field metadata for UI rendering
+    metadata = settings.get_field_metadata()
+
+    # Build configuration data with sanitized values
+    config_data = {}
+    all_settings = settings.model_dump()
+
+    for category_name, field_names in metadata.items():
+        category_data = {}
+
+        for field_name, field_meta in field_names.items():
+            field_value = all_settings.get(field_name)
+
+            # Mask sensitive fields
+            if field_meta.get("is_sensitive", False) and field_value:
+                field_value = "***MASKED***"
+
+            category_data[field_name] = {"value": field_value, "metadata": field_meta}
+
+        config_data[category_name] = category_data
+
+    return {
+        "config": config_data,
+        "metadata": metadata,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@router.put("/config")
+async def update_config(request: Request):
+    """Update application configuration"""
+    _check_token(request)
+
+    from ha_rag_bridge.config import get_settings
+    from pathlib import Path
+
+    try:
+        body = await request.json()
+        config_updates = body.get("config", {})
+
+        if not config_updates:
+            raise HTTPException(
+                status_code=400, detail="No configuration updates provided"
+            )
+
+        settings = get_settings()
+        restart_required = False
+        updated_fields = []
+        validation_errors = []
+
+        # Load current .env file content
+        env_file = Path(".env")
+        env_content = {}
+        if env_file.exists():
+            with open(env_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and "=" in line and not line.startswith("#"):
+                        key, value = line.split("=", 1)
+                        env_content[key.strip()] = value.strip()
+
+        # Process configuration updates (flat structure approach)
+        for category_name, category_updates in config_updates.items():
+            for field_name, field_data in category_updates.items():
+                # Check if field exists directly in AppSettings (flat structure)
+                if not hasattr(settings, field_name):
+                    validation_errors.append(
+                        f"Unknown field: {category_name}.{field_name}"
+                    )
+                    continue
+
+                new_value = field_data.get("value")
+
+                # Skip masked sensitive fields unless explicitly updated
+                if new_value == "***MASKED***":
+                    continue
+
+                # Get actual field metadata from settings, not from request
+                all_metadata = settings.get_field_metadata()
+                field_meta = None
+                for cat_meta in all_metadata.values():
+                    if field_name in cat_meta:
+                        field_meta = cat_meta[field_name]
+                        break
+
+                if not field_meta:
+                    validation_errors.append(
+                        f"No metadata found for field: {field_name}"
+                    )
+                    continue
+
+                # Get environment variable name
+                env_var = field_meta.get("env_var")
+                if env_var:
+                    # Update environment variable
+                    env_content[env_var] = (
+                        str(new_value) if new_value is not None else ""
+                    )
+                    updated_fields.append(f"{category_name}.{field_name}")
+
+                    # Check if restart required
+                    if field_meta.get("restart_required", False):
+                        restart_required = True
+
+        if validation_errors:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Configuration validation failed",
+                    "errors": validation_errors,
+                },
+            )
+
+        # Write updated .env file
+        if updated_fields:
+            with open(env_file, "w") as f:
+                for key, value in env_content.items():
+                    f.write(f"{key}={value}\n")
+
+            # Reload settings to reflect changes immediately
+            from ha_rag_bridge.config import reload_settings
+
+            reload_settings()
+
+            # Log configuration change
+            logger.info(
+                "Configuration updated",
+                updated_fields=updated_fields,
+                restart_required=restart_required,
+                user_agent=request.headers.get("user-agent", "unknown"),
+            )
+
+        return {
+            "success": True,
+            "updated_fields": updated_fields,
+            "restart_required": restart_required,
+            "message": f"Configuration updated successfully. {len(updated_fields)} fields changed.",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+    except Exception as e:
+        logger.error(f"Configuration update failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Configuration update failed: {str(e)}"
+        )
+
+
+@router.post("/config/reload")
+async def reload_config(request: Request):
+    """Reload configuration from environment variables"""
+    _check_token(request)
+
+    try:
+        from ha_rag_bridge.config import reload_settings
+
+        # Reload settings from environment
+        reload_settings()
+
+        logger.info(
+            "Configuration reloaded from environment",
+            user_agent=request.headers.get("user-agent", "unknown"),
+        )
+
+        return {
+            "success": True,
+            "message": "Configuration reloaded successfully from environment variables",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Configuration reload failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Configuration reload failed: {str(e)}"
+        )
+
+
+@router.get("/config/export")
+async def export_config(request: Request, include_sensitive: bool = False):
+    """Export current configuration as .env file"""
+    _check_token(request)
+
+    try:
+        from ha_rag_bridge.config import get_settings
+
+        settings = get_settings()
+        metadata = settings.get_field_metadata()
+
+        # Build .env content with comments
+        env_content = []
+        env_content.append("# HA RAG Bridge Configuration")
+        env_content.append("# Generated on: " + datetime.now().isoformat())
+        env_content.append("")
+
+        # Process nested metadata structure
+        current_values = settings.model_dump()
+
+        for category_name, category_fields in metadata.items():
+            if not category_fields:
+                continue
+
+            env_content.append(f"# {category_name.upper().replace('_', ' ')} SETTINGS")
+            env_content.append("")
+
+            for field_name, field_meta in category_fields.items():
+                field_value = current_values.get(field_name)
+                env_var = field_meta.get("env_var")
+
+                if env_var:
+                    # Add description as comment
+                    desc_en = field_meta.get("description_en", "")
+                    if desc_en:
+                        env_content.append(f"# {desc_en}")
+
+                    recommendation_en = field_meta.get("recommendation_en", "")
+                    if recommendation_en:
+                        env_content.append(f"# Recommendation: {recommendation_en}")
+
+                    # Add the environment variable
+                    if field_meta.get("is_sensitive", False) and field_value:
+                        if include_sensitive:
+                            env_content.append(f"{env_var}={field_value}")
+                        else:
+                            env_content.append(f"# {env_var}=***MASKED***")
+                    else:
+                        env_content.append(
+                            f"{env_var}={field_value if field_value is not None else ''}"
+                        )
+
+                    env_content.append("")
+
+        # Create downloadable file
+        env_file_content = "\n".join(env_content)
+
+        return Response(
+            content=env_file_content,
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": f"attachment; filename=ha-rag-bridge-config-{datetime.now().strftime('%Y%m%d-%H%M%S')}.env"
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Configuration export failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Configuration export failed: {str(e)}"
+        )
+
+
+@router.get("/config/reveal/{field_name}")
+async def reveal_sensitive_field(request: Request, field_name: str):
+    """Reveal a single sensitive field value for editing"""
+    _check_token(request)
+
+    try:
+        from ha_rag_bridge.config import get_settings
+
+        settings = get_settings()
+        metadata = settings.get_field_metadata()
+
+        # Find field in metadata to verify it's sensitive
+        field_meta = None
+        for category_fields in metadata.values():
+            if field_name in category_fields:
+                field_meta = category_fields[field_name]
+                break
+
+        if not field_meta:
+            raise HTTPException(status_code=404, detail="Field not found")
+
+        if not field_meta.get("is_sensitive", False):
+            raise HTTPException(status_code=400, detail="Field is not sensitive")
+
+        # Get actual value from settings
+        field_value = getattr(settings, field_name, None)
+
+        return {
+            "field_name": field_name,
+            "value": field_value if field_value is not None else "",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to reveal sensitive field {field_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reveal field: {str(e)}")
+
+
+@router.post("/config/validate")
+async def validate_config(request: Request):
+    """Validate configuration values without applying changes"""
+    _check_token(request)
+
+    try:
+        from ha_rag_bridge.config import AppSettings
+        from pydantic import ValidationError
+        import os
+
+        body = await request.json()
+        config_updates = body.get("config", {})
+
+        if not config_updates:
+            return {"valid": True, "errors": [], "warnings": []}
+
+        validation_errors = []
+        warnings = []
+
+        # Create temporary environment variables for validation
+        temp_env = os.environ.copy()
+
+        try:
+            # Apply updates to temporary environment
+            for category_name, category_updates in config_updates.items():
+                for field_name, field_data in category_updates.items():
+                    field_meta = field_data.get("metadata", {})
+                    env_var = field_meta.get("env_var")
+                    new_value = field_data.get("value")
+
+                    if env_var and new_value != "***MASKED***":
+                        temp_env[env_var] = (
+                            str(new_value) if new_value is not None else ""
+                        )
+
+            # Temporarily set environment variables
+            original_env = {}
+            for key, value in temp_env.items():
+                if key in os.environ:
+                    original_env[key] = os.environ[key]
+                os.environ[key] = value
+
+            # Try to create settings with new values
+            try:
+                test_settings = AppSettings()
+
+                # Add performance warnings
+                if test_settings.embedding_cpu_threads > 8:
+                    warnings.append(
+                        "High CPU thread count may impact system performance"
+                    )
+
+                if test_settings.state_cache_maxsize > 5000:
+                    warnings.append("Large cache size may consume significant memory")
+
+                # Note: query_scope fields would need to be added to AppSettings for this check
+                # if test_settings.scope_k_max_overview > 80:
+                #     warnings.append("Very high k-max values may slow down queries")
+
+            except ValidationError as ve:
+                for error in ve.errors():
+                    field_path = ".".join(str(loc) for loc in error["loc"])
+                    validation_errors.append(f"{field_path}: {error['msg']}")
+
+            finally:
+                # Restore original environment
+                for key in temp_env.keys():
+                    if key in original_env:
+                        os.environ[key] = original_env[key]
+                    elif key in os.environ:
+                        del os.environ[key]
+
+        except Exception as e:
+            validation_errors.append(f"Validation error: {str(e)}")
+
+        return {
+            "valid": len(validation_errors) == 0,
+            "errors": validation_errors,
+            "warnings": warnings,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Configuration validation failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Configuration validation failed: {str(e)}"
+        )
+
+
+@router.post("/test-connection/{service}")
+async def test_connection(request: Request, service: str):
+    """Test connection to external services with optional override values
+
+    Available services:
+    - arango: ArangoDB database
+    - home_assistant: Home Assistant API
+    - influx: InfluxDB time series database
+    - openai: OpenAI API (for embeddings)
+    - gemini: Google Gemini API (for embeddings)
+
+    Body can contain override values:
+    {
+        "overrides": {
+            "arango_url": "http://localhost:8529",
+            "ha_token": "new_token",
+            ...
+        }
+    }
+    """
+    _check_token(request)
+
+    from ha_rag_bridge.config import get_settings
+    import httpx
+    import time
+
+    settings = get_settings()
+    start_time = time.time()
+
+    # Get override values from request body
+    body = {}
+    try:
+        if request.headers.get("content-type", "").startswith("application/json"):
+            body = await request.json()
+    except (ValueError, TypeError, RuntimeError):
+        pass
+
+    overrides = body.get("overrides", {})
+
+    try:
+        if service == "arango":
+            # Test ArangoDB connection with overrides
+            from arango import ArangoClient
+
+            try:
+                arango_url = overrides.get("arango_url", settings.arango_url)
+                arango_db = overrides.get("arango_db", settings.arango_db)
+                arango_user = overrides.get("arango_user", settings.arango_user)
+                arango_pass = overrides.get("arango_pass", settings.arango_pass)
+
+                client = ArangoClient(hosts=arango_url)
+                db = client.db(
+                    arango_db, username=arango_user, password=arango_pass, verify=True
+                )
+                # Try to get server version as a test
+                version = db.version()
+                response_time = time.time() - start_time
+
+                return {
+                    "service": "ArangoDB",
+                    "status": "connected",
+                    "details": {
+                        "version": version,
+                        "database": arango_db,
+                        "url": arango_url,
+                    },
+                    "response_time_ms": round(response_time * 1000, 2),
+                }
+            except Exception as e:
+                return {
+                    "service": "ArangoDB",
+                    "status": "failed",
+                    "error": str(e),
+                    "response_time_ms": round((time.time() - start_time) * 1000, 2),
+                }
+
+        elif service == "home_assistant":
+            # Test Home Assistant connection with overrides
+            ha_url = overrides.get("ha_url", settings.ha_url)
+            ha_token = overrides.get("ha_token", settings.ha_token)
+
+            if not ha_url or not ha_token:
+                return {
+                    "service": "Home Assistant",
+                    "status": "not_configured",
+                    "error": "HA_URL or HA_TOKEN not configured",
+                }
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"{ha_url}/api/",
+                        headers={"Authorization": f"Bearer {ha_token}"},
+                        timeout=5.0,
+                    )
+                    response_time = time.time() - start_time
+
+                    if response.status_code == 200:
+                        api_info = response.json()
+                        return {
+                            "service": "Home Assistant",
+                            "status": "connected",
+                            "details": {
+                                "message": api_info.get("message", "API Running"),
+                                "url": ha_url,
+                            },
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+                    else:
+                        return {
+                            "service": "Home Assistant",
+                            "status": "failed",
+                            "error": f"HTTP {response.status_code}",
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+            except Exception as e:
+                return {
+                    "service": "Home Assistant",
+                    "status": "failed",
+                    "error": str(e),
+                    "response_time_ms": round((time.time() - start_time) * 1000, 2),
+                }
+
+        elif service == "influx":
+            # Test InfluxDB connection with overrides
+            influx_url = overrides.get("influx_url", settings.influx_url)
+
+            if not influx_url:
+                return {
+                    "service": "InfluxDB",
+                    "status": "not_configured",
+                    "error": "INFLUX_URL not configured",
+                }
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    # InfluxDB v2 health endpoint
+                    response = await client.get(f"{influx_url}/health", timeout=5.0)
+                    response_time = time.time() - start_time
+
+                    if response.status_code == 200:
+                        health = response.json()
+                        return {
+                            "service": "InfluxDB",
+                            "status": "connected",
+                            "details": {
+                                "status": health.get("status", "ok"),
+                                "version": health.get("version", "unknown"),
+                                "url": influx_url,
+                            },
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+                    else:
+                        return {
+                            "service": "InfluxDB",
+                            "status": "failed",
+                            "error": f"HTTP {response.status_code}",
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+            except Exception as e:
+                return {
+                    "service": "InfluxDB",
+                    "status": "failed",
+                    "error": str(e),
+                    "response_time_ms": round((time.time() - start_time) * 1000, 2),
+                }
+
+        elif service == "openai":
+            # Test OpenAI API connection with overrides
+            openai_api_key = overrides.get("openai_api_key", settings.openai_api_key)
+
+            if not openai_api_key:
+                return {
+                    "service": "OpenAI",
+                    "status": "not_configured",
+                    "error": "OPENAI_API_KEY not configured",
+                }
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        "https://api.openai.com/v1/models",
+                        headers={"Authorization": f"Bearer {openai_api_key}"},
+                        timeout=5.0,
+                    )
+                    response_time = time.time() - start_time
+
+                    if response.status_code == 200:
+                        models = response.json()
+                        embedding_models = [
+                            m["id"]
+                            for m in models.get("data", [])
+                            if "embedding" in m["id"]
+                        ]
+                        return {
+                            "service": "OpenAI",
+                            "status": "connected",
+                            "details": {
+                                "available_embedding_models": embedding_models[
+                                    :5
+                                ],  # First 5
+                                "total_models": len(models.get("data", [])),
+                            },
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+                    elif response.status_code == 401:
+                        return {
+                            "service": "OpenAI",
+                            "status": "failed",
+                            "error": "Invalid API key",
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+                    else:
+                        return {
+                            "service": "OpenAI",
+                            "status": "failed",
+                            "error": f"HTTP {response.status_code}",
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+            except Exception as e:
+                return {
+                    "service": "OpenAI",
+                    "status": "failed",
+                    "error": str(e),
+                    "response_time_ms": round((time.time() - start_time) * 1000, 2),
+                }
+
+        elif service == "gemini":
+            # Test Google Gemini API connection with overrides
+            gemini_api_key = overrides.get("gemini_api_key", settings.gemini_api_key)
+            gemini_base_url = overrides.get("gemini_base_url", settings.gemini_base_url)
+
+            if not gemini_api_key:
+                return {
+                    "service": "Google Gemini",
+                    "status": "not_configured",
+                    "error": "GEMINI_API_KEY not configured",
+                }
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    # List available models
+                    response = await client.get(
+                        f"{gemini_base_url}/v1beta/models",
+                        params={"key": gemini_api_key},
+                        timeout=5.0,
+                    )
+                    response_time = time.time() - start_time
+
+                    if response.status_code == 200:
+                        models = response.json()
+                        embedding_models = [
+                            m["name"]
+                            for m in models.get("models", [])
+                            if "embedding" in m.get("name", "")
+                        ]
+                        return {
+                            "service": "Google Gemini",
+                            "status": "connected",
+                            "details": {
+                                "available_embedding_models": embedding_models,
+                                "base_url": gemini_base_url,
+                            },
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+                    elif response.status_code in [401, 403]:
+                        return {
+                            "service": "Google Gemini",
+                            "status": "failed",
+                            "error": "Invalid API key or insufficient permissions",
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+                    else:
+                        return {
+                            "service": "Google Gemini",
+                            "status": "failed",
+                            "error": f"HTTP {response.status_code}",
+                            "response_time_ms": round(response_time * 1000, 2),
+                        }
+            except Exception as e:
+                return {
+                    "service": "Google Gemini",
+                    "status": "failed",
+                    "error": str(e),
+                    "response_time_ms": round((time.time() - start_time) * 1000, 2),
+                }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown service: {service}. Available: arango, home_assistant, influx, openai, gemini",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Connection test failed for {service}: {e}")
+        raise HTTPException(status_code=500, detail=f"Connection test failed: {str(e)}")
+
+
+@router.post("/test-all-connections")
+async def test_all_connections(request: Request):
+    """Test all configured external service connections"""
+    _check_token(request)
+
+    services = ["arango", "home_assistant", "influx", "openai", "gemini"]
+    results = {}
+
+    for service in services:
+        try:
+            result = await test_connection(request, service)
+            results[service] = result
+        except HTTPException as e:
+            results[service] = {
+                "service": service,
+                "status": "error",
+                "error": e.detail,
+            }
+
+    # Summary
+    connected = sum(1 for r in results.values() if r.get("status") == "connected")
+    failed = sum(1 for r in results.values() if r.get("status") == "failed")
+    not_configured = sum(
+        1 for r in results.values() if r.get("status") == "not_configured"
+    )
+
+    return {
+        "summary": {
+            "total": len(services),
+            "connected": connected,
+            "failed": failed,
+            "not_configured": not_configured,
+        },
+        "services": results,
+        "timestamp": datetime.now().isoformat(),
+    }

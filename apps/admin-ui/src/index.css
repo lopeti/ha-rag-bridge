@@ -10,8 +10,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 213 27% 12%;
     
-    /* HA klasszikus kék primary szín */
-    --primary: 214 84% 56%; /* #3b82f6 HA blue */
+    /* HA hivatalos kék primary szín */
+    --primary: 197 97% 48%; /* #03a9f4 HA official blue */
     --primary-foreground: 0 0% 100%;
     
     /* HA-stílusú secondary */

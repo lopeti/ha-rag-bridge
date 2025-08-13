@@ -202,6 +202,62 @@ export interface SearchDebugRequest {
   limit?: number;
 }
 
+// Configuration Management Types
+export interface ConfigFieldMetadata {
+  type: string;
+  title_hu: string;
+  title_en: string;
+  description_hu: string;
+  description_en: string;
+  recommendation_hu?: string;
+  recommendation_en?: string;
+  is_sensitive: boolean;
+  restart_required: boolean;
+  example?: string;
+  constraints?: {
+    min?: number;
+    max?: number;
+    min_exclusive?: number;
+    max_exclusive?: number;
+  };
+  default?: any;
+  env_var?: string;
+}
+
+export interface ConfigFieldData {
+  value: any;
+  metadata: ConfigFieldMetadata;
+}
+
+export interface ConfigCategoryData {
+  [fieldName: string]: ConfigFieldData;
+}
+
+export interface ConfigData {
+  [categoryName: string]: ConfigCategoryData;
+}
+
+export interface ConfigResponse {
+  config: ConfigData;
+  metadata: any;
+  timestamp: string;
+}
+
+export interface ConfigUpdateResponse {
+  success: boolean;
+  updated_fields: string[];
+  restart_required: boolean;
+  message: string;
+  timestamp: string;
+}
+
+export interface ConfigValidationResponse {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  timestamp: string;
+}
+
 // Create axios instance
 const api = axios.create({
   baseURL: '/admin',
@@ -345,6 +401,67 @@ export const adminApi = {
     const response = await api.post('/entities/search-debug', searchRequest);
     return response.data;
   },
+
+  // Configuration Management
+  getConfig: async (): Promise<ConfigResponse> => {
+    const response = await api.get('/config');
+    return response.data;
+  },
+
+  updateConfig: async (configData: { config: any }): Promise<ConfigUpdateResponse> => {
+    const response = await api.put('/config', configData);
+    return response.data;
+  },
+
+  validateConfig: async (configData: { config: any }): Promise<ConfigValidationResponse> => {
+    const response = await api.post('/config/validate', configData);
+    return response.data;
+  },
+
+  reloadConfig: async (): Promise<{ success: boolean; message: string; timestamp: string }> => {
+    const response = await api.post('/config/reload');
+    return response.data;
+  },
+
+  exportConfig: async (includeSensitive = false): Promise<Blob> => {
+    const response = await api.get('/config/export', { 
+      responseType: 'blob',
+      params: { include_sensitive: includeSensitive }
+    });
+    return response.data;
+  },
+
+  revealSensitiveField: async (fieldName: string): Promise<{ field_name: string; value: string }> => {
+    const response = await api.get(`/config/reveal/${fieldName}`);
+    return response.data;
+  },
+
+  // Connection testing
+  testConnection: async (service: string, overrides?: any): Promise<{
+    service: string;
+    status: 'connected' | 'failed' | 'not_configured';
+    details?: any;
+    error?: string;
+    response_time_ms: number;
+  }> => {
+    const body = overrides ? { overrides } : {};
+    const response = await api.post(`/test-connection/${service}`, body);
+    return response.data;
+  },
+
+  testAllConnections: async (): Promise<{
+    summary: {
+      total: number;
+      connected: number;
+      failed: number;
+      not_configured: number;
+    };
+    services: Record<string, any>;
+    timestamp: string;
+  }> => {
+    const response = await api.post('/test-all-connections');
+    return response.data;
+  }
 };
 
 export default adminApi;

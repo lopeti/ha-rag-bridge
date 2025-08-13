@@ -8,7 +8,8 @@ import {
   Settings, 
   Activity,
   Moon,
-  Sun
+  Sun,
+  Wrench
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { LanguageSwitcher } from '../LanguageSwitcher';
@@ -24,8 +25,9 @@ export function Layout() {
     { name: t('dashboard'), href: '/', icon: LayoutDashboard },
     { name: t('entities'), href: '/entities', icon: Database },
     { name: t('clusters'), href: '/clusters', icon: Layers },
-    { name: t('maintenance'), href: '/maintenance', icon: Settings },
+    { name: t('maintenance'), href: '/maintenance', icon: Wrench },
     { name: t('monitoring'), href: '/monitoring', icon: Activity },
+    { name: t('settings'), href: '/settings', icon: Settings },
   ];
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-background">
       {/* Home Assistant style header */}
-      <header className="border-b bg-primary text-primary-foreground shadow-sm">
+      <header className="sticky top-0 z-50 border-b bg-primary text-primary-foreground shadow-sm">
         <div className="flex h-16 items-center px-6">
           <div className="flex items-center space-x-4">
             <div className="w-8 h-8 bg-primary-foreground rounded-md flex items-center justify-center">

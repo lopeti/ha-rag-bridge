@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from cachetools import TTLCache  # type: ignore
 
 from ha_rag_bridge.logging import get_logger
+from ha_rag_bridge.config import get_settings
 from app.schemas import ChatMessage
 
 logger = get_logger(__name__)
@@ -31,8 +32,13 @@ class ConversationContext:
 class ConversationAnalyzer:
     """Analyzes conversation context for better entity prioritization."""
 
-    # Cache for dynamically loaded aliases (TTL: 10 minutes)
-    _aliases_cache = TTLCache(maxsize=1, ttl=600)
+    settings = get_settings()
+
+    # Cache for dynamically loaded aliases
+    _aliases_cache = TTLCache(
+        maxsize=settings.conversation_cache_maxsize,
+        ttl=settings.conversation_aliases_ttl,
+    )
 
     # Hungarian area detection patterns with aliases (base patterns)
     AREA_PATTERNS = {

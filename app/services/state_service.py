@@ -7,7 +7,7 @@ from typing import Optional, Any
 from cachetools import TTLCache, cached  # type: ignore
 
 import httpx
-from ha_rag_bridge.settings import HTTP_TIMEOUT
+from ha_rag_bridge.config import get_settings
 
 try:
     # Try InfluxDB v2.x client first
@@ -29,7 +29,8 @@ from ha_rag_bridge.logging import get_logger
 
 logger = get_logger(__name__)
 
-_CACHE = TTLCache(maxsize=1024, ttl=int(os.getenv("STATE_CACHE_TTL", "30")))
+settings = get_settings()
+_CACHE = TTLCache(maxsize=settings.state_cache_maxsize, ttl=settings.state_cache_ttl)
 
 
 def _detect_influx_version(url: str) -> Optional[str]:
@@ -37,7 +38,7 @@ def _detect_influx_version(url: str) -> Optional[str]:
     try:
         import httpx
 
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(timeout=settings.http_timeout_short) as client:
             resp = client.get(f"{url}/ping")
             if "X-Influxdb-Version" in resp.headers:
                 version = resp.headers["X-Influxdb-Version"]
@@ -73,7 +74,7 @@ def _query_influx_v1(
             username=username,
             password=password,
             database=database,
-            timeout=5,
+            timeout=settings.http_timeout_short,
         )
 
         # InfluxDB v1.x SQL query
@@ -116,7 +117,12 @@ def _query_influx_v2(
             "  |> last()"
         )
 
-        with InfluxDBClient(url=url, token=token, org=org, timeout=5000) as client:
+        with InfluxDBClient(
+            url=url,
+            token=token,
+            org=org,
+            timeout=int(settings.http_timeout_short * 1000),
+        ) as client:
             tables = client.query_api().query(query)
             for table in tables:
                 for record in table.records:
@@ -130,19 +136,19 @@ def _query_influx_v2(
 
 
 def _query_influx(entity_id: str) -> Optional[Any]:
-    url = os.getenv("INFLUX_URL")
+    url = settings.influx_url
     if not url:
         return None
 
-    token = os.getenv("INFLUX_TOKEN", "")
-    username = os.getenv("INFLUX_USER")
-    password = os.getenv("INFLUX_PASS")
-    org = os.getenv("INFLUX_ORG", "homeassistant")
-    bucket = os.getenv("INFLUX_BUCKET", "homeassistant")
-    database = os.getenv(
-        "INFLUX_DB", "homeassistant"
-    )  # v1.x uses database instead of bucket
-    measurement = os.getenv("INFLUX_MEASUREMENT", "")
+    token = os.getenv("INFLUX_TOKEN", "")  # Keep this as it's not in settings yet
+    username = settings.influx_user
+    password = os.getenv("INFLUX_PASS", "")  # Keep this as it's not in settings yet
+    org = settings.influx_org
+    bucket = settings.influx_bucket
+    database = settings.influx_db
+    measurement = os.getenv(
+        "INFLUX_MEASUREMENT", ""
+    )  # Keep this as it's not in settings yet
 
     # Detect InfluxDB version
     version = _detect_influx_version(url)
@@ -174,7 +180,7 @@ def _query_ha_state(entity_id: str) -> Optional[Any]:
     for attempt in range(2):
         try:
             with httpx.Client(
-                base_url=base_url, headers=headers, timeout=HTTP_TIMEOUT
+                base_url=base_url, headers=headers, timeout=get_settings().http_timeout
             ) as client:
                 resp = client.get(f"/api/states/{entity_id}")
                 if resp.status_code == 404:
