@@ -10,6 +10,7 @@ import psutil
 import httpx
 from datetime import datetime, timedelta
 from time import perf_counter
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, HTTPException, status, Response
 from fastapi.responses import StreamingResponse
 from arango import ArangoClient
@@ -997,8 +998,11 @@ async def get_monitoring_metrics(request: Request):
 
 @router.get("/monitoring/logs")
 async def get_monitoring_logs(
-    request: Request, level: str = None, cursor: str = None, container: str = None
-):
+    request: Request,
+    level: Optional[str] = None,
+    cursor: Optional[str] = None,
+    container: Optional[str] = None,
+) -> Dict[str, Any]:
     """Get system logs with filtering from containers"""
     _check_token(request)
 
@@ -1155,7 +1159,9 @@ async def _get_mock_logs(level: str = None):
 
 
 @router.get("/monitoring/logs/stream")
-async def stream_logs(request: Request, container: str = "bridge", level: str = "all"):
+async def stream_logs(
+    request: Request, container: str = "bridge", level: str = "all"
+) -> StreamingResponse:
     """Stream real-time logs from Docker containers"""
     _check_token(request)
 

@@ -2,6 +2,71 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Code Quality Standards
+
+### Type Safety & MyPy Compliance
+- **MANDATORY**: All new code MUST pass mypy type checking without errors
+- **Type Annotations**: Every function, method, and variable MUST have proper type annotations
+- **Optional Types**: Use `Optional[Type]` or `Type | None` for nullable values
+- **Generic Types**: Use proper generic types (`List[str]`, `Dict[str, Any]`, etc.)
+- **Return Types**: Always annotate function return types, use `-> None` for void functions
+- **Import Types**: Use `from typing import` for type hints (`Optional`, `List`, `Dict`, `Any`, etc.)
+- **Dataclass Fields**: Use proper typing for dataclass fields with default values
+
+### Exception Handling
+- **NO BARE EXCEPT**: Never use bare `except:` clauses
+- **Specific Exceptions**: Always catch specific exception types (`except ValueError:`, `except KeyError:`)
+- **Multiple Exceptions**: Use tuple syntax for multiple exceptions (`except (ValueError, KeyError):`)
+- **Exception Context**: Preserve exception context when re-raising
+
+### Code Linting & Formatting
+- **Ruff Compliance**: All code MUST pass ruff linting without errors
+- **Black Formatting**: Code MUST be formatted with black
+- **Pre-commit Hooks**: NEVER commit with `SKIP=` flags unless explicitly documented why
+- **Clean Commits**: Fix all linting errors before committing, don't accumulate technical debt
+
+### Development Workflow
+- **Type-First Development**: Write type annotations while coding, not as an afterthought
+- **Incremental Fixes**: Fix type errors immediately when they appear
+- **Test Type Safety**: Include type checking in CI/CD pipeline
+- **Documentation**: Document complex type relationships and generic constraints
+
+### Examples of Proper Type Annotations
+
+```python
+# Functions with proper typing
+def process_entities(
+    entities: List[Dict[str, Any]], 
+    threshold: float = 0.7
+) -> Optional[List[EntityDebugInfo]]:
+    """Process entities with type safety."""
+    pass
+
+# Class with typed attributes  
+@dataclass
+class EntityDebugInfo:
+    entity_id: str
+    scores: Dict[str, float]
+    is_active: Optional[bool] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+# Exception handling
+try:
+    result = risky_operation()
+except (ValueError, KeyError) as e:
+    logger.error(f"Operation failed: {e}")
+    return None
+except Exception as e:
+    logger.exception("Unexpected error")
+    raise
+```
+
+### Enforcement
+- **Pre-commit**: Type checking and linting run automatically
+- **CI/CD**: Build fails on type errors or linting violations  
+- **Code Review**: Type safety is a blocking requirement for PRs
+- **Refactoring**: Legacy code MUST be typed when modified
+
 ## Development Commands
 
 ### Environment Setup

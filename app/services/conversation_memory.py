@@ -486,7 +486,6 @@ class ConversationMemoryService:
         await self._ensure_connection()
 
         try:
-            collection = self._db.collection("conversation_memory")
             current_time = datetime.utcnow().isoformat()
 
             # AQL query to find and delete expired documents
@@ -497,6 +496,8 @@ class ConversationMemoryService:
                 RETURN OLD
             """
 
+            if self._db is None:
+                raise RuntimeError("Database connection not initialized")
             cursor = self._db.aql.execute(
                 query, bind_vars={"current_time": current_time}
             )

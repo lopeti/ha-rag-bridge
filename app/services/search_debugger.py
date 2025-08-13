@@ -170,7 +170,7 @@ class SearchDebugger:
 
     def _update_cluster_stage(
         self, entities: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]]
-    ):
+    ) -> None:
         """Update entity registry with cluster search results."""
         for entity in entities:
             entity_id = entity.get("_key") or entity.get("id", "")
@@ -185,7 +185,7 @@ class SearchDebugger:
 
     def _update_vector_stage(
         self, entities: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]]
-    ):
+    ) -> None:
         """Update entity registry with vector search results."""
         for entity in entities:
             debug_info = self._get_or_create_entity_debug(entity)
@@ -195,7 +195,7 @@ class SearchDebugger:
 
     def _update_reranking_stage(
         self, entities: List[Any], metadata: Optional[Dict[str, Any]]
-    ):
+    ) -> None:
         """Update entity registry with reranking results."""
         # entities here are EntityScore objects from entity_reranker
         for entity_score in entities:
@@ -213,14 +213,17 @@ class SearchDebugger:
                 debug_info.pipeline_stage_reached = PipelineStage.RERANKING
 
                 # Calculate score delta
-                if debug_info.vector_score is not None:
+                if (
+                    debug_info.vector_score is not None
+                    and debug_info.final_score is not None
+                ):
                     debug_info.score_delta = (
                         debug_info.final_score - debug_info.vector_score
                     )
 
     def _update_selection_stage(
         self, entities: List[Any], metadata: Optional[Dict[str, Any]]
-    ):
+    ) -> None:
         """Update entity registry with final selection results."""
         for idx, entity_score in enumerate(entities):
             if hasattr(entity_score, "entity"):
@@ -246,7 +249,10 @@ class SearchDebugger:
                 debug_info.is_selected = True  # All entities here are selected
                 debug_info.selection_rank = idx + 1
                 debug_info.in_prompt = (
-                    debug_info.final_score >= self.current_pipeline.similarity_threshold
+                    debug_info.final_score is not None
+                    and self.current_pipeline is not None
+                    and debug_info.final_score
+                    >= self.current_pipeline.similarity_threshold
                 )
                 debug_info.pipeline_stage_reached = PipelineStage.FINAL_SELECTION
 
@@ -338,15 +344,16 @@ class SearchDebugger:
             e for e in self.entity_registry.values() if e.score_delta is not None
         ]
         if entities_with_scores:
-            avg_score_delta = sum(e.score_delta for e in entities_with_scores) / len(
-                entities_with_scores
+            total_delta = sum(
+                e.score_delta for e in entities_with_scores if e.score_delta is not None
             )
+            avg_score_delta = total_delta / len(entities_with_scores)
             metrics["avg_reranking_boost"] = avg_score_delta
 
         # Active vs inactive ratio
         active_entities = [e for e in self.entity_registry.values() if e.is_active]
         inactive_entities = [
-            e for e in self.entity_registry.values() if not e.is_active
+            e for e in self.entity_registry.values() if e.is_active is False
         ]
         total_entities = len(active_entities) + len(inactive_entities)
 
