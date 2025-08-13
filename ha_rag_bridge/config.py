@@ -645,7 +645,6 @@ class AppSettings(BaseSettings):
         restart_required=False,
     )
 
-
     sentence_transformer_model: str = Field(
         default="paraphrase-multilingual-mpnet-base-v2",
         env="SENTENCE_TRANSFORMER_MODEL",
@@ -721,7 +720,7 @@ class AppSettings(BaseSettings):
         description_en="Secret token for admin interface access",
         is_sensitive=True,
     )
-    
+
     # Home Assistant settings
     ha_url: Optional[str] = Field(
         default=None,
@@ -732,7 +731,7 @@ class AppSettings(BaseSettings):
         description_en="Home Assistant instance URL (e.g. http://homeassistant.local:8123)",
         example="http://homeassistant.local:8123",
     )
-    
+
     ha_token: Optional[str] = Field(
         default=None,
         env="HA_TOKEN",
@@ -761,7 +760,7 @@ class AppSettings(BaseSettings):
         description_hu="Általános alkalmazás log szint (DEBUG, INFO, WARNING, ERROR)",
         description_en="General application log level (DEBUG, INFO, WARNING, ERROR)",
     )
-    
+
     ha_rag_log_level: str = Field(
         default="INFO",
         env="HA_RAG_LOG_LEVEL",
@@ -770,7 +769,7 @@ class AppSettings(BaseSettings):
         description_hu="HA RAG komponensek specifikus log szintje",
         description_en="HA RAG components specific log level",
     )
-    
+
     log_file: Optional[str] = Field(
         default=None,
         env="LOG_FILE",
@@ -779,7 +778,7 @@ class AppSettings(BaseSettings):
         description_hu="Log fájl elérési útja. None = csak konzol kimenet",
         description_en="Log file path. None = console output only",
     )
-    
+
     skip_arango_healthcheck: bool = Field(
         default=False,
         env="SKIP_ARANGO_HEALTHCHECK",
@@ -800,7 +799,7 @@ class AppSettings(BaseSettings):
         ge=100,
         le=10000,
     )
-    
+
     conversation_cache_maxsize: int = Field(
         default=100,
         env="CACHE_MAXSIZE_CONVERSATION",
@@ -811,7 +810,7 @@ class AppSettings(BaseSettings):
         ge=1,
         le=1000,
     )
-    
+
     entity_score_cache_maxsize: int = Field(
         default=1000,
         env="CACHE_MAXSIZE_ENTITY_SCORE",
@@ -822,7 +821,7 @@ class AppSettings(BaseSettings):
         ge=100,
         le=5000,
     )
-    
+
     entity_context_cache_maxsize: int = Field(
         default=500,
         env="CACHE_MAXSIZE_ENTITY_CONTEXT",
@@ -833,7 +832,7 @@ class AppSettings(BaseSettings):
         ge=50,
         le=2000,
     )
-    
+
     # Cache TTL settings
     state_cache_ttl: int = Field(
         default=30,
@@ -845,7 +844,7 @@ class AppSettings(BaseSettings):
         ge=5,
         le=3600,
     )
-    
+
     conversation_aliases_ttl: int = Field(
         default=600,
         env="CONVERSATION_ALIASES_TTL",
@@ -856,7 +855,7 @@ class AppSettings(BaseSettings):
         ge=60,
         le=3600,
     )
-    
+
     entity_reranker_cache_ttl: int = Field(
         default=300,
         env="ENTITY_RERANKER_CACHE_TTL",
@@ -867,7 +866,7 @@ class AppSettings(BaseSettings):
         ge=60,
         le=1800,
     )
-    
+
     service_cache_ttl: int = Field(
         default=21600,  # 6 hours
         env="SERVICE_CACHE_TTL",
@@ -878,7 +877,7 @@ class AppSettings(BaseSettings):
         ge=300,
         le=86400,
     )
-    
+
     # Additional Home Assistant settings
     conversation_memory_ttl: int = Field(
         default=15,
@@ -890,7 +889,7 @@ class AppSettings(BaseSettings):
         ge=5,
         le=60,
     )
-    
+
     # InfluxDB settings
     influx_url: Optional[str] = Field(
         default=None,
@@ -901,7 +900,7 @@ class AppSettings(BaseSettings):
         description_en="InfluxDB database URL for time series data storage",
         example="http://localhost:8086",
     )
-    
+
     influx_org: str = Field(
         default="homeassistant",
         env="INFLUX_ORG",
@@ -910,7 +909,7 @@ class AppSettings(BaseSettings):
         description_hu="InfluxDB szervezet neve",
         description_en="InfluxDB organization name",
     )
-    
+
     influx_bucket: str = Field(
         default="homeassistant",
         env="INFLUX_BUCKET",
@@ -919,7 +918,7 @@ class AppSettings(BaseSettings):
         description_hu="InfluxDB bucket neve az adatok tárolásához",
         description_en="InfluxDB bucket name for data storage",
     )
-    
+
     influx_db: str = Field(
         default="homeassistant",
         env="INFLUX_DB",
@@ -928,7 +927,7 @@ class AppSettings(BaseSettings):
         description_hu="InfluxDB adatbázis neve (v1.x kompatibilitáshoz)",
         description_en="InfluxDB database name (for v1.x compatibility)",
     )
-    
+
     influx_user: Optional[str] = Field(
         default=None,
         env="INFLUX_USER",
@@ -937,7 +936,7 @@ class AppSettings(BaseSettings):
         description_hu="InfluxDB felhasználónév az authentikációhoz",
         description_en="InfluxDB username for authentication",
     )
-    
+
     # Additional network timeouts
     http_timeout_short: float = Field(
         default=5.0,
@@ -949,7 +948,7 @@ class AppSettings(BaseSettings):
         ge=1.0,
         le=30.0,
     )
-    
+
     http_timeout_medium: float = Field(
         default=15.0,
         env="HTTP_TIMEOUT_MEDIUM",
@@ -960,7 +959,7 @@ class AppSettings(BaseSettings):
         ge=5.0,
         le=60.0,
     )
-    
+
     http_timeout_long: float = Field(
         default=60.0,
         env="HTTP_TIMEOUT_LONG",
@@ -1189,9 +1188,9 @@ def reload_settings() -> AppSettings:
     """
     import os
     from pathlib import Path
-    
+
     global settings
-    
+
     # Manually reload .env file into os.environ
     env_file = Path(".env")
     if env_file.exists():
@@ -1204,7 +1203,7 @@ def reload_settings() -> AppSettings:
                     value = value.strip()
                     # Update environment variable
                     os.environ[key] = value
-    
+
     # Create new settings instance with updated environment
     settings = AppSettings()
     return settings

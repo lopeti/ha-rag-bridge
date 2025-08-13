@@ -1992,6 +1992,12 @@ async def test_connection(request: Request, service: str):
         pass
 
     overrides = body.get("overrides", {})
+    
+    # Filter out masked sensitive values - they should fallback to saved settings
+    filtered_overrides = {
+        key: value for key, value in overrides.items() 
+        if value and value != "***MASKED***"
+    }
 
     try:
         if service == "arango":
@@ -1999,10 +2005,10 @@ async def test_connection(request: Request, service: str):
             from arango import ArangoClient
 
             try:
-                arango_url = overrides.get("arango_url", settings.arango_url)
-                arango_db = overrides.get("arango_db", settings.arango_db)
-                arango_user = overrides.get("arango_user", settings.arango_user)
-                arango_pass = overrides.get("arango_pass", settings.arango_pass)
+                arango_url = filtered_overrides.get("arango_url", settings.arango_url)
+                arango_db = filtered_overrides.get("arango_db", settings.arango_db)
+                arango_user = filtered_overrides.get("arango_user", settings.arango_user)
+                arango_pass = filtered_overrides.get("arango_pass", settings.arango_pass)
 
                 client = ArangoClient(hosts=arango_url)
                 db = client.db(
@@ -2032,8 +2038,8 @@ async def test_connection(request: Request, service: str):
 
         elif service == "home_assistant":
             # Test Home Assistant connection with overrides
-            ha_url = overrides.get("ha_url", settings.ha_url)
-            ha_token = overrides.get("ha_token", settings.ha_token)
+            ha_url = filtered_overrides.get("ha_url", settings.ha_url)
+            ha_token = filtered_overrides.get("ha_token", settings.ha_token)
 
             if not ha_url or not ha_token:
                 return {
@@ -2079,7 +2085,7 @@ async def test_connection(request: Request, service: str):
 
         elif service == "influx":
             # Test InfluxDB connection with overrides
-            influx_url = overrides.get("influx_url", settings.influx_url)
+            influx_url = filtered_overrides.get("influx_url", settings.influx_url)
 
             if not influx_url:
                 return {
@@ -2123,7 +2129,7 @@ async def test_connection(request: Request, service: str):
 
         elif service == "openai":
             # Test OpenAI API connection with overrides
-            openai_api_key = overrides.get("openai_api_key", settings.openai_api_key)
+            openai_api_key = filtered_overrides.get("openai_api_key", settings.openai_api_key)
 
             if not openai_api_key:
                 return {
@@ -2183,8 +2189,8 @@ async def test_connection(request: Request, service: str):
 
         elif service == "gemini":
             # Test Google Gemini API connection with overrides
-            gemini_api_key = overrides.get("gemini_api_key", settings.gemini_api_key)
-            gemini_base_url = overrides.get("gemini_base_url", settings.gemini_base_url)
+            gemini_api_key = filtered_overrides.get("gemini_api_key", settings.gemini_api_key)
+            gemini_base_url = filtered_overrides.get("gemini_base_url", settings.gemini_base_url)
 
             if not gemini_api_key:
                 return {

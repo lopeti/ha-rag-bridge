@@ -54,21 +54,28 @@ export function ServiceConnectionTest({
   const buildOverrides = () => {
     const overrides: any = {};
     
+    // Helper function to add field only if not masked
+    const addFieldIfNotMasked = (fieldName: string, value: any) => {
+      if (value && value !== '***MASKED***') {
+        overrides[fieldName] = value;
+      }
+    };
+    
     if (service === 'arango') {
-      overrides.arango_url = allConfigValues.database?.arango_url?.value;
-      overrides.arango_user = allConfigValues.database?.arango_user?.value;
-      overrides.arango_pass = allConfigValues.database?.arango_pass?.value;
-      overrides.arango_db = allConfigValues.database?.arango_db?.value;
+      addFieldIfNotMasked('arango_url', allConfigValues.database?.arango_url?.value);
+      addFieldIfNotMasked('arango_user', allConfigValues.database?.arango_user?.value);
+      addFieldIfNotMasked('arango_pass', allConfigValues.database?.arango_pass?.value);
+      addFieldIfNotMasked('arango_db', allConfigValues.database?.arango_db?.value);
     } else if (service === 'home_assistant') {
-      overrides.ha_url = allConfigValues.home_assistant?.ha_url?.value;
-      overrides.ha_token = allConfigValues.home_assistant?.ha_token?.value;
+      addFieldIfNotMasked('ha_url', allConfigValues.home_assistant?.ha_url?.value);
+      addFieldIfNotMasked('ha_token', allConfigValues.home_assistant?.ha_token?.value);
     } else if (service === 'influx') {
-      overrides.influx_url = allConfigValues.home_assistant?.influx_url?.value;
+      addFieldIfNotMasked('influx_url', allConfigValues.home_assistant?.influx_url?.value);
     } else if (service === 'openai') {
-      overrides.openai_api_key = allConfigValues.embedding?.openai_api_key?.value;
+      addFieldIfNotMasked('openai_api_key', allConfigValues.embedding?.openai_api_key?.value);
     } else if (service === 'gemini') {
-      overrides.gemini_api_key = allConfigValues.embedding?.gemini_api_key?.value;
-      overrides.gemini_base_url = allConfigValues.embedding?.gemini_base_url?.value;
+      addFieldIfNotMasked('gemini_api_key', allConfigValues.embedding?.gemini_api_key?.value);
+      addFieldIfNotMasked('gemini_base_url', allConfigValues.embedding?.gemini_base_url?.value);
     }
     
     return overrides;
