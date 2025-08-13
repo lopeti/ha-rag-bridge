@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Skeleton } from './ui/skeleton';
 import { RefreshCw, Lightbulb, Thermometer, Zap, Wifi, Camera, Home, Gauge, Power, Info, Wrench, Bug, Settings } from 'lucide-react';
 import { adminApi, type PromptFormat } from '../lib/api';
 
@@ -404,9 +405,16 @@ export function EntityModal({ entity, isOpen, onClose }: EntityModalProps) {
                   </Button>
                 </div>
                 {promptLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-blue-600">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Loading fresh data...
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-blue-600">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Loading fresh data...
+                    </div>
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-8 w-1/2" />
+                    </div>
                   </div>
                 ) : promptFormat ? (
                   <div className="text-sm space-y-3">
