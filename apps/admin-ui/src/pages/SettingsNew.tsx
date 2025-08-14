@@ -224,13 +224,13 @@ export function Settings() {
             {t('configurationManagement')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Konfigurálja a HA-RAG Bridge rendszer beállításokat
+            {t('configuration')}
           </p>
           
           {modifiedFields.size > 0 && (
             <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                {modifiedFields.size} nem mentett változtatás
+                {modifiedFields.size} {t('unsavedChanges')}
               </div>
             </div>
           )}
@@ -275,7 +275,7 @@ export function Settings() {
                             ? "text-primary-foreground/70"
                             : "text-muted-foreground"
                         )}>
-                          {Object.keys(categoryFields).length} beállítás
+                          {Object.keys(categoryFields).length} {t('settingsCount')}
                         </div>
                       </div>
                     </div>
@@ -389,7 +389,7 @@ export function Settings() {
                 <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
                   <CheckCircle className="h-4 w-4 text-green-600" />
                   <AlertDescription className="text-green-800 dark:text-green-200">
-                    A konfiguráció érvényes!
+                    {t('configurationValid')}
                   </AlertDescription>
                 </Alert>
               )}
@@ -456,7 +456,7 @@ export function Settings() {
                   </div>
                 </div>
                 <p className="text-muted-foreground text-lg">
-                  {Object.keys(currentCategory[1]).length} konfigurációs beállítás ebben a kategóriában
+                  {Object.keys(currentCategory[1]).length} {t('settingsInCategory')}
                 </p>
               </div>
               

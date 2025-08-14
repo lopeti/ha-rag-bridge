@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/card';
@@ -13,6 +14,7 @@ import { SearchDebugger } from '../components/SearchDebugger';
 import { EntityModal } from '../components/EntityModal';
 
 export function Entities() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
@@ -139,16 +141,16 @@ export function Entities() {
               {activeTab === 'browse' && (
                 <div className="flex items-center gap-2 text-sm">
                   <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
-                    {entities?.items?.filter(e => e && e.id).length || 0} megjelenített
+                    {entities?.items?.filter(e => e && e.id).length || 0} {t('displayed')}
                   </Badge>
                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 px-2 py-1">
-                    {meta?.total || 0} összes
+                    {meta?.total || 0} {t('total')}
                   </Badge>
                   <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 px-2 py-1 hidden sm:inline-flex">
-                    {meta?.domain_types || 0} domain
+                    {meta?.domain_types || 0} {t('domainTypesCount')}
                   </Badge>
                   <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 px-2 py-1 hidden md:inline-flex">
-                    {meta?.areas || 0} terület
+                    {meta?.areas || 0} {t('areasCount')}
                   </Badge>
                 </div>
               )}
@@ -201,7 +203,7 @@ export function Entities() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                   <Input
-                    placeholder="Keresés..."
+                    placeholder={t('searchPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 bg-background"
@@ -210,10 +212,10 @@ export function Entities() {
                 
                 <Select value={domain || 'all'} onValueChange={(value) => updateFilter('domain', value)}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Domain kiválasztása" />
+                    <SelectValue placeholder={t('selectDomain')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Minden domain</SelectItem>
+                    <SelectItem value="all">{t('allDomains')}</SelectItem>
                     {meta?.domains_list?.map((d: any) => (
                       <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                     ))}
@@ -222,10 +224,10 @@ export function Entities() {
                 
                 <Select value={area || 'all'} onValueChange={(value) => updateFilter('area', value)}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Terület kiválasztása" />
+                    <SelectValue placeholder={t('selectArea')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Minden terület</SelectItem>
+                    <SelectItem value="all">{t('allAreas')}</SelectItem>
                     {meta?.areas_list?.map((a: any) => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}

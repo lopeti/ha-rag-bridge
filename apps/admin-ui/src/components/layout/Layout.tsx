@@ -49,7 +49,7 @@ export function Layout() {
             <div className="w-8 h-8 bg-primary-foreground rounded-md flex items-center justify-center">
               <span className="text-primary font-bold text-lg">🏠</span>
             </div>
-            <h1 className="text-xl font-semibold text-primary-foreground">HA-RAG Admin</h1>
+            <h1 className="text-xl font-semibold text-primary-foreground">{t('appTitle')}</h1>
           </div>
           
           <nav className="flex items-center space-x-6 ml-8">

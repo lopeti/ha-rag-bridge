@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -21,6 +22,7 @@ interface ClusterFormData {
 }
 
 export function Clusters() {
+  const { t } = useTranslation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingCluster, setEditingCluster] = useState<Cluster | null>(null);
   const [formData, setFormData] = useState<ClusterFormData>({
@@ -231,7 +233,7 @@ export function Clusters() {
                     resetForm();
                   }}
                 >
-                  Mégse
+                  {t('cancel')}
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending}>
                   {createMutation.isPending ? 'Létrehozás...' : 'Létrehozás'}
@@ -435,7 +437,7 @@ export function Clusters() {
                   resetForm();
                 }}
               >
-                Mégse
+                {t('cancel')}
               </Button>
               <Button type="submit" disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? 'Mentés...' : 'Mentés'}

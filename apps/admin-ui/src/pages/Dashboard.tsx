@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -6,6 +7,7 @@ import { AlertTriangle, Database, HardDrive, Cpu } from 'lucide-react';
 import { adminApi } from '../lib/api';
 
 export function Dashboard() {
+  const { t } = useTranslation();
   const { data: overview, isLoading, error } = useQuery({
     queryKey: ['overview'],
     queryFn: adminApi.getOverview,
@@ -55,11 +57,11 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <h1 className="text-3xl font-bold">{t('dashboard')}</h1>
         {needsSchemaUpdate && (
           <Button variant="outline" className="border-amber-500 text-amber-600">
             <AlertTriangle className="h-4 w-4 mr-2" />
-            Schema Update Available
+            {t('schemaUpdateAvailable')}
           </Button>
         )}
       </div>
@@ -72,7 +74,7 @@ export function Dashboard() {
                 <AlertTriangle className="h-5 w-5 text-amber-600" />
                 <div>
                   <p className="font-medium text-amber-800 dark:text-amber-200">
-                    Schema update needed
+                    {t('schemaUpdateNeeded')}
                   </p>
                   <p className="text-sm text-amber-700 dark:text-amber-300">
                     Current: {overview?.schema?.current} → Latest: {overview?.schema?.latest}
@@ -91,7 +93,7 @@ export function Dashboard() {
         {/* Database Status */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium">Database</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('database')}</CardTitle>
             <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -99,7 +101,7 @@ export function Dashboard() {
               <div>
                 <p className="text-2xl font-bold">{overview?.database?.name}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {overview?.database?.status === 'ok' ? 'Connected' : 'Error'}
+                  {overview?.database?.status === 'ok' ? t('connected') : t('error')}
                 </p>
               </div>
               <Badge variant={overview?.database?.status === 'ok' ? 'default' : 'destructive'}>
@@ -112,7 +114,7 @@ export function Dashboard() {
         {/* Schema Version */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium">Schema</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('schema')}</CardTitle>
             <HardDrive className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -122,11 +124,11 @@ export function Dashboard() {
                   {overview?.schema?.current}/{overview?.schema?.latest}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {needsSchemaUpdate ? 'Update available' : 'Up to date'}
+                  {needsSchemaUpdate ? t('updateAvailable') : t('upToDate')}
                 </p>
               </div>
               <Badge variant={needsSchemaUpdate ? 'secondary' : 'default'}>
-                {needsSchemaUpdate ? 'pending' : 'current'}
+                {needsSchemaUpdate ? t('pending') : t('current')}
               </Badge>
             </div>
           </CardContent>
@@ -135,14 +137,14 @@ export function Dashboard() {
         {/* Vector Dimension */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium">Vector Index</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('vectorIndex')}</CardTitle>
             <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold">{overview?.vector?.dimension}</p>
-                <p className="text-xs text-muted-foreground mt-1">Dimensions</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('dimensions')}</p>
               </div>
               <Badge variant={overview?.vector?.status === 'ok' ? 'default' : 'destructive'}>
                 {overview?.vector?.status}
@@ -154,7 +156,7 @@ export function Dashboard() {
         {/* System Status */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium">System</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('system')}</CardTitle>
             <div className={`h-3 w-3 rounded-full ${
               overview?.system?.status === 'ok' ? 'bg-green-500' :
               overview?.system?.status === 'degraded' ? 'bg-yellow-500' :
@@ -186,20 +188,20 @@ export function Dashboard() {
       {/* System Information */}
       <Card>
         <CardHeader>
-          <CardTitle>System Information</CardTitle>
+          <CardTitle>{t('systemInformation')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Database Name</p>
+              <p className="text-sm font-medium text-muted-foreground">{t('databaseName')}</p>
               <p className="text-lg font-semibold">{overview?.database?.name}</p>
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Vector Dimensions</p>
+              <p className="text-sm font-medium text-muted-foreground">{t('vectorDimensions')}</p>
               <p className="text-lg font-semibold">{overview?.vector?.dimension}</p>
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Schema Version</p>
+              <p className="text-sm font-medium text-muted-foreground">{t('schemaVersion')}</p>
               <p className="text-lg font-semibold">
                 {overview?.schema?.current} / {overview?.schema?.latest}
               </p>

@@ -1,5 +1,6 @@
 
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -11,6 +12,7 @@ import { Database, Trash2, RefreshCw, Activity, HardDrive, Cpu, X, Terminal, Dow
 import { adminApi } from '../lib/api';
 
 export function Maintenance() {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [showStreamDialog, setShowStreamDialog] = useState(false);
@@ -37,12 +39,12 @@ export function Maintenance() {
     onSuccess: () => {
       setLogs('✅ Cache sikeresen törölve');
       setShowStreamDialog(true);
-      setStreamTitle('Cache törlés eredménye');
+      setStreamTitle(t('cacheCleanResult'));
     },
     onError: (error: any) => {
       setLogs(`❌ Hiba: ${error.message}`);
       setShowStreamDialog(true);
-      setStreamTitle('Cache törlés hiba');
+      setStreamTitle(t('cacheCleanError'));
     },
   });
 
@@ -52,7 +54,7 @@ export function Maintenance() {
     setIsStreaming(true);
     setLogs('📥 Kapcsolódás az ingesztálás szolgáltatáshoz...\n');
     setShowStreamDialog(true);
-    setStreamTitle('Entitás ingesztálás');
+    setStreamTitle(t('entityIngestion'));
     
     // Close any existing connection
     if (eventSourceRef.current) {
@@ -138,7 +140,7 @@ export function Maintenance() {
     setIsStreaming(true);
     setLogs('🔄 Kapcsolódás a vektor újraindexelés szolgáltatáshoz...\n');
     setShowStreamDialog(true);
-    setStreamTitle('Vektor újraindexelés');
+    setStreamTitle(t('vectorReindexing'));
     
     // Close any existing connection
     if (eventSourceRef.current) {
@@ -181,7 +183,7 @@ export function Maintenance() {
     setIsStreaming(true);
     setLogs('🧪 Kapcsolódás a teszt szolgáltatáshoz...\n');
     setShowStreamDialog(true);
-    setStreamTitle('Streaming teszt');
+    setStreamTitle(t('streamingTest'));
     
     // Close any existing connection
     if (eventSourceRef.current) {
@@ -269,7 +271,7 @@ export function Maintenance() {
           </CardHeader>
           <CardContent>
             <Badge variant={health?.database ? 'default' : 'destructive'}>
-              {health?.database ? 'Elérhető' : 'Nem elérhető'}
+              {health?.database ? t('available') : t('notAvailable')}
             </Badge>
             <p className="text-xs text-muted-foreground mt-1">
               {health?.database_version || 'N/A'}
@@ -286,7 +288,7 @@ export function Maintenance() {
           </CardHeader>
           <CardContent>
             <Badge variant={health?.home_assistant ? 'default' : 'destructive'}>
-              {health?.home_assistant ? 'Elérhető' : 'Nem elérhető'}
+              {health?.home_assistant ? t('available') : t('notAvailable')}
             </Badge>
             <p className="text-xs text-muted-foreground mt-1">
               {health?.ha_version || 'N/A'}
@@ -303,7 +305,7 @@ export function Maintenance() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{stats?.cpu_usage || 0}%</p>
-            <p className="text-xs text-muted-foreground">használat</p>
+            <p className="text-xs text-muted-foreground">{t('usage')}</p>
           </CardContent>
         </Card>
 
@@ -311,12 +313,12 @@ export function Maintenance() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center">
               <HardDrive className="h-4 w-4 mr-2" />
-              Memória
+              {t('memoryUsage')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{stats?.memory_usage || 0}%</p>
-            <p className="text-xs text-muted-foreground">használat</p>
+            <p className="text-xs text-muted-foreground">{t('usage')}</p>
           </CardContent>
         </Card>
       </div>
@@ -328,12 +330,12 @@ export function Maintenance() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Database className="h-5 w-5 mr-2" />
-              Adatbázis inicializálás
+              {t('databaseInit')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Adatbázis kollekcók és indexek újra létrehozása.
+              {t('databaseInitDescription')}
             </p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -345,22 +347,22 @@ export function Maintenance() {
                   {isStreaming ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Futás...
+                      {t('running')}
                     </>
                   ) : (
-                    'Bootstrap futtatása'
+                    t('runBootstrap')
                   )}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Bootstrap futtatása</AlertDialogTitle>
+                  <AlertDialogTitle>{t('runBootstrap')}</AlertDialogTitle>
                   <AlertDialogDescription>
                     Ez újra létrehozza az adatbázis kollekciók és indexeket. Ez eltarthat néhány percig.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Mégse</AlertDialogCancel>
+                  <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                   <AlertDialogAction onClick={startStreamingBootstrap}>
                     Indítás
                   </AlertDialogAction>
@@ -375,12 +377,12 @@ export function Maintenance() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Trash2 className="h-5 w-5 mr-2" />
-              Cache törlés
+              {t('cacheClear')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Összes cache adat törlése a memóriából.
+              {t('cacheClearDescription')}
             </p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -392,22 +394,22 @@ export function Maintenance() {
                   {clearCacheMutation.isPending ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Törlés...
+                      {t('deleting')}
                     </>
                   ) : (
-                    'Cache törlése'
+                    t('cacheDeletion')
                   )}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Cache törlése</AlertDialogTitle>
+                  <AlertDialogTitle>{t('cacheDeletion')}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Ez törli az összes cache-elt adatot. A rendszer lassabb lehet, míg újra betölti az adatokat.
+                    {t('cacheDeleteDescription')}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Mégse</AlertDialogCancel>
+                  <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                   <AlertDialogAction onClick={() => clearCacheMutation.mutate()}>
                     Törlés
                   </AlertDialogAction>
@@ -422,7 +424,7 @@ export function Maintenance() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Download className="h-5 w-5 mr-2" />
-              Entitás ingesztálás
+              {t('entityIngestion')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -439,22 +441,22 @@ export function Maintenance() {
                   {isStreaming ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Ingesztálás...
+                      {t('ingesting')}
                     </>
                   ) : (
-                    'Entitások ingesztálása'
+                    t('ingestEntities')
                   )}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Entitás ingesztálás</AlertDialogTitle>
+                  <AlertDialogTitle>{t('entityIngestion')}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Ez szinkronizálja az összes Home Assistant entitást az adatbázisba élő naplózással. Ez eltarthat néhány percig.
+                    {t('entityIngestionDescription')}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Mégse</AlertDialogCancel>
+                  <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                   <AlertDialogAction onClick={startStreamingIngest}>
                     Indítás
                   </AlertDialogAction>
@@ -486,7 +488,7 @@ export function Maintenance() {
                   {isStreaming ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Indexelés folyamatban...
+                      {t('indexingInProgress')}
                     </>
                   ) : (
                     'Vektor újraindexelés'
@@ -495,13 +497,13 @@ export function Maintenance() {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Vektor újraindexelés</AlertDialogTitle>
+                  <AlertDialogTitle>{t('vectorReindexing')}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Ez újraszámítja az összes entitás embeddingjét élő naplózással. Ez hosszú időt vehet igénybe.
+                    {t('vectorReindexDescription')}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Mégse</AlertDialogCancel>
+                  <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                   <AlertDialogAction onClick={startStreamingReindex}>
                     Indítás
                   </AlertDialogAction>
@@ -516,12 +518,12 @@ export function Maintenance() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Terminal className="h-5 w-5 mr-2" />
-              Streaming teszt
+              {t('streamingTest')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Streaming funkciók tesztelése.
+              {t('testFunctionality')}
             </p>
             <Button 
               variant="outline" 
@@ -532,10 +534,10 @@ export function Maintenance() {
               {isStreaming ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Teszt...
+                  {t('testing')}
                 </>
               ) : (
-                'Teszt indítása'
+                t('startTest')
               )}
             </Button>
           </CardContent>
@@ -545,48 +547,48 @@ export function Maintenance() {
       {/* System Information */}
       <Card>
         <CardHeader>
-          <CardTitle>Rendszer információk</CardTitle>
+          <CardTitle>{t('systemInformation')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <h4 className="font-medium mb-2">Szolgáltatás információk</h4>
+              <h4 className="font-medium mb-2">{t('serviceInfo')}</h4>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span>Embedding backend:</span>
+                  <span>{t('embeddingBackend')}</span>
                   <span>{health?.embedding_backend || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Embedding dimenziók:</span>
+                  <span>{t('embeddingDimensions')}</span>
                   <span>{health?.embedding_dimensions || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Utolsó bootstrap:</span>
+                  <span>{t('lastBootstrap')}</span>
                   <span>{health?.last_bootstrap || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Uptime:</span>
+                  <span>{t('uptime')}</span>
                   <span>{stats?.uptime || 'N/A'}</span>
                 </div>
               </div>
             </div>
             <div>
-              <h4 className="font-medium mb-2">Adatbázis statisztikák</h4>
+              <h4 className="font-medium mb-2">{t('databaseStats')}</h4>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span>Entitások:</span>
+                  <span>{t('entities')}</span>
                   <span>{stats?.total_entities || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Clusterek:</span>
+                  <span>{t('clusters')}</span>
                   <span>{stats?.total_clusters || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Dokumentumok:</span>
+                  <span>{t('documents')}</span>
                   <span>{stats?.total_documents || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Adatbázis méret:</span>
+                  <span>{t('databaseSize')}</span>
                   <span>{stats?.database_size || 'N/A'}</span>
                 </div>
               </div>
@@ -604,7 +606,7 @@ export function Maintenance() {
               {streamTitle}
             </DialogTitle>
             <DialogDescription>
-              {isStreaming ? 'Művelet folyamatban...' : 'Művelet eredménye'}
+              {isStreaming ? t('operationInProgress') : t('operationResult')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col space-y-4">

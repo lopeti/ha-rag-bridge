@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -10,6 +11,7 @@ import { Activity, Cpu, HardDrive, Database, Zap, Clock, RefreshCw } from 'lucid
 import { adminApi } from '../lib/api';
 
 export function Monitoring() {
+  const { t } = useTranslation();
   const [logLevel, setLogLevel] = useState('all');
   const [selectedContainer, setSelectedContainer] = useState('bridge');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -159,7 +161,7 @@ export function Monitoring() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center">
               <HardDrive className="h-4 w-4 mr-2" />
-              Memória
+              {t('memoryUsage')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -172,7 +174,7 @@ export function Monitoring() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center">
               <Clock className="h-4 w-4 mr-2" />
-              Válaszidő
+              {t('responseTime')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -206,7 +208,7 @@ export function Monitoring() {
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium flex items-center">
                   <Database className="h-4 w-4 mr-2" />
-                  Adatbázis
+                  {t('database')}
                 </span>
                 <span className={`text-sm ${getStatusColor(metrics?.db?.status || 'error')}`}>
                   {metrics?.db?.status === 'ok' ? 'OK' : 'Hiba'}
@@ -221,7 +223,7 @@ export function Monitoring() {
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium flex items-center">
                   <Activity className="h-4 w-4 mr-2" />
-                  Vektor keresés
+                  {t('vectorSearch')}
                 </span>
                 <span className={`text-sm ${getStatusColor(metrics?.vector?.status || 'error')}`}>
                   {metrics?.vector?.status === 'ok' ? 'OK' : 'Hiba'}
@@ -234,11 +236,11 @@ export function Monitoring() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Vektor dimenzió</span>
+                <span className="text-sm font-medium">{t('vectorDimension')}</span>
                 <span className="text-sm">{metrics?.info?.vector_dim || 0}</span>
               </div>
               <div className="text-xs text-muted-foreground">
-                Schema: {metrics?.info?.schema?.current || 0}/{metrics?.info?.schema?.latest || 0}
+                {t('schema')}: {metrics?.info?.schema?.current || 0}/{metrics?.info?.schema?.latest || 0}
               </div>
             </div>
           </div>
@@ -249,7 +251,7 @@ export function Monitoring() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>CPU & Memória használat</CardTitle>
+            <CardTitle>{t('cpuMemoryUsage')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-80">
@@ -272,13 +274,13 @@ export function Monitoring() {
                       dataKey="memory" 
                       stroke="#82ca9d" 
                       strokeWidth={2}
-                      name="Memória %"
+                      name={t('memoryPercent')}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Adatgyűjtés folyamatban...
+                  {t('dataCollection')}...
                 </div>
               )}
             </div>
@@ -287,7 +289,7 @@ export function Monitoring() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Válaszidő</CardTitle>
+            <CardTitle>{t('responseTime')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-80">
@@ -304,13 +306,13 @@ export function Monitoring() {
                       stroke="#8884d8" 
                       fill="#8884d8" 
                       fillOpacity={0.6}
-                      name="Válaszidő (ms)"
+                      name={t('responseTimeMs')}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Adatgyűjtés folyamatban...
+                  {t('dataCollection')}...
                 </div>
               )}
             </div>

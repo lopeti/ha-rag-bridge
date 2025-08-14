@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -258,6 +259,7 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
 
 // Main SearchDebugger component
 export const SearchDebugger: React.FC = () => {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [threshold, setThreshold] = useState(0.7);
   const [limit, setLimit] = useState(20);
@@ -288,7 +290,7 @@ export const SearchDebugger: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="w-5 h-5" />
-            Semantic Search Pipeline Debugger
+            {t('searchPipelineDebugger')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -302,7 +304,7 @@ export const SearchDebugger: React.FC = () => {
               />
             </div>
             <Button onClick={handleSearch} disabled={!query.trim() || isLoading}>
-              {isLoading ? 'Searching...' : 'Debug Search'}
+              {isLoading ? t('searchingText') : t('debugSearchButton')}
             </Button>
           </div>
           
@@ -463,7 +465,7 @@ export const SearchDebugger: React.FC = () => {
           <CardContent className="py-8">
             <div className="flex items-center justify-center space-x-2">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span>Running pipeline debug...</span>
+              <span>{t('runningPipelineDebug')}</span>
             </div>
           </CardContent>
         </Card>
@@ -474,9 +476,9 @@ export const SearchDebugger: React.FC = () => {
         <Card>
           <CardContent className="py-8 text-center">
             <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">Semantic Search Pipeline Debugger</h3>
+            <h3 className="text-lg font-medium mb-2">{t('searchPipelineDebugger')}</h3>
             <p className="text-muted-foreground mb-4">
-              Enter a search query to visualize the multi-stage entity retrieval pipeline
+              {t('enterSearchQuery')}
             </p>
             <div className="text-sm text-muted-foreground space-y-1">
               <div>• See cluster vs vector search performance</div>
