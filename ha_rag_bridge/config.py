@@ -496,6 +496,235 @@ class HomeAssistantSettings(BaseModel):
     )
 
 
+class CrossEncoderSettings(BaseModel):
+    """Cross-encoder model configuration for semantic reranking.
+    
+    Cross-encoder modell konfiguráció a szemantikai újrarangsoroláshoz.
+    """
+    
+    model_name: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        env="CROSS_ENCODER_MODEL",
+        title_hu="Cross-encoder modell",
+        title_en="Cross-encoder Model",
+        description_hu="Hugging Face cross-encoder modell neve a szemantikai pontozáshoz",
+        description_en="Hugging Face cross-encoder model name for semantic scoring",
+        recommendation_hu="ms-marco-MiniLM-L-6-v2: alapértelmezett | paraphrase-multilingual-mpnet-base-v2: multilingual | all-MiniLM-L12-v2: nagyobb pontosság",
+        recommendation_en="ms-marco-MiniLM-L-6-v2: default | paraphrase-multilingual-mpnet-base-v2: multilingual | all-MiniLM-L12-v2: higher accuracy",
+        restart_required=True,
+    )
+    
+    # Score normalization parameters
+    score_scale_factor: float = Field(
+        default=2.0,
+        env="CROSS_ENCODER_SCALE_FACTOR",
+        title_hu="Score skálázási faktor",
+        title_en="Score Scale Factor",
+        description_hu="Cross-encoder nyers score skálázási faktora (-1..+1 → 0..1 normalizáláshoz)",
+        description_en="Cross-encoder raw score scaling factor for (-1..+1 → 0..1 normalization)",
+        ge=1.0,
+        le=5.0,
+    )
+    
+    score_offset: float = Field(
+        default=1.0,
+        env="CROSS_ENCODER_OFFSET",
+        title_hu="Score eltolás",
+        title_en="Score Offset",
+        description_hu="Cross-encoder score eltolási érték a normalizálás során",
+        description_en="Cross-encoder score offset value during normalization",
+        ge=0.0,
+        le=2.0,
+    )
+    
+    score_min_bound: float = Field(
+        default=0.0,
+        env="CROSS_ENCODER_MIN_BOUND",
+        title_hu="Minimum score határ",
+        title_en="Minimum Score Bound",
+        description_hu="Normalizált score minimum értéke",
+        description_en="Normalized score minimum value",
+        ge=0.0,
+        le=1.0,
+    )
+    
+    score_max_bound: float = Field(
+        default=1.0,
+        env="CROSS_ENCODER_MAX_BOUND",
+        title_hu="Maximum score határ",
+        title_en="Maximum Score Bound",
+        description_hu="Normalizált score maximum értéke",
+        description_en="Normalized score maximum value",
+        ge=0.0,
+        le=1.0,
+    )
+    
+    # Performance settings
+    enable_caching: bool = Field(
+        default=True,
+        env="CROSS_ENCODER_ENABLE_CACHING",
+        title_hu="Cache engedélyezése",
+        title_en="Enable Caching",
+        description_hu="Cross-encoder eredmények gyorsítótárazásának engedélyezése",
+        description_en="Enable caching of cross-encoder results",
+    )
+    
+    fallback_threshold: float = Field(
+        default=0.1,
+        env="CROSS_ENCODER_FALLBACK_THRESHOLD",
+        title_hu="Fallback küszöb",
+        title_en="Fallback Threshold",
+        description_hu="Küszöb érték ami alatt text matching-re vált keresztentrópia helyett",
+        description_en="Threshold below which to fallback to text matching instead of cross-encoder",
+        ge=0.0,
+        le=1.0,
+    )
+
+
+class RankingSettings(BaseModel):
+    """Entity ranking boost factors configuration.
+    
+    Entitás rangsorolási boost faktorok konfigurációja.
+    """
+    
+    # Area boost factors
+    area_generic_house_boost: float = Field(
+        default=1.2,
+        env="RANKING_AREA_GENERIC_BOOST",
+        title_hu="Általános ház boost",
+        title_en="Generic House Boost",
+        description_hu="Boost faktor általános ház említésekhez ('ház', 'itthon')",
+        description_en="Boost factor for generic house references ('house', 'home')",
+        ge=1.0,
+        le=3.0,
+    )
+    
+    area_specific_boost: float = Field(
+        default=2.0,
+        env="RANKING_AREA_SPECIFIC_BOOST",
+        title_hu="Specifikus terület boost",
+        title_en="Specific Area Boost",
+        description_hu="Boost faktor konkrét terület említésekhez (pl. 'nappali', 'konyha')",
+        description_en="Boost factor for specific area mentions (e.g. 'living room', 'kitchen')",
+        ge=1.0,
+        le=5.0,
+    )
+    
+    area_followup_multiplier: float = Field(
+        default=1.5,
+        env="RANKING_AREA_FOLLOWUP_MULTIPLIER",
+        title_hu="Követő kérdés szorzó",
+        title_en="Follow-up Question Multiplier",
+        description_hu="Szorzó faktor a terület boost-okhoz követő kérdések esetén",
+        description_en="Multiplier factor for area boosts in follow-up questions",
+        ge=1.0,
+        le=3.0,
+    )
+    
+    # Domain and device class boosts
+    domain_boost: float = Field(
+        default=1.5,
+        env="RANKING_DOMAIN_BOOST",
+        title_hu="Domain boost",
+        title_en="Domain Boost",
+        description_hu="Boost faktor entitás domain említésekhez (pl. 'sensor', 'light')",
+        description_en="Boost factor for entity domain mentions (e.g. 'sensor', 'light')",
+        ge=1.0,
+        le=3.0,
+    )
+    
+    device_class_boost: float = Field(
+        default=2.0,
+        env="RANKING_DEVICE_CLASS_BOOST",
+        title_hu="Eszköz osztály boost",
+        title_en="Device Class Boost",
+        description_hu="Boost faktor eszköz osztály említésekhez (pl. 'temperature', 'motion')",
+        description_en="Boost factor for device class mentions (e.g. 'temperature', 'motion')",
+        ge=1.0,
+        le=5.0,
+    )
+    
+    # Intent-based boosts
+    previous_mention_boost: float = Field(
+        default=0.3,
+        env="RANKING_PREVIOUS_MENTION_BOOST",
+        title_hu="Korábbi említés boost",
+        title_en="Previous Mention Boost",
+        description_hu="Boost faktor korábban említett entitásokhoz",
+        description_en="Boost factor for previously mentioned entities",
+        ge=0.0,
+        le=1.0,
+    )
+    
+    controllable_intent_boost: float = Field(
+        default=0.2,
+        env="RANKING_CONTROLLABLE_BOOST",
+        title_hu="Vezérelhető entitás boost",
+        title_en="Controllable Entity Boost",
+        description_hu="Boost faktor vezérelhető entitásokhoz vezérlési szándék esetén",
+        description_en="Boost factor for controllable entities in control intents",
+        ge=0.0,
+        le=1.0,
+    )
+    
+    readable_intent_boost: float = Field(
+        default=0.1,
+        env="RANKING_READABLE_BOOST",
+        title_hu="Olvasható entitás boost",
+        title_en="Readable Entity Boost",
+        description_hu="Boost faktor érzékelőkhöz olvasási szándék esetén",
+        description_en="Boost factor for sensors in read intents",
+        ge=0.0,
+        le=1.0,
+    )
+    
+    # Sensor availability factors
+    active_sensor_boost: float = Field(
+        default=2.0,
+        env="RANKING_ACTIVE_SENSOR_BOOST",
+        title_hu="Aktív érzékelő boost",
+        title_en="Active Sensor Boost",
+        description_hu="Erős boost faktor aktív értékkel rendelkező érzékelőkhoz",
+        description_en="Strong boost factor for sensors with active state values",
+        ge=0.0,
+        le=5.0,
+    )
+    
+    unavailable_sensor_penalty: float = Field(
+        default=-0.5,
+        env="RANKING_UNAVAILABLE_PENALTY",
+        title_hu="Nem elérhető érzékelő büntetés",
+        title_en="Unavailable Sensor Penalty",
+        description_hu="Büntetés faktor nem elérhető vagy inaktív érzékelőkhöz",
+        description_en="Penalty factor for unavailable or inactive sensors",
+        ge=-2.0,
+        le=0.0,
+    )
+    
+    # Multiplicative area boosting
+    area_multiplier_base: float = Field(
+        default=1.0,
+        env="RANKING_AREA_MULTIPLIER_BASE",
+        title_hu="Terület szorzó alap",
+        title_en="Area Multiplier Base",
+        description_hu="Alap érték a multiplikatív terület boost-hoz",
+        description_en="Base value for multiplicative area boost",
+        ge=0.5,
+        le=2.0,
+    )
+    
+    area_context_factor: float = Field(
+        default=0.5,
+        env="RANKING_AREA_CONTEXT_FACTOR",
+        title_hu="Terület kontextus faktor",
+        title_en="Area Context Factor",
+        description_hu="Kontextus boost faktor a multiplikatív terület boost számításához",
+        description_en="Context boost factor for multiplicative area boost calculation",
+        ge=0.0,
+        le=2.0,
+    )
+
+
 class DebugSettings(BaseModel):
     """Debug and development configuration.
 
@@ -937,6 +1166,161 @@ class AppSettings(BaseSettings):
         description_en="InfluxDB username for authentication",
     )
 
+    # Cross-encoder settings
+    cross_encoder_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        env="CROSS_ENCODER_MODEL",
+        title_hu="Cross-encoder modell",
+        title_en="Cross-encoder Model",
+        description_hu="Hugging Face cross-encoder modell neve a szemantikai pontozáshoz",
+        description_en="Hugging Face cross-encoder model name for semantic scoring",
+        recommendation_hu="ms-marco-MiniLM-L-6-v2: alapértelmezett | paraphrase-multilingual-mpnet-base-v2: multilingual",
+        recommendation_en="ms-marco-MiniLM-L-6-v2: default | paraphrase-multilingual-mpnet-base-v2: multilingual",
+        restart_required=True,
+    )
+
+    cross_encoder_scale_factor: float = Field(
+        default=2.0,
+        env="CROSS_ENCODER_SCALE_FACTOR",
+        title_hu="Score skálázási faktor",
+        title_en="Score Scale Factor",
+        description_hu="Cross-encoder score normalizálási skálázási faktor",
+        description_en="Cross-encoder score normalization scale factor",
+        ge=1.0,
+        le=5.0,
+    )
+
+    cross_encoder_offset: float = Field(
+        default=1.0,
+        env="CROSS_ENCODER_OFFSET",
+        title_hu="Score eltolás",
+        title_en="Score Offset",
+        description_hu="Cross-encoder score eltolási érték",
+        description_en="Cross-encoder score offset value",
+        ge=0.0,
+        le=2.0,
+    )
+
+    cross_encoder_enable_caching: bool = Field(
+        default=True,
+        env="CROSS_ENCODER_ENABLE_CACHING",
+        title_hu="Cache engedélyezése",
+        title_en="Enable Caching",
+        description_hu="Cross-encoder eredmények gyorsítótárazása",
+        description_en="Enable caching of cross-encoder results",
+    )
+
+    # Ranking boost factors
+    ranking_area_generic_boost: float = Field(
+        default=1.2,
+        env="RANKING_AREA_GENERIC_BOOST",
+        title_hu="Általános ház boost",
+        title_en="Generic House Boost",
+        description_hu="Boost faktor általános ház említésekhez",
+        description_en="Boost factor for generic house references",
+        ge=1.0,
+        le=3.0,
+    )
+
+    ranking_area_specific_boost: float = Field(
+        default=2.0,
+        env="RANKING_AREA_SPECIFIC_BOOST",
+        title_hu="Specifikus terület boost",
+        title_en="Specific Area Boost",
+        description_hu="Boost faktor konkrét terület említésekhez",
+        description_en="Boost factor for specific area mentions",
+        ge=1.0,
+        le=5.0,
+    )
+
+    ranking_area_followup_multiplier: float = Field(
+        default=1.5,
+        env="RANKING_AREA_FOLLOWUP_MULTIPLIER",
+        title_hu="Követő kérdés szorzó",
+        title_en="Follow-up Question Multiplier",
+        description_hu="Szorzó faktor követő kérdések esetén",
+        description_en="Multiplier factor for follow-up questions",
+        ge=1.0,
+        le=3.0,
+    )
+
+    ranking_domain_boost: float = Field(
+        default=1.5,
+        env="RANKING_DOMAIN_BOOST",
+        title_hu="Domain boost",
+        title_en="Domain Boost",
+        description_hu="Boost faktor domain említésekhez",
+        description_en="Boost factor for domain mentions",
+        ge=1.0,
+        le=3.0,
+    )
+
+    ranking_device_class_boost: float = Field(
+        default=2.0,
+        env="RANKING_DEVICE_CLASS_BOOST",
+        title_hu="Eszköz osztály boost",
+        title_en="Device Class Boost",
+        description_hu="Boost faktor eszköz osztály említésekhez",
+        description_en="Boost factor for device class mentions",
+        ge=1.0,
+        le=5.0,
+    )
+
+    ranking_previous_mention_boost: float = Field(
+        default=0.3,
+        env="RANKING_PREVIOUS_MENTION_BOOST",
+        title_hu="Korábbi említés boost",
+        title_en="Previous Mention Boost",
+        description_hu="Boost faktor korábban említett entitásokhoz",
+        description_en="Boost factor for previously mentioned entities",
+        ge=0.0,
+        le=1.0,
+    )
+
+    ranking_controllable_boost: float = Field(
+        default=0.2,
+        env="RANKING_CONTROLLABLE_BOOST",
+        title_hu="Vezérelhető entitás boost",
+        title_en="Controllable Entity Boost",
+        description_hu="Boost faktor vezérelhető entitásokhoz",
+        description_en="Boost factor for controllable entities",
+        ge=0.0,
+        le=1.0,
+    )
+
+    ranking_readable_boost: float = Field(
+        default=0.1,
+        env="RANKING_READABLE_BOOST",
+        title_hu="Olvasható entitás boost",
+        title_en="Readable Entity Boost",
+        description_hu="Boost faktor érzékelőkhöz",
+        description_en="Boost factor for sensors",
+        ge=0.0,
+        le=1.0,
+    )
+
+    ranking_active_sensor_boost: float = Field(
+        default=2.0,
+        env="RANKING_ACTIVE_SENSOR_BOOST",
+        title_hu="Aktív érzékelő boost",
+        title_en="Active Sensor Boost",
+        description_hu="Boost faktor aktív érzékelőkhez",
+        description_en="Boost factor for active sensors",
+        ge=0.0,
+        le=5.0,
+    )
+
+    ranking_unavailable_penalty: float = Field(
+        default=-0.5,
+        env="RANKING_UNAVAILABLE_PENALTY",
+        title_hu="Nem elérhető büntetés",
+        title_en="Unavailable Penalty",
+        description_hu="Büntetés faktor nem elérhető érzékelőkhöz",
+        description_en="Penalty factor for unavailable sensors",
+        ge=-2.0,
+        le=0.0,
+    )
+
     # Additional network timeouts
     http_timeout_short: float = Field(
         default=5.0,
@@ -1079,6 +1463,24 @@ class AppSettings(BaseSettings):
                 "ha_rag_log_level",
                 "log_file",
                 "skip_arango_healthcheck",
+            ],
+            "cross_encoder": [
+                "cross_encoder_model",
+                "cross_encoder_scale_factor",
+                "cross_encoder_offset",
+                "cross_encoder_enable_caching",
+            ],
+            "entity_ranking": [
+                "ranking_area_generic_boost",
+                "ranking_area_specific_boost",
+                "ranking_area_followup_multiplier",
+                "ranking_domain_boost",
+                "ranking_device_class_boost",
+                "ranking_previous_mention_boost",
+                "ranking_controllable_boost",
+                "ranking_readable_boost",
+                "ranking_active_sensor_boost",
+                "ranking_unavailable_penalty",
             ],
             "security": ["admin_token"],
         }

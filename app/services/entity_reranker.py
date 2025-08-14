@@ -29,6 +29,13 @@ class EntityScore:
     context_boost: float
     final_score: float
     ranking_factors: Dict[str, float]
+    
+    # Cross-encoder debug information
+    cross_encoder_raw_score: Optional[float] = None
+    cross_encoder_input_text: Optional[str] = None
+    cross_encoder_cache_hit: Optional[bool] = None
+    cross_encoder_inference_ms: Optional[float] = None
+    used_fallback_matching: Optional[bool] = None
 
 
 class EntityReranker:
@@ -41,17 +48,17 @@ class EntityReranker:
     - Area/domain relevance boosts
     """
 
-    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"):
+    def __init__(self, model_name: Optional[str] = None):
         """
         Initialize the entity reranker.
 
         Args:
-            model_name: Cross-encoder model to use for scoring
+            model_name: Cross-encoder model to use for scoring (uses config if None)
         """
-        self.model_name = model_name
+        self.settings = get_settings()
+        self.model_name = model_name or self.settings.cross_encoder_model
         self._model = None
         self._tokenizer = None
-        self.settings = get_settings()
 
         # Performance optimizations - TTL cache for cross-encoder scores
         self._score_cache = TTLCache(
@@ -218,8 +225,9 @@ class EntityReranker:
         Returns:
             EntityScore with detailed scoring information
         """
-        # Get base semantic similarity score
-        base_score = self._get_semantic_score(entity, query)
+        # Get base semantic similarity score with debug info
+        score_result = self._get_semantic_score_with_debug(entity, query)
+        base_score = score_result["score"]
 
         # Calculate context boost factors
         ranking_factors = self._calculate_ranking_factors(entity, context)
@@ -256,7 +264,91 @@ class EntityReranker:
             context_boost=context_boost,
             final_score=final_score,
             ranking_factors=ranking_factors,
+            cross_encoder_raw_score=score_result.get("raw_score"),
+            cross_encoder_input_text=score_result.get("input_text"),
+            cross_encoder_cache_hit=score_result.get("cache_hit"),
+            cross_encoder_inference_ms=score_result.get("inference_ms"),
+            used_fallback_matching=score_result.get("used_fallback", False),
         )
+
+    def _get_semantic_score_with_debug(self, entity: Dict[str, Any], query: str) -> Dict[str, Any]:
+        """
+        Get semantic similarity score with detailed debug information.
+
+        Args:
+            entity: Entity document
+            query: User query
+
+        Returns:
+            Dictionary with score and debug information
+        """
+        if not self._model:
+            # Fallback to simple text matching if model failed to load
+            fallback_score = self._fallback_text_score(entity, query)
+            return {
+                "score": fallback_score,
+                "raw_score": None,
+                "input_text": None,
+                "cache_hit": False,
+                "inference_ms": 0.0,
+                "used_fallback": True,
+            }
+
+        try:
+            # Create entity description for cross-encoder
+            entity_text = self._create_entity_description(entity)
+            
+            # Create cache key from query and entity text
+            cache_key = hashlib.md5(f"{query}:{entity_text}".encode()).hexdigest()
+            
+            # Check cache first
+            cache_hit = cache_key in self._score_cache
+            if cache_hit:
+                normalized_score = self._score_cache[cache_key]
+                return {
+                    "score": normalized_score,
+                    "raw_score": None,  # Raw score not stored in cache
+                    "input_text": entity_text,
+                    "cache_hit": True,
+                    "inference_ms": 0.0,
+                    "used_fallback": False,
+                }
+            
+            # Get cross-encoder score with timing
+            start_time = time.time()
+            raw_score = self._model.predict([(query, entity_text)])
+            inference_ms = (time.time() - start_time) * 1000
+            
+            # Normalize score to 0-1 range using configured parameters
+            scale_factor = self.settings.cross_encoder_scale_factor
+            offset = self.settings.cross_encoder_offset
+            normalized_score = (raw_score + offset) / scale_factor
+            normalized_score = max(0.0, min(1.0, normalized_score))
+            normalized_score = float(normalized_score)
+            
+            # Cache the result
+            self._score_cache[cache_key] = normalized_score
+            
+            return {
+                "score": normalized_score,
+                "raw_score": float(raw_score),
+                "input_text": entity_text,
+                "cache_hit": False,
+                "inference_ms": inference_ms,
+                "used_fallback": False,
+            }
+            
+        except Exception as exc:
+            logger.warning(f"Cross-encoder scoring failed: {exc}")
+            fallback_score = self._fallback_text_score(entity, query)
+            return {
+                "score": fallback_score,
+                "raw_score": None,
+                "input_text": self._create_entity_description(entity),
+                "cache_hit": False,
+                "inference_ms": 0.0,
+                "used_fallback": True,
+            }
 
     def _get_semantic_score(self, entity: Dict[str, Any], query: str) -> float:
         """
@@ -269,36 +361,8 @@ class EntityReranker:
         Returns:
             Semantic similarity score (0.0 to 1.0)
         """
-        if not self._model:
-            # Fallback to simple text matching if model failed to load
-            return self._fallback_text_score(entity, query)
-
-        try:
-            # Create entity description for cross-encoder
-            entity_text = self._create_entity_description(entity)
-
-            # Create cache key from query and entity text
-            cache_key = hashlib.md5(f"{query}:{entity_text}".encode()).hexdigest()
-
-            # Check cache first
-            if cache_key in self._score_cache:
-                return self._score_cache[cache_key]
-
-            # Get cross-encoder score
-            score = self._model.predict([(query, entity_text)])
-
-            # Normalize score to 0-1 range (cross-encoder can return negative values)
-            normalized_score = max(0.0, min(1.0, (score + 1.0) / 2.0))
-            normalized_score = float(normalized_score)
-
-            # Cache the result
-            self._score_cache[cache_key] = normalized_score
-
-            return normalized_score
-
-        except Exception as exc:
-            logger.warning(f"Cross-encoder scoring failed: {exc}")
-            return self._fallback_text_score(entity, query)
+        # Backward compatibility - just return the score
+        return self._get_semantic_score_with_debug(entity, query)["score"]
 
     def _create_entity_description(self, entity: Dict[str, Any]) -> str:
         """
@@ -418,17 +482,17 @@ class EntityReranker:
         # Previous entity mention boost - handle None values safely
         entity_id = entity.get("entity_id") or ""
         if entity_id and entity_id in context.previous_entities:
-            factors["previous_mention"] = 0.3
+            factors["previous_mention"] = self.settings.ranking_previous_mention_boost
 
         # Intent-specific boosts
         if context.intent == "control":
             # Boost controllable entities for control intents
             if entity_domain in ["light", "switch", "climate", "cover", "lock"]:
-                factors["controllable"] = 0.2
+                factors["controllable"] = self.settings.ranking_controllable_boost
         elif context.intent == "read":
             # Boost sensors for read intents
             if entity_domain == "sensor":
-                factors["readable"] = 0.1
+                factors["readable"] = self.settings.ranking_readable_boost
 
         # Availability boost - strongly prefer entities with active state values
         if entity_domain == "sensor" and entity_id:
@@ -437,13 +501,9 @@ class EntityReranker:
             try:
                 current_value = get_last_state(entity_id)
                 if current_value is not None:
-                    factors["has_active_value"] = (
-                        2.0  # Very strong boost for active sensors
-                    )
+                    factors["has_active_value"] = self.settings.ranking_active_sensor_boost
                 else:
-                    factors["unavailable_penalty"] = (
-                        -0.5  # Lighter penalty - still consider inactive sensors
-                    )  # Penalize unavailable sensors but don't exclude them
+                    factors["unavailable_penalty"] = self.settings.ranking_unavailable_penalty
             except Exception:
                 pass  # Don't fail ranking on state service errors
 

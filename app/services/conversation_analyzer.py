@@ -395,18 +395,22 @@ class ConversationAnalyzer:
         """
         boost_factors = {}
 
-        # Higher boost for explicitly mentioned areas
+        # Higher boost for explicitly mentioned areas (using config values)
+        from ha_rag_bridge.config import get_settings
+        settings = get_settings()
+        
         for area in context.areas_mentioned:
             if area == "ház":  # Generic house reference
-                boost_factors[area] = 1.2
+                boost_factors[area] = settings.ranking_area_generic_boost
             else:  # Specific area
-                boost_factors[area] = 2.0
+                boost_factors[area] = settings.ranking_area_specific_boost
 
         # Special handling for follow-up questions
         if context.is_follow_up and context.areas_mentioned:
             # Boost all mentioned areas more for follow-ups
+            multiplier = settings.ranking_area_followup_multiplier
             for area in context.areas_mentioned:
-                boost_factors[area] = boost_factors.get(area, 1.0) * 1.5
+                boost_factors[area] = boost_factors.get(area, 1.0) * multiplier
 
         return boost_factors
 
@@ -424,13 +428,17 @@ class ConversationAnalyzer:
         """
         boost_factors = {}
 
+        # Get config values
+        from ha_rag_bridge.config import get_settings
+        settings = get_settings()
+
         # Boost mentioned domains
         for domain in context.domains_mentioned:
-            boost_factors[f"domain:{domain}"] = 1.5
+            boost_factors[f"domain:{domain}"] = settings.ranking_domain_boost
 
         # Higher boost for specific device classes
         for device_class in context.device_classes_mentioned:
-            boost_factors[f"device_class:{device_class}"] = 2.0
+            boost_factors[f"device_class:{device_class}"] = settings.ranking_device_class_boost
 
         return boost_factors
 
