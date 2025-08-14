@@ -69,7 +69,13 @@
       "Bash(pre-commit run:*)",
       "Bash(npx:*)",
       "Bash(node:*)",
-      "Bash(npm --version)"
+      "Bash(npm --version)",
+      "Bash(poetry:*)",
+      "Bash(chromium:*)",
+      "Bash(top:*)",
+      "Bash(htop:*)",
+      "Bash(ps:*)",
+      "Bash(ss:*)"
     ],
     "deny": []
   }

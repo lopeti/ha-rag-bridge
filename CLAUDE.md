@@ -90,12 +90,37 @@ except Exception as e:
 
 ## Development Commands
 
-### Environment Setup
-- `make dev-up` - Start development stack (HASS+bridge+Arango)
+### Environment Setup & Debug Mode Management
+- `make dev-up` - Start development stack with debug mode (debugpy + auto-reload + file watching)
 - `make dev-down` - Stop development stack  
-- `make dev-shell` - Access bridge container shell
+- `make dev-shell` - Access bridge container shell in debug mode
+- `docker compose up -d` - Start production stack (quiet, low CPU, no debug overhead)
+- `docker compose down` - Stop production stack
 - `poetry install` - Install Python dependencies
 - `poetry shell` - Activate virtual environment
+
+### 🔧 Debug Mode Switching (CPU Optimization)
+**Problem**: Development mode with uvicorn --reload + debugpy causes high CPU usage (75%+)
+**Solution**: Use production mode for normal operation, debug mode only when needed
+
+**Normal operation** (quiet, low CPU ~0.1%):
+```bash
+docker compose up -d
+```
+
+**Development/debugging** (when code changes needed):
+```bash
+make dev-up         # Enables: debugpy port 5678, auto-reload, volume mounting
+# ... development work ...
+make dev-down       # Stop debug mode
+docker compose up -d # Return to quiet production mode
+```
+
+**Debug features available in dev mode**:
+- VS Code remote debugging (port 5678)
+- File change auto-reload
+- Live code editing via volume mounts
+- DevContainer support ("Reopen in Container")
 
 ### Quick Deploy (Fejlesztés -> Éles)
 - `make deploy` - Gyors deploy ha-rag-core könyvtárba
