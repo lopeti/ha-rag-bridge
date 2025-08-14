@@ -36,7 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Screenshot Storage**: Save screenshots to `screenshots/tmp/` directory for organized debugging
 - **UI Issue Analysis**: Screenshot-driven debugging for complex frontend problems
 - **Browser Command**: `chromium --headless --disable-gpu --virtual-time-budget=10000 --screenshot=screenshots/tmp/filename.png URL`
-- **Live Environment**: Admin UI accessible at `http://192.168.1.105:3100/admin/ui/` for visual verification
+- **Live Environment**: Admin UI accessible at `http://192.168.1.105:8000/admin/ui/` for visual verification
 
 ### CSS & Design System Hygiene
 - **NO INLINE STYLES**: Never use `style={{}}` attributes - use design system classes instead

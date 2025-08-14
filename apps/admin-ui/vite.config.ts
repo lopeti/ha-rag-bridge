@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/admin': {
-        target: 'http://localhost:3100',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       }
     }

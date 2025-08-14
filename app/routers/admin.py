@@ -15,7 +15,6 @@ from fastapi import APIRouter, Request, HTTPException, status, Response
 from fastapi.responses import StreamingResponse
 from arango import ArangoClient
 from ha_rag_bridge.bootstrap import bootstrap, SCHEMA_LATEST
-from ha_rag_bridge.utils.env import env_true
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
 
@@ -26,6 +25,7 @@ logger = get_logger(__name__)
 def _check_token(request: Request) -> None:
     # Skip token check in debug mode
     from ha_rag_bridge.config import get_settings
+
     settings = get_settings()
     if settings.debug:
         return
@@ -1008,7 +1008,7 @@ async def get_monitoring_logs(
     """Get system logs with filtering from containers"""
     _check_token(request)
 
-    # Real implementation using Docker logs
+    # Real implementation using subprocess with docker CLI
     import subprocess
     import re
     from datetime import datetime
@@ -1029,7 +1029,20 @@ async def get_monitoring_logs(
     container_name = available_containers[container_key]
 
     try:
-        # Get recent logs from Docker container
+        # Check if docker CLI is available
+        try:
+            subprocess.run(
+                ["docker", "--version"], capture_output=True, check=True, timeout=5
+            )
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+        ):
+            # Docker CLI not available, fallback to mock data
+            return await _get_mock_logs(level)
+
+        # Get recent logs from Docker container using CLI
         cmd = ["docker", "logs", container_name, "--tail=50", "--timestamps"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
@@ -1037,8 +1050,13 @@ async def get_monitoring_logs(
             # Fallback to mock data if docker logs fails
             return await _get_mock_logs(level)
 
+        log_output = result.stdout + result.stderr
+        if not log_output:
+            # Fallback to mock data if no logs available
+            return await _get_mock_logs(level)
+
         logs = []
-        for line in result.stdout.split("\n") + result.stderr.split("\n"):
+        for line in log_output.split("\n"):
             if not line.strip():
                 continue
 
@@ -1992,10 +2010,11 @@ async def test_connection(request: Request, service: str):
         pass
 
     overrides = body.get("overrides", {})
-    
+
     # Filter out masked sensitive values - they should fallback to saved settings
     filtered_overrides = {
-        key: value for key, value in overrides.items() 
+        key: value
+        for key, value in overrides.items()
         if value and value != "***MASKED***"
     }
 
@@ -2007,8 +2026,12 @@ async def test_connection(request: Request, service: str):
             try:
                 arango_url = filtered_overrides.get("arango_url", settings.arango_url)
                 arango_db = filtered_overrides.get("arango_db", settings.arango_db)
-                arango_user = filtered_overrides.get("arango_user", settings.arango_user)
-                arango_pass = filtered_overrides.get("arango_pass", settings.arango_pass)
+                arango_user = filtered_overrides.get(
+                    "arango_user", settings.arango_user
+                )
+                arango_pass = filtered_overrides.get(
+                    "arango_pass", settings.arango_pass
+                )
 
                 client = ArangoClient(hosts=arango_url)
                 db = client.db(
@@ -2129,7 +2152,9 @@ async def test_connection(request: Request, service: str):
 
         elif service == "openai":
             # Test OpenAI API connection with overrides
-            openai_api_key = filtered_overrides.get("openai_api_key", settings.openai_api_key)
+            openai_api_key = filtered_overrides.get(
+                "openai_api_key", settings.openai_api_key
+            )
 
             if not openai_api_key:
                 return {
@@ -2189,8 +2214,12 @@ async def test_connection(request: Request, service: str):
 
         elif service == "gemini":
             # Test Google Gemini API connection with overrides
-            gemini_api_key = filtered_overrides.get("gemini_api_key", settings.gemini_api_key)
-            gemini_base_url = filtered_overrides.get("gemini_base_url", settings.gemini_base_url)
+            gemini_api_key = filtered_overrides.get(
+                "gemini_api_key", settings.gemini_api_key
+            )
+            gemini_base_url = filtered_overrides.get(
+                "gemini_base_url", settings.gemini_base_url
+            )
 
             if not gemini_api_key:
                 return {

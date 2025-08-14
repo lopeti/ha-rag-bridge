@@ -11,13 +11,13 @@ services:
         context: .
         dockerfile: Dockerfile     # Point to the Dockerfile
         target: dev                # Use the dev stage
-    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 3100 --log-config docker/uvicorn_log.ini
+    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "5678:5678"
-      - "3100:3100"
+      - "8000:8000"
     environment:
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -52,7 +52,7 @@ services:
       - ./litellm_ha_rag_hooks_phase3.py:/app/litellm_ha_rag_hooks_phase3.py
     command: ["--config", "/app/config.yaml", "--detailed_debug"]
     environment:
-      - HA_RAG_API_URL=http://bridge:3100
+      - HA_RAG_API_URL=http://bridge:8000
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
