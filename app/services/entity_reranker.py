@@ -29,7 +29,7 @@ class EntityScore:
     context_boost: float
     final_score: float
     ranking_factors: Dict[str, float]
-    
+
     # Cross-encoder debug information
     cross_encoder_raw_score: Optional[float] = None
     cross_encoder_input_text: Optional[str] = None
@@ -271,7 +271,9 @@ class EntityReranker:
             used_fallback_matching=score_result.get("used_fallback", False),
         )
 
-    def _get_semantic_score_with_debug(self, entity: Dict[str, Any], query: str) -> Dict[str, Any]:
+    def _get_semantic_score_with_debug(
+        self, entity: Dict[str, Any], query: str
+    ) -> Dict[str, Any]:
         """
         Get semantic similarity score with detailed debug information.
 
@@ -297,10 +299,10 @@ class EntityReranker:
         try:
             # Create entity description for cross-encoder
             entity_text = self._create_entity_description(entity)
-            
+
             # Create cache key from query and entity text
             cache_key = hashlib.md5(f"{query}:{entity_text}".encode()).hexdigest()
-            
+
             # Check cache first
             cache_hit = cache_key in self._score_cache
             if cache_hit:
@@ -313,22 +315,22 @@ class EntityReranker:
                     "inference_ms": 0.0,
                     "used_fallback": False,
                 }
-            
+
             # Get cross-encoder score with timing
             start_time = time.time()
             raw_score = self._model.predict([(query, entity_text)])
             inference_ms = (time.time() - start_time) * 1000
-            
+
             # Normalize score to 0-1 range using configured parameters
             scale_factor = self.settings.cross_encoder_scale_factor
             offset = self.settings.cross_encoder_offset
             normalized_score = (raw_score + offset) / scale_factor
             normalized_score = max(0.0, min(1.0, normalized_score))
             normalized_score = float(normalized_score)
-            
+
             # Cache the result
             self._score_cache[cache_key] = normalized_score
-            
+
             return {
                 "score": normalized_score,
                 "raw_score": float(raw_score),
@@ -337,7 +339,7 @@ class EntityReranker:
                 "inference_ms": inference_ms,
                 "used_fallback": False,
             }
-            
+
         except Exception as exc:
             logger.warning(f"Cross-encoder scoring failed: {exc}")
             fallback_score = self._fallback_text_score(entity, query)
@@ -501,9 +503,13 @@ class EntityReranker:
             try:
                 current_value = get_last_state(entity_id)
                 if current_value is not None:
-                    factors["has_active_value"] = self.settings.ranking_active_sensor_boost
+                    factors["has_active_value"] = (
+                        self.settings.ranking_active_sensor_boost
+                    )
                 else:
-                    factors["unavailable_penalty"] = self.settings.ranking_unavailable_penalty
+                    factors["unavailable_penalty"] = (
+                        self.settings.ranking_unavailable_penalty
+                    )
             except Exception:
                 pass  # Don't fail ranking on state service errors
 

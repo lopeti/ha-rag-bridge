@@ -498,10 +498,10 @@ class HomeAssistantSettings(BaseModel):
 
 class CrossEncoderSettings(BaseModel):
     """Cross-encoder model configuration for semantic reranking.
-    
+
     Cross-encoder modell konfiguráció a szemantikai újrarangsoroláshoz.
     """
-    
+
     model_name: str = Field(
         default="cross-encoder/ms-marco-MiniLM-L-6-v2",
         env="CROSS_ENCODER_MODEL",
@@ -513,7 +513,7 @@ class CrossEncoderSettings(BaseModel):
         recommendation_en="ms-marco-MiniLM-L-6-v2: default | paraphrase-multilingual-mpnet-base-v2: multilingual | all-MiniLM-L12-v2: higher accuracy",
         restart_required=True,
     )
-    
+
     # Score normalization parameters
     score_scale_factor: float = Field(
         default=2.0,
@@ -525,7 +525,7 @@ class CrossEncoderSettings(BaseModel):
         ge=1.0,
         le=5.0,
     )
-    
+
     score_offset: float = Field(
         default=1.0,
         env="CROSS_ENCODER_OFFSET",
@@ -536,7 +536,7 @@ class CrossEncoderSettings(BaseModel):
         ge=0.0,
         le=2.0,
     )
-    
+
     score_min_bound: float = Field(
         default=0.0,
         env="CROSS_ENCODER_MIN_BOUND",
@@ -547,7 +547,7 @@ class CrossEncoderSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    
+
     score_max_bound: float = Field(
         default=1.0,
         env="CROSS_ENCODER_MAX_BOUND",
@@ -558,7 +558,7 @@ class CrossEncoderSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    
+
     # Performance settings
     enable_caching: bool = Field(
         default=True,
@@ -568,7 +568,7 @@ class CrossEncoderSettings(BaseModel):
         description_hu="Cross-encoder eredmények gyorsítótárazásának engedélyezése",
         description_en="Enable caching of cross-encoder results",
     )
-    
+
     fallback_threshold: float = Field(
         default=0.1,
         env="CROSS_ENCODER_FALLBACK_THRESHOLD",
@@ -583,10 +583,10 @@ class CrossEncoderSettings(BaseModel):
 
 class RankingSettings(BaseModel):
     """Entity ranking boost factors configuration.
-    
+
     Entitás rangsorolási boost faktorok konfigurációja.
     """
-    
+
     # Area boost factors
     area_generic_house_boost: float = Field(
         default=1.2,
@@ -598,7 +598,7 @@ class RankingSettings(BaseModel):
         ge=1.0,
         le=3.0,
     )
-    
+
     area_specific_boost: float = Field(
         default=2.0,
         env="RANKING_AREA_SPECIFIC_BOOST",
@@ -609,7 +609,7 @@ class RankingSettings(BaseModel):
         ge=1.0,
         le=5.0,
     )
-    
+
     area_followup_multiplier: float = Field(
         default=1.5,
         env="RANKING_AREA_FOLLOWUP_MULTIPLIER",
@@ -620,7 +620,7 @@ class RankingSettings(BaseModel):
         ge=1.0,
         le=3.0,
     )
-    
+
     # Domain and device class boosts
     domain_boost: float = Field(
         default=1.5,
@@ -632,7 +632,7 @@ class RankingSettings(BaseModel):
         ge=1.0,
         le=3.0,
     )
-    
+
     device_class_boost: float = Field(
         default=2.0,
         env="RANKING_DEVICE_CLASS_BOOST",
@@ -643,7 +643,7 @@ class RankingSettings(BaseModel):
         ge=1.0,
         le=5.0,
     )
-    
+
     # Intent-based boosts
     previous_mention_boost: float = Field(
         default=0.3,
@@ -655,7 +655,7 @@ class RankingSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    
+
     controllable_intent_boost: float = Field(
         default=0.2,
         env="RANKING_CONTROLLABLE_BOOST",
@@ -666,7 +666,7 @@ class RankingSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    
+
     readable_intent_boost: float = Field(
         default=0.1,
         env="RANKING_READABLE_BOOST",
@@ -677,7 +677,7 @@ class RankingSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    
+
     # Sensor availability factors
     active_sensor_boost: float = Field(
         default=2.0,
@@ -689,7 +689,7 @@ class RankingSettings(BaseModel):
         ge=0.0,
         le=5.0,
     )
-    
+
     unavailable_sensor_penalty: float = Field(
         default=-0.5,
         env="RANKING_UNAVAILABLE_PENALTY",
@@ -700,7 +700,7 @@ class RankingSettings(BaseModel):
         ge=-2.0,
         le=0.0,
     )
-    
+
     # Multiplicative area boosting
     area_multiplier_base: float = Field(
         default=1.0,
@@ -712,7 +712,7 @@ class RankingSettings(BaseModel):
         ge=0.5,
         le=2.0,
     )
-    
+
     area_context_factor: float = Field(
         default=0.5,
         env="RANKING_AREA_CONTEXT_FACTOR",

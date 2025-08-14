@@ -44,7 +44,7 @@ class EntityDebugInfo:
     context_boost: Optional[float] = None
     final_score: Optional[float] = None
     ranking_factors: Optional[Dict[str, float]] = None
-    
+
     # Cross-encoder specific debug info
     cross_encoder_raw_score: Optional[float] = None
     cross_encoder_input_text: Optional[str] = None
@@ -221,13 +221,23 @@ class SearchDebugger:
                 debug_info.final_score = entity_score.final_score
                 debug_info.ranking_factors = entity_score.ranking_factors.copy()
                 debug_info.pipeline_stage_reached = PipelineStage.RERANKING
-                
+
                 # Copy cross-encoder debug info
-                debug_info.cross_encoder_raw_score = getattr(entity_score, 'cross_encoder_raw_score', None)
-                debug_info.cross_encoder_input_text = getattr(entity_score, 'cross_encoder_input_text', None)
-                debug_info.cross_encoder_cache_hit = getattr(entity_score, 'cross_encoder_cache_hit', None)
-                debug_info.cross_encoder_inference_ms = getattr(entity_score, 'cross_encoder_inference_ms', None)
-                debug_info.used_fallback_matching = getattr(entity_score, 'used_fallback_matching', None)
+                debug_info.cross_encoder_raw_score = getattr(
+                    entity_score, "cross_encoder_raw_score", None
+                )
+                debug_info.cross_encoder_input_text = getattr(
+                    entity_score, "cross_encoder_input_text", None
+                )
+                debug_info.cross_encoder_cache_hit = getattr(
+                    entity_score, "cross_encoder_cache_hit", None
+                )
+                debug_info.cross_encoder_inference_ms = getattr(
+                    entity_score, "cross_encoder_inference_ms", None
+                )
+                debug_info.used_fallback_matching = getattr(
+                    entity_score, "used_fallback_matching", None
+                )
 
                 # Calculate score delta
                 if (
