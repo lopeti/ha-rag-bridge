@@ -130,7 +130,7 @@ export function Entities() {
   return (
     <>
       {/* Sticky Header with KPIs and Filters - Outside container */}
-      <div className="sticky top-16 z-40 bg-white border-b shadow-lg -mt-8 mb-8">
+      <div className="sticky top-0 z-40 bg-background border-b shadow-lg mb-8">
         <div className="max-w-7xl mx-auto px-6 py-3 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -192,10 +192,10 @@ export function Entities() {
 
           {/* Filters - Only visible in browse mode */}
           {activeTab === 'browse' && (
-            <div className="bg-gray-50 rounded-lg p-2 border">
+            <div className="bg-muted rounded-lg p-2 border">
               <div className="flex items-center gap-2 mb-2">
-                <Filter className="h-4 w-4 text-gray-600" />
-                <span className="text-sm font-medium text-gray-700">Szűrők</span>
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">Szűrők</span>
               </div>
               <div className="grid gap-2 md:grid-cols-3">
                 <div className="relative">
@@ -204,12 +204,12 @@ export function Entities() {
                     placeholder="Keresés..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 bg-white"
+                    className="pl-10 bg-background"
                   />
                 </div>
                 
                 <Select value={domain || 'all'} onValueChange={(value) => updateFilter('domain', value)}>
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Domain kiválasztása" />
                   </SelectTrigger>
                   <SelectContent>
@@ -221,7 +221,7 @@ export function Entities() {
                 </Select>
                 
                 <Select value={area || 'all'} onValueChange={(value) => updateFilter('area', value)}>
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Terület kiválasztása" />
                   </SelectTrigger>
                   <SelectContent>
@@ -238,7 +238,7 @@ export function Entities() {
       </div>
 
       {/* Main Content */}
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <div className="max-w-7xl mx-auto px-6 py-6">
           {/* Tab Content */}
           {activeTab === 'browse' && (
@@ -295,53 +295,6 @@ export function Entities() {
   );
 }
 
-// Friendly name quality analyzer
-function analyzeFriendlyNameQuality(friendlyName: string, entityId: string, deviceName?: string) {
-  const issues = [];
-  const suggestions = [];
-  let score = 100;
-
-  // Check if it's too generic
-  const genericTerms = ['power', 'sensor', 'switch', 'light', 'entity', 'device'];
-  if (genericTerms.some(term => friendlyName.toLowerCase().includes(term))) {
-    issues.push('🔴 Túl általános név');
-    score -= 30;
-    if (deviceName) {
-      suggestions.push(`Próbáld: "${deviceName} - ${friendlyName}"`);
-    }
-  }
-
-  // Check if it's just the entity ID
-  const entityName = entityId.split('.')[1]?.replace(/_/g, ' ');
-  if (friendlyName.toLowerCase() === entityName?.toLowerCase()) {
-    issues.push('🟡 Csak entity ID alapú');
-    score -= 20;
-  }
-
-  // Check length
-  if (friendlyName.length < 5) {
-    issues.push('🟠 Túl rövid');
-    score -= 15;
-  }
-
-  // Check if it contains area info
-  const commonAreas = ['nappali', 'konyha', 'hálószoba', 'fürdő'];
-  const hasAreaInfo = commonAreas.some(area => 
-    friendlyName.toLowerCase().includes(area) || entityId.toLowerCase().includes(area)
-  );
-  
-  if (!hasAreaInfo) {
-    issues.push('🟡 Nincs terület info');
-    score -= 10;
-  }
-
-  return {
-    score: Math.max(0, score),
-    issues,
-    suggestions,
-    quality: score >= 80 ? 'good' : score >= 60 ? 'medium' : 'poor'
-  };
-}
 
 // Domain-specific styling helper
 function getDomainInfo(domain: string, deviceClass?: string) {
@@ -373,31 +326,24 @@ function EntityCard({ entity, onClick }: { entity: any; onClick: () => void }) {
   const displayName = entity.friendly_name || 
     (entity.id ? entity.id.split('.')[1]?.replace(/_/g, ' ') : 'Unknown Entity');
 
-  // Get domain styling
+  // Get domain icon only (no colors)
   const domainInfo = getDomainInfo(entity.domain, entity.device_class);
   const DomainIcon = domainInfo.icon;
   
-  // Analyze friendly name quality
-  const qualityAnalysis = analyzeFriendlyNameQuality(
-    displayName, 
-    entity.id, 
-    entity.device_name
-  );
-
   return (
     <Card 
-      className={`${domainInfo.bgColor} hover:shadow-lg transition-all duration-200 cursor-pointer group border-2`}
+      className="hover:shadow-md transition-all duration-200 cursor-pointer group hover:border-primary/50"
       onClick={onClick}
     >
-      <CardContent className="p-4">
-        <div className="space-y-3">
+      <CardContent className="p-3">
+        <div className="space-y-2.5">
           {/* Header */}
-          <div className="flex items-start gap-3">
-            <div className={`p-2 rounded-full bg-white ${domainInfo.color} border-2 group-hover:scale-110 transition-transform`}>
-              <DomainIcon size={20} />
+          <div className="flex items-start gap-2.5">
+            <div className="p-1.5 rounded-md bg-muted group-hover:bg-muted/80 transition-colors">
+              <DomainIcon size={16} className="text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground truncate text-sm mb-1 group-hover:text-blue-600 transition-colors">
+              <h3 className="font-medium text-sm text-foreground truncate leading-tight">
                 {displayName}
               </h3>
               <p className="text-xs text-muted-foreground truncate">
@@ -407,27 +353,27 @@ function EntityCard({ entity, onClick }: { entity: any; onClick: () => void }) {
             <Button
               variant="ghost"
               size="sm"
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-6 w-6"
               onClick={(e) => {
                 e.stopPropagation();
                 onClick();
               }}
             >
-              <Eye className="h-4 w-4" />
+              <Eye className="h-3 w-3" />
             </Button>
           </div>
 
           {/* Current State */}
           {entity.state && (
-            <div className="bg-white/50 rounded-lg p-2 border">
+            <div className="bg-muted/50 rounded-md px-2 py-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-600">Current</span>
+                <span className="text-xs text-muted-foreground">State</span>
                 <div className="flex items-center gap-1">
-                  <span className="font-mono font-bold text-sm">
+                  <span className="font-mono text-sm font-medium text-foreground">
                     {entity.state}
                   </span>
                   {entity.unit_of_measurement && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-muted-foreground">
                       {entity.unit_of_measurement}
                     </span>
                   )}
@@ -436,35 +382,17 @@ function EntityCard({ entity, onClick }: { entity: any; onClick: () => void }) {
             </div>
           )}
 
-          {/* Badges */}
-          <div className="flex flex-wrap gap-1">
-            <Badge variant="secondary" className={`${domainInfo.color} bg-white/50 text-xs`}>
+          {/* Meta Info */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground font-mono">
               {entity.domain}
-            </Badge>
+            </span>
             {entity.device_class && (
-              <Badge variant="outline" className="text-xs bg-white/50">
+              <Badge variant="outline" className="text-xs h-5 px-1.5 text-muted-foreground">
                 {entity.device_class}
               </Badge>
             )}
-            {/* Quality indicator */}
-            <Badge 
-              variant="outline" 
-              className={`text-xs ${
-                qualityAnalysis.quality === 'good' ? 'bg-green-100 text-green-700 border-green-300' :
-                qualityAnalysis.quality === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                'bg-red-100 text-red-700 border-red-300'
-              }`}
-            >
-              {qualityAnalysis.score}%
-            </Badge>
           </div>
-
-          {/* Device info */}
-          {entity.device_name && (
-            <div className="text-xs text-muted-foreground truncate">
-              Device: {entity.device_name}
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>

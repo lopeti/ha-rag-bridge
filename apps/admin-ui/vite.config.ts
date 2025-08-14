@@ -10,6 +10,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/admin': {
+        target: 'http://localhost:3100',
+        changeOrigin: true,
+      }
+    }
+  },
   base: '/admin/ui/', // Set base URL for assets
   build: {
     outDir: 'dist',
