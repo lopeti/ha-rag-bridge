@@ -147,6 +147,13 @@ export interface EntityDebugInfo {
   final_score?: number;
   ranking_factors?: Record<string, number>;
   
+  // Cross-encoder specific debug info
+  cross_encoder_raw_score?: number;
+  cross_encoder_input_text?: string;
+  cross_encoder_cache_hit?: boolean;
+  cross_encoder_inference_ms?: number;
+  used_fallback_matching?: boolean;
+  
   // Stage 4: Selection
   is_active?: boolean;
   is_selected?: boolean;

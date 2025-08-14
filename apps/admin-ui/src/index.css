@@ -28,6 +28,18 @@
     --destructive: 358 75% 59%; /* HA red */
     --destructive-foreground: 0 0% 100%;
 
+    /* Semantic status colors - HA style */
+    --success: 120 60% 50%; /* HA green */
+    --success-foreground: 0 0% 100%;
+    --warning: 35 95% 58%; /* HA orange */
+    --warning-foreground: 0 0% 100%;
+    --info: 197 97% 48%; /* Same as primary - HA blue */
+    --info-foreground: 0 0% 100%;
+
+    /* State indicators */
+    --modified: 214 84% 95%; /* Light blue for modified state */
+    --modified-foreground: 214 84% 40%;
+
     /* HA borders - subtle and clean */
     --border: 214 32% 91%; /* Light blue-gray */
     --input: 214 32% 91%;
@@ -61,6 +73,18 @@
     /* HA dark destructive */
     --destructive: 358 75% 59%;
     --destructive-foreground: 210 40% 98%;
+
+    /* Semantic status colors - HA dark style */
+    --success: 120 60% 55%; /* Slightly lighter green for dark */
+    --success-foreground: 220 13% 9%;
+    --warning: 35 95% 65%; /* Slightly lighter orange for dark */
+    --warning-foreground: 220 13% 9%;
+    --info: 214 84% 66%; /* Same as primary - lighter blue for dark */
+    --info-foreground: 220 13% 9%;
+
+    /* State indicators - dark */
+    --modified: 220 13% 15%; /* Dark background for modified */
+    --modified-foreground: 214 84% 66%;
 
     /* HA dark borders */
     --border: 220 13% 15%;
@@ -185,6 +209,65 @@
   }
   .text-destructive-foreground {
     color: hsl(var(--destructive-foreground));
+  }
+
+  /* Semantic status colors */
+  .bg-success {
+    background-color: hsl(var(--success));
+  }
+  .bg-success-foreground {
+    background-color: hsl(var(--success-foreground));
+  }
+  .text-success {
+    color: hsl(var(--success));
+  }
+  .text-success-foreground {
+    color: hsl(var(--success-foreground));
+  }
+  .border-success {
+    border-color: hsl(var(--success));
+  }
+
+  .bg-warning {
+    background-color: hsl(var(--warning));
+  }
+  .bg-warning-foreground {
+    background-color: hsl(var(--warning-foreground));
+  }
+  .text-warning {
+    color: hsl(var(--warning));
+  }
+  .text-warning-foreground {
+    color: hsl(var(--warning-foreground));
+  }
+  .border-warning {
+    border-color: hsl(var(--warning));
+  }
+
+  .bg-info {
+    background-color: hsl(var(--info));
+  }
+  .bg-info-foreground {
+    background-color: hsl(var(--info-foreground));
+  }
+  .text-info {
+    color: hsl(var(--info));
+  }
+  .text-info-foreground {
+    color: hsl(var(--info-foreground));
+  }
+  .border-info {
+    border-color: hsl(var(--info));
+  }
+
+  .bg-modified {
+    background-color: hsl(var(--modified));
+  }
+  .text-modified {
+    color: hsl(var(--modified-foreground));
+  }
+  .border-modified {
+    border-color: hsl(var(--modified-foreground));
   }
 
   /* Border colors */

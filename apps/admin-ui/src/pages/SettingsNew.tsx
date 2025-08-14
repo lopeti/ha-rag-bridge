@@ -31,6 +31,8 @@ import type { ConfigData, ConfigFieldData } from '../lib/api';
 const categoryIcons: Record<string, React.ComponentType<any>> = {
   database: Database,
   embedding: Cpu,
+  cross_encoder: Target,
+  entity_ranking: Search,
   performance: Zap,
   query_scope: Target,
   similarity: Search,
@@ -197,8 +199,9 @@ export function Settings() {
   }
 
   const categoryOrder = [
-    'database', 'embedding', 'performance', 'query_scope', 
-    'similarity', 'network', 'home_assistant', 'debug', 'security'
+    'database', 'embedding', 'cross_encoder', 'entity_ranking',
+    'performance', 'query_scope', 'similarity', 'network', 
+    'home_assistant', 'debug', 'security'
   ];
 
   const categoryEntries = categoryOrder
@@ -221,7 +224,7 @@ export function Settings() {
       <div className="w-80 bg-card border-r border-border sticky top-0 h-screen overflow-y-auto">
         <div className="p-6 border-b border-border">
           <h1 className="text-xl font-bold text-foreground mb-2">
-            {t('configurationManagement')}
+{t('configurationManagement')}
           </h1>
           <p className="text-sm text-muted-foreground">
             {t('configuration')}

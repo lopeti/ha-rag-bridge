@@ -17,7 +17,9 @@ import {
   Clock,
   BarChart3,
   Activity,
-  ArrowRight
+  ArrowRight,
+  Brain,
+  Info
 } from 'lucide-react';
 import { adminApi, type EntityDebugInfo, type StageResult } from '../lib/api';
 
@@ -25,6 +27,11 @@ import { adminApi, type EntityDebugInfo, type StageResult } from '../lib/api';
 const formatScore = (score?: number): string => {
   if (score === undefined) return '-';
   return (score * 100).toFixed(1) + '%';
+};
+
+const formatRawScore = (score?: number): string => {
+  if (score === undefined) return '-';
+  return score.toFixed(3);
 };
 
 const getScoreColor = (score?: number): string => {
@@ -193,6 +200,61 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
                     <span className={`text-sm font-mono ${getScoreColor(entity.vector_score)}`}>
                       {formatScore(entity.vector_score)}
                     </span>
+                  </div>
+                )}
+
+                {/* Cross-encoder AI semantic analysis */}
+                {entity.base_score !== undefined && (
+                  <div className="flex flex-col gap-1 py-2 px-2 rounded bg-blue-50/50 border border-blue-200/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Brain className="w-3 h-3 text-blue-600" />
+                        <span className="font-medium">Cross-encoder AI</span>
+                        {entity.cross_encoder_cache_hit && (
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+                            Cache Hit
+                          </Badge>
+                        )}
+                        {entity.used_fallback_matching && (
+                          <Badge variant="outline" className="text-xs text-orange-600 border-orange-200">
+                            Text Fallback
+                          </Badge>
+                        )}
+                      </div>
+                      <span className={`text-sm font-mono ${getScoreColor(entity.base_score)}`}>
+                        {formatScore(entity.base_score)}
+                      </span>
+                    </div>
+                    
+                    {/* Cross-encoder details */}
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Raw Score:</span>
+                      <span className="font-mono">
+                        {entity.cross_encoder_raw_score !== undefined ? 
+                          formatRawScore(entity.cross_encoder_raw_score) : '-'
+                        }
+                      </span>
+                    </div>
+                    
+                    {entity.cross_encoder_inference_ms !== undefined && entity.cross_encoder_inference_ms > 0 && (
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Inference Time:</span>
+                        <span className="font-mono">{entity.cross_encoder_inference_ms.toFixed(1)}ms</span>
+                      </div>
+                    )}
+                    
+                    {/* Cross-encoder input preview tooltip */}
+                    {entity.cross_encoder_input_text && (
+                      <div className="flex items-center gap-1 text-xs">
+                        <Info className="w-3 h-3 text-blue-500" />
+                        <span 
+                          className="text-blue-600 cursor-help truncate max-w-[200px]"
+                          title={`Cross-encoder input: ${entity.cross_encoder_input_text}`}
+                        >
+                          Input: {entity.cross_encoder_input_text.substring(0, 30)}...
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 

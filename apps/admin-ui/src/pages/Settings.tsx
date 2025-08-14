@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -25,12 +25,13 @@ import type { ConfigData } from '../lib/api';
 
 
 export function Settings() {
+  console.log('🚨 CLAUDE DEBUG: Settings component loaded! 🚨');
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const currentLang = i18n.language;
   
   const [expandedCategories, setExpandedCategories] = useState<string[]>([
-    'database', 'embedding', 'performance'
+    'database', 'embedding', 'performance', 'cross_encoder', 'entity_ranking'
   ]);
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [configValues, setConfigValues] = useState<ConfigData>({});
@@ -45,9 +46,12 @@ export function Settings() {
   });
 
   // Initialize config values when data loads
-  if (configData && Object.keys(configValues).length === 0) {
-    setConfigValues(configData.config);
-  }
+  useEffect(() => {
+    if (configData && Object.keys(configValues).length === 0) {
+      console.log('Initializing config values:', Object.keys(configData.config));
+      setConfigValues(configData.config);
+    }
+  }, [configData, configValues]);
 
   // Configuration update mutation
   const updateConfigMutation = useMutation({
@@ -209,8 +213,9 @@ export function Settings() {
   }
 
   const categoryOrder = [
-    'database', 'embedding', 'performance', 'query_scope', 
-    'similarity', 'network', 'home_assistant', 'debug', 'security'
+    'database', 'embedding', 'cross_encoder', 'entity_ranking', 
+    'performance', 'query_scope', 'similarity', 'network', 
+    'home_assistant', 'debug', 'security'
   ];
 
   const hasRestartRequired = modifiedFields.size > 0 && 
@@ -222,7 +227,7 @@ export function Settings() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h1 className="text-3xl font-bold">{t('configurationManagement')}</h1>
+        <h1 className="text-3xl font-bold text-red-500 bg-yellow-300 p-4 border-8 border-red-600">🚨 URGENT CLAUDE TEST 🚨 - Configuration Management</h1>
         
         <div className="flex flex-wrap gap-2">
           <Button
@@ -326,7 +331,10 @@ export function Settings() {
       {/* Configuration Categories */}
       <div className="grid gap-4">
         {categoryOrder.map(category => {
-          if (!configValues[category]) return null;
+          if (!configValues[category]) {
+            console.log(`Missing category: ${category}, available:`, Object.keys(configValues));
+            return null;
+          }
           
           const isExpanded = expandedCategories.includes(category);
           const categoryFields = configValues[category];

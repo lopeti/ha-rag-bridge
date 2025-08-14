@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { Switch } from './ui/switch';
+import { Slider } from './ui/slider';
 import { cn } from '../lib/utils';
 
 interface ConfigFieldProps {
@@ -206,7 +207,7 @@ export function ConfigField({
       value: currentValue,
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => handleValueChange(e.target.value),
       disabled: false, // Always allow editing when revealed
-      className: `${isModified ? 'border-blue-300 bg-blue-50' : ''} ${validationError ? 'border-red-300 bg-red-50' : ''}`,
+      className: `${isModified ? 'border-modified bg-modified' : ''} ${validationError ? 'border-destructive bg-destructive/10' : ''}`,
     };
 
     switch (fieldType) {
@@ -220,8 +221,8 @@ export function ConfigField({
             <span className={cn(
               "text-sm font-medium",
               (value === true || value === 'true') 
-                ? "text-green-700 dark:text-green-400" 
-                : "text-gray-500 dark:text-gray-400"
+                ? "text-primary" 
+                : "text-muted-foreground"
             )}>
               {(value === true || value === 'true') ? t('enabled') : t('disabled')}
             </span>
@@ -229,28 +230,85 @@ export function ConfigField({
         );
         
       case 'number':
-        return (
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              {...inputProps}
-              min={constraints?.min}
-              max={constraints?.max}
-              step={type.includes('float') ? 'any' : '1'}
-            />
-            {constraints && (
-              <div className="text-xs text-muted-foreground whitespace-nowrap">
-                {constraints.min !== undefined && constraints.max !== undefined
-                  ? `${constraints.min}-${constraints.max}`
-                  : constraints.min !== undefined
-                  ? `≥${constraints.min}`
-                  : constraints.max !== undefined
-                  ? `≤${constraints.max}`
-                  : ''}
+        // Use slider only for cross_encoder and entity_ranking categories
+        const useSlider = (category === 'cross_encoder' || category === 'entity_ranking') && type.includes('float');
+        
+        if (useSlider) {
+          const numValue = typeof currentValue === 'string' ? parseFloat(currentValue) || 0 : currentValue || 0;
+          
+          // Define sensible ranges based on field type
+          let minVal = 0;
+          let maxVal = 5;
+          let step = 0.1;
+          
+          if (fieldName.includes('scale_factor')) {
+            minVal = 0.5; maxVal = 5.0; // Cross-encoder scale factor
+          } else if (fieldName.includes('offset')) {
+            minVal = 0.0; maxVal = 3.0; // Cross-encoder offset
+          } else if (fieldName.includes('boost') && !fieldName.includes('penalty')) {
+            minVal = 0.0; maxVal = 5.0; // Various boosts
+          } else if (fieldName.includes('multiplier')) {
+            minVal = 0.5; maxVal = 3.0; // Multipliers
+          } else if (fieldName.includes('penalty')) {
+            minVal = -2.0; maxVal = 0.0; // Penalties (negative values)
+          }
+          
+          // Override with actual constraints if provided
+          if (constraints?.min !== undefined) minVal = constraints.min;
+          if (constraints?.max !== undefined) maxVal = constraints.max;
+          
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-primary">
+                  {numValue.toFixed(1)}
+                </span>
+                <div className="text-xs text-muted-foreground">
+                  {minVal} — {maxVal}
+                </div>
               </div>
-            )}
-          </div>
-        );
+              <Slider
+                value={[numValue]}
+                onValueChange={(values) => {
+                  const newValue = Math.round(values[0] * 10) / 10; // Round to 1 decimal
+                  handleValueChange(newValue);
+                }}
+                min={minVal}
+                max={maxVal}
+                step={step}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{minVal}</span>
+                <span>{maxVal}</span>
+              </div>
+            </div>
+          );
+        } else {
+          // Use regular Input for other categories
+          return (
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                {...inputProps}
+                min={constraints?.min}
+                max={constraints?.max}
+                step={type.includes('float') ? 'any' : '1'}
+              />
+              {constraints && (
+                <div className="text-xs text-muted-foreground whitespace-nowrap">
+                  {constraints.min !== undefined && constraints.max !== undefined
+                    ? `${constraints.min}-${constraints.max}`
+                    : constraints.min !== undefined
+                    ? `≥${constraints.min}`
+                    : constraints.max !== undefined
+                    ? `≤${constraints.max}`
+                    : ''}
+                </div>
+              )}
+            </div>
+          );
+        }
         
       case 'select':
         const options = getSelectOptions();
@@ -259,7 +317,7 @@ export function ConfigField({
             value={value} 
             onValueChange={handleValueChange}
           >
-            <SelectTrigger className={isModified ? 'border-blue-300 bg-blue-50' : ''}>
+            <SelectTrigger className={isModified ? 'border-modified bg-modified' : ''}>
               <SelectValue placeholder={`Select ${fieldName}`} />
             </SelectTrigger>
             <SelectContent>
@@ -377,7 +435,7 @@ export function ConfigField({
           )}
           
           {recommendation && (
-            <div className="text-blue-700 dark:text-blue-300">
+            <div className="text-info">
               <strong>{t('recommendation')}:</strong> {recommendation}
             </div>
           )}

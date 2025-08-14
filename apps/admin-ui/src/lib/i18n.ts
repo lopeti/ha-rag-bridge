@@ -185,7 +185,9 @@ const resources = {
         network: 'Hálózat',
         home_assistant: 'Home Assistant',
         debug: 'Hibakeresés',
-        security: 'Biztonság'
+        security: 'Biztonság',
+        cross_encoder: 'Cross-encoder AI',
+        entity_ranking: 'Entitás rangsorolás'
       },
       resetToDefault: 'Alapértelmezett visszaállítása',
       saveChanges: 'Változtatások mentése',
@@ -411,7 +413,9 @@ const resources = {
         network: 'Network',
         home_assistant: 'Home Assistant',
         debug: 'Debug',
-        security: 'Security'
+        security: 'Security',
+        cross_encoder: 'Cross-encoder AI',
+        entity_ranking: 'Entity Ranking'
       },
       resetToDefault: 'Reset to Default',
       saveChanges: 'Save Changes',

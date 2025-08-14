@@ -31,6 +31,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Test Type Safety**: Include type checking in CI/CD pipeline
 - **Documentation**: Document complex type relationships and generic constraints
 
+### Visual Debugging & Screenshots
+- **Headless Browser for UI Debugging**: Use Chromium headless for taking screenshots of UI issues
+- **Screenshot Storage**: Save screenshots to `screenshots/tmp/` directory for organized debugging
+- **UI Issue Analysis**: Screenshot-driven debugging for complex frontend problems
+- **Browser Command**: `chromium --headless --disable-gpu --virtual-time-budget=10000 --screenshot=screenshots/tmp/filename.png URL`
+- **Live Environment**: Admin UI accessible at `http://192.168.1.105:3100/admin/ui/` for visual verification
+
+### CSS & Design System Hygiene
+- **NO INLINE STYLES**: Never use `style={{}}` attributes - use design system classes instead
+- **NO HARDCODED COLORS**: Never use `bg-blue-500`, `text-green-600`, etc. - use semantic theme colors
+- **USE THEME VARIABLES**: Always use `bg-primary`, `text-success`, `border-destructive`, etc.
+- **AVAILABLE SEMANTIC COLORS**: 
+  - **Primary**: `bg-primary`, `text-primary` (HA official blue)
+  - **Success**: `bg-success`, `text-success` (green for positive states)
+  - **Warning**: `bg-warning`, `text-warning` (orange for warnings)
+  - **Destructive**: `bg-destructive`, `text-destructive` (red for errors/delete)
+  - **Info**: `bg-info`, `text-info` (blue for information)
+  - **Modified**: `bg-modified`, `text-modified` (light blue for changed state)
+- **CLEANUP RULE**: When touching any file, remove hardcoded colors and replace with theme variables
+- **SHADCN/UI COMPONENTS**: Prefer regenerating components (`npx shadcn add component --overwrite`) over manual CSS fixes
+
 ### Examples of Proper Type Annotations
 
 ```python

@@ -42,6 +42,12 @@ terminal_output.txt
 *.backup
 *.bak
 
+# Screenshots and debugging images
+screenshots/
+*.png
+debug-*.png
+switch-*.png
+
 # Frontend & Node.js
 frontend/node_modules/
 frontend/build/
