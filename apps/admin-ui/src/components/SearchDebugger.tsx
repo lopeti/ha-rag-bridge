@@ -273,7 +273,7 @@ export const SearchDebugger: React.FC = () => {
       threshold,
       limit
     }),
-    enabled: query.trim().length > 0,
+    enabled: false, // Only run when manually triggered via refetch()
     staleTime: 0 // Always refetch for debug purposes
   });
   

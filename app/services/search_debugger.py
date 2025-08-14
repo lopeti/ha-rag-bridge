@@ -189,7 +189,10 @@ class SearchDebugger:
         """Update entity registry with vector search results."""
         for entity in entities:
             debug_info = self._get_or_create_entity_debug(entity)
-            debug_info.vector_score = entity.get("score", entity.get("similarity", 0.0))
+            # Check for ArangoDB vector score (_score) first, then fallback to other score fields
+            debug_info.vector_score = entity.get(
+                "_score", entity.get("score", entity.get("similarity", 0.0))
+            )
             debug_info.embedding_similarity = debug_info.vector_score
             debug_info.pipeline_stage_reached = PipelineStage.VECTOR_FALLBACK
 
