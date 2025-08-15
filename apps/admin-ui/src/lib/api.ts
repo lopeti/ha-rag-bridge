@@ -468,6 +468,75 @@ export const adminApi = {
   }> => {
     const response = await api.post('/test-all-connections');
     return response.data;
+  },
+
+  // Container Management
+  getContainerStatus: async (): Promise<{
+    containers: Array<{
+      name: string;
+      service: string;
+      status: string;
+      health: string;
+      image: string;
+      ports: any[];
+    }>;
+    timestamp: string;
+  }> => {
+    const response = await api.get('/containers/status');
+    return response.data;
+  },
+
+  getContainerHealth: async (): Promise<{
+    health_data: Array<{
+      container: string;
+      cpu_percent: string;
+      memory_usage: string;
+      network_io: string;
+      block_io: string;
+    }>;
+    timestamp: string;
+  }> => {
+    const response = await api.get('/containers/health');
+    return response.data;
+  },
+
+  restartContainer: async (service: string): Promise<{
+    success: boolean;
+    service: string;
+    message: string;
+    timestamp: string;
+  }> => {
+    const response = await api.post(`/containers/${service}/restart`);
+    return response.data;
+  },
+
+  rebuildContainer: async (service: string): Promise<{
+    success: boolean;
+    service: string;
+    message: string;
+    timestamp: string;
+  }> => {
+    const response = await api.post(`/containers/${service}/rebuild`);
+    return response.data;
+  },
+
+  restartStack: async (): Promise<{
+    success: boolean;
+    message: string;
+    timestamp: string;
+  }> => {
+    const response = await api.post('/stack/restart');
+    return response.data;
+  },
+
+  toggleDevMode: async (action: 'enable' | 'disable'): Promise<{
+    success: boolean;
+    action: string;
+    message: string;
+    timestamp: string;
+  }> => {
+    const response = await api.post(`/stack/dev-mode/${action}`);
+    return response.data;
   }
 };
 

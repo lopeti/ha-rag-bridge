@@ -17,7 +17,8 @@ import {
   AlertCircle, 
   Eye, 
   EyeOff, 
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
 import { Textarea } from './ui/textarea';
 import { Switch } from './ui/switch';
@@ -370,19 +371,27 @@ export function ConfigField({
     <div className="space-y-3">
       {/* Field Header */}
       <div className="flex items-center justify-between">
-        <Label htmlFor={fieldName} className="text-base font-medium flex items-center gap-2">
-          {title}
+        <div className="flex items-center gap-2">
+          <Label htmlFor={fieldName} className="text-base font-medium flex items-center gap-2">
+            {title}
+            {restart_required && (
+              <Badge variant="outline" className="text-xs">
+                {t('restartRequired')}
+              </Badge>
+            )}
+            {isModified && (
+              <Badge variant="secondary" className="text-xs">
+                Modified
+              </Badge>
+            )}
+          </Label>
           {restart_required && (
-            <Badge variant="outline" className="text-xs">
-              {t('restartRequired')}
-            </Badge>
+            <RestartButton 
+              fieldName={fieldName} 
+              isModified={isModified} 
+            />
           )}
-          {isModified && (
-            <Badge variant="secondary" className="text-xs">
-              Modified
-            </Badge>
-          )}
-        </Label>
+        </div>
         
         <div className="flex items-center gap-1">
           {env_var && (
@@ -453,5 +462,70 @@ export function ConfigField({
         </div>
       )}
     </div>
+  );
+}
+
+// RestartButton component for fields that require restart
+interface RestartButtonProps {
+  fieldName: string;
+  isModified: boolean;
+  disabled?: boolean;
+}
+
+export function RestartButton({ fieldName, isModified, disabled = false }: RestartButtonProps) {
+  
+  // Determine which service needs restart based on field name
+  const getServiceForField = (field: string): string | null => {
+    // Map critical fields to their corresponding services
+    const fieldServiceMap: Record<string, string> = {
+      'embed_dim': 'bridge',
+      'cross_encoder_model': 'bridge',
+      'sentence_transformer_model': 'bridge',
+      'embedding_backend': 'bridge',
+      'embedding_cpu_threads': 'bridge',
+      'arango_url': 'bridge',
+      'arango_user': 'bridge',
+      'arango_pass': 'bridge',
+      'arango_db': 'bridge',
+      'openai_api_key': 'bridge',
+      'gemini_api_key': 'bridge',
+      'ha_url': 'bridge',
+      'ha_token': 'bridge',
+    };
+    
+    return fieldServiceMap[field] || null;
+  };
+
+  const restartMutation = useMutation({
+    mutationFn: (service: string) => adminApi.restartContainer(service),
+  });
+
+  const service = getServiceForField(fieldName);
+  
+  if (!service || !isModified) {
+    return null;
+  }
+
+  const handleRestart = async () => {
+    if (service) {
+      await restartMutation.mutateAsync(service);
+    }
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handleRestart}
+      disabled={disabled || restartMutation.isPending}
+      className="ml-2 flex items-center gap-1"
+    >
+      {restartMutation.isPending ? (
+        <RefreshCw className="h-3 w-3 animate-spin" />
+      ) : (
+        <RefreshCw className="h-3 w-3" />
+      )}
+      {service} újraindítás
+    </Button>
   );
 }

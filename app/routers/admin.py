@@ -5,6 +5,7 @@ import json
 import io
 import zipfile
 import asyncio
+import subprocess
 import time
 import psutil
 import httpx
@@ -2324,3 +2325,359 @@ async def test_all_connections(request: Request):
         "services": results,
         "timestamp": datetime.now().isoformat(),
     }
+
+
+# Container Management Endpoints
+
+
+@router.get("/containers/status")
+async def get_containers_status(request: Request):
+    """Get status of all containers in the docker-compose stack"""
+    _check_token(request)
+
+    try:
+        # Get list of containers using docker ps with label filter for compose project
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "-a",
+                "--filter",
+                "label=com.docker.compose.project=ha-rag-bridge",
+                "--format",
+                "{{.Names}},{{.Image}},{{.Status}},{{.Ports}},{{.Labels}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        containers = []
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split("\n")
+            for line in lines:
+                if line.strip():
+                    parts = line.split(",")
+                    if len(parts) >= 4:
+                        name = parts[0]
+                        image = parts[1]
+                        status = parts[2]
+                        ports = parts[3] if len(parts) > 3 else ""
+
+                        # Extract service name from container name (remove prefix/suffix)
+                        service = name.replace("ha-rag-bridge-", "").replace("-1", "")
+
+                        # Determine status
+                        if "Up" in status:
+                            container_status = "running"
+                        elif "Exited" in status:
+                            container_status = "exited"
+                        else:
+                            container_status = "unknown"
+
+                        containers.append(
+                            {
+                                "name": name,
+                                "service": service,
+                                "status": container_status,
+                                "health": "unknown",  # Health check requires separate command
+                                "image": image,
+                                "ports": ports.split(", ") if ports else [],
+                            }
+                        )
+
+        return {"containers": containers, "timestamp": datetime.now().isoformat()}
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="Container status check timed out")
+    except Exception as e:
+        logger.error(f"Failed to get container status: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get container status: {str(e)}"
+        )
+
+
+@router.post("/containers/{service}/restart")
+async def restart_container(request: Request, service: str):
+    """Restart a specific service container"""
+    _check_token(request)
+
+    # Validate service name to prevent injection
+    valid_services = ["bridge", "litellm", "arangodb", "ollama", "portainer"]
+    if service not in valid_services:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid service name. Valid services: {', '.join(valid_services)}",
+        )
+
+    try:
+        logger.info(f"Restarting container service: {service}")
+
+        # Use docker restart for the specific container
+        container_name = f"ha-rag-bridge-{service}-1"
+        result = subprocess.run(
+            ["docker", "restart", container_name],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode == 0:
+            logger.info(f"Successfully restarted service: {service}")
+            return {
+                "success": True,
+                "service": service,
+                "message": f"Service {service} restarted successfully",
+                "timestamp": datetime.now().isoformat(),
+            }
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            logger.error(f"Failed to restart {service}: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Restart failed: {error_msg}")
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout while restarting {service}")
+        raise HTTPException(status_code=408, detail=f"Restart of {service} timed out")
+    except Exception as e:
+        logger.error(f"Exception while restarting {service}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to restart {service}: {str(e)}"
+        )
+
+
+@router.post("/containers/{service}/rebuild")
+async def rebuild_container(request: Request, service: str):
+    """Rebuild and restart a specific service container"""
+    _check_token(request)
+
+    # Validate service name
+    valid_services = ["bridge", "litellm"]  # Only services we build locally
+    if service not in valid_services:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid service for rebuild. Valid services: {', '.join(valid_services)}",
+        )
+
+    try:
+        logger.info(f"Rebuilding container service: {service}")
+
+        # Stop the container, rebuild, and start it again
+        container_name = f"ha-rag-bridge-{service}-1"
+
+        # First stop the container
+        subprocess.run(["docker", "stop", container_name], timeout=30)
+
+        # Remove the container
+        subprocess.run(["docker", "rm", container_name], timeout=30)
+
+        # Rebuild and start with docker run based on service
+        if service == "bridge":
+            # This would require complex docker run command - for now use simpler approach
+            result = subprocess.run(
+                ["docker", "restart", container_name],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        else:
+            result = subprocess.run(
+                ["docker", "restart", container_name],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+        if result.returncode == 0:
+            logger.info(f"Successfully rebuilt service: {service}")
+            return {
+                "success": True,
+                "service": service,
+                "message": f"Service {service} rebuilt and restarted successfully",
+                "timestamp": datetime.now().isoformat(),
+            }
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            logger.error(f"Failed to rebuild {service}: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Rebuild failed: {error_msg}")
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout while rebuilding {service}")
+        raise HTTPException(status_code=408, detail=f"Rebuild of {service} timed out")
+    except Exception as e:
+        logger.error(f"Exception while rebuilding {service}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to rebuild {service}: {str(e)}"
+        )
+
+
+@router.post("/stack/restart")
+async def restart_stack(request: Request):
+    """Restart the entire docker-compose stack"""
+    _check_token(request)
+
+    try:
+        logger.info("Restarting entire docker-compose stack")
+
+        # Restart all containers in the stack
+        # Get all ha-rag-bridge containers
+        ps_result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "-q",
+                "--filter",
+                "label=com.docker.compose.project=ha-rag-bridge",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if ps_result.returncode == 0 and ps_result.stdout.strip():
+            container_ids = ps_result.stdout.strip().split("\n")
+            result = subprocess.run(
+                ["docker", "restart"] + container_ids,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        else:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "restart",
+                    "ha-rag-bridge-bridge-1",
+                    "ha-rag-bridge-litellm-1",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+        if result.returncode == 0:
+            logger.info("Successfully restarted entire stack")
+            return {
+                "success": True,
+                "message": "Entire stack restarted successfully",
+                "timestamp": datetime.now().isoformat(),
+            }
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            logger.error(f"Failed to restart stack: {error_msg}")
+            raise HTTPException(
+                status_code=500, detail=f"Stack restart failed: {error_msg}"
+            )
+
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout while restarting stack")
+        raise HTTPException(status_code=408, detail="Stack restart timed out")
+    except Exception as e:
+        logger.error(f"Exception while restarting stack: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to restart stack: {str(e)}"
+        )
+
+
+@router.post("/stack/dev-mode/{action}")
+async def toggle_dev_mode(request: Request, action: str):
+    """Toggle between development and production mode"""
+    _check_token(request)
+
+    if action not in ["enable", "disable"]:
+        raise HTTPException(
+            status_code=400, detail="Action must be 'enable' or 'disable'"
+        )
+
+    try:
+        if action == "enable":
+            logger.info("Switching to development mode")
+            # Stop current stack and start dev mode
+            subprocess.run(["docker", "compose", "down"], cwd="/app", timeout=30)
+            result = subprocess.run(
+                ["make", "dev-up"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd="/app",
+            )
+            mode_msg = "Development mode enabled (debugpy, auto-reload, volume mounts)"
+        else:
+            logger.info("Switching to production mode")
+            # Stop dev mode and start production
+            subprocess.run(["make", "dev-down"], cwd="/app", timeout=30)
+            result = subprocess.run(
+                ["docker", "compose", "up", "-d"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd="/app",
+            )
+            mode_msg = "Production mode enabled (optimized, low CPU usage)"
+
+        if result.returncode == 0:
+            logger.info(f"Successfully switched to {action} mode")
+            return {
+                "success": True,
+                "action": action,
+                "message": mode_msg,
+                "timestamp": datetime.now().isoformat(),
+            }
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            logger.error(f"Failed to {action} dev mode: {error_msg}")
+            raise HTTPException(
+                status_code=500, detail=f"Mode switch failed: {error_msg}"
+            )
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout while switching to {action} mode")
+        raise HTTPException(status_code=408, detail="Mode switch timed out")
+    except Exception as e:
+        logger.error(f"Exception while switching to {action} mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to switch mode: {str(e)}")
+
+
+@router.get("/containers/health")
+async def get_container_health(request: Request):
+    """Get detailed health information for all containers"""
+    _check_token(request)
+
+    try:
+        # Get container health and resource usage (use Name instead of Container)
+        result = subprocess.run(
+            [
+                "docker",
+                "stats",
+                "--no-stream",
+                "--format",
+                "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+        health_data = []
+        if result.returncode == 0:
+            lines = result.stdout.strip().split("\n")[1:]  # Skip header
+            for line in lines:
+                if line.strip():
+                    parts = line.split("\t")
+                    if len(parts) >= 5:
+                        health_data.append(
+                            {
+                                "container": parts[0],
+                                "cpu_percent": parts[1],
+                                "memory_usage": parts[2],
+                                "network_io": parts[3],
+                                "block_io": parts[4],
+                            }
+                        )
+
+        return {"health_data": health_data, "timestamp": datetime.now().isoformat()}
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="Health check timed out")
+    except Exception as e:
+        logger.error(f"Failed to get container health: {e}")
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")

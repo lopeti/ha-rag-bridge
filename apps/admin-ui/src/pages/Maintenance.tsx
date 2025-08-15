@@ -8,8 +8,9 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 // import { ScrollArea } from '../components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
-import { Database, Trash2, RefreshCw, Activity, HardDrive, Cpu, X, Terminal, Download } from 'lucide-react';
+import { Database, Trash2, RefreshCw, Activity, HardDrive, Cpu, X, Terminal, Download, Container } from 'lucide-react';
 import { adminApi } from '../lib/api';
+import { ContainerManagement } from '../components/ContainerManagement';
 
 export function Maintenance() {
   const { t } = useTranslation();
@@ -322,6 +323,19 @@ export function Maintenance() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Container Management */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Container className="h-5 w-5 mr-2" />
+            Konténer kezelés
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ContainerManagement />
+        </CardContent>
+      </Card>
 
       {/* Maintenance Actions */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">

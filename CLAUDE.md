@@ -129,6 +129,35 @@ docker compose up -d # Return to quiet production mode
 - `./deploy` - Közvetlen deploy parancs
 - `./quick-deploy.sh [target_dir]` - Teljes deploy script
 
+### Frontend Development & Build Process
+⚠️ **CRITICAL**: Frontend changes require build process to be visible in production
+
+**Frontend Development Commands**:
+- `cd apps/admin-ui && npm install` - Install frontend dependencies
+- `cd apps/admin-ui && npm run dev` - Start development server with hot reload
+- `cd apps/admin-ui && npm run build` - Build for production (REQUIRED)
+- `cd apps/admin-ui && npm run preview` - Preview production build
+
+**⚠️ MANDATORY AFTER UI CHANGES**:
+```bash
+cd apps/admin-ui
+npm run build  # Build React app to dist/
+```
+
+**Why This Matters**:
+- Admin UI serves static files from `apps/admin-ui/dist/`
+- React development changes are NOT visible until built
+- **Always build after UI component changes** (new components, imports, etc.)
+- **Always test with screenshots** after claiming UI features work
+- Use headless Chromium to verify: `chromium --headless --screenshot=test.png http://localhost:8000/admin/ui/`
+
+**Frontend Testing Workflow**:
+1. Make UI changes
+2. `npm run build` in apps/admin-ui
+3. Restart bridge container if needed
+4. Take screenshot to verify changes are visible
+5. Only then mark feature as complete
+
 ### Testing
 - `poetry run pytest` - Run all tests
 - `poetry run pytest tests/test_filename.py` - Run specific test file
