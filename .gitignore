@@ -93,3 +93,4 @@ docs/build/
 
 # Screenshots and temporary captures
 screenshots/.tmp/
+.claude/settings.local.json
