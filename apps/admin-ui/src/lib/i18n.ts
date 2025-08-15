@@ -179,6 +179,8 @@ const resources = {
       configCategories: {
         database: 'Adatbázis',
         embedding: 'Beágyazás',
+        query_processing: 'Query feldolgozás',
+        embedding_advanced: 'Haladó beágyazás',
         performance: 'Teljesítmény',
         query_scope: 'Lekérdezési hatókör',
         similarity: 'Hasonlóság',
@@ -407,6 +409,8 @@ const resources = {
       configCategories: {
         database: 'Database',
         embedding: 'Embedding',
+        query_processing: 'Query Processing',
+        embedding_advanced: 'Advanced Embedding',
         performance: 'Performance',
         query_scope: 'Query Scope',
         similarity: 'Similarity',

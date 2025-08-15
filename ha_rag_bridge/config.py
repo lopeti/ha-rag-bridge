@@ -1431,6 +1431,22 @@ class AppSettings(BaseSettings):
                 "gemini_base_url",
                 "gemini_output_dim",
             ],
+            "query_processing": [
+                "query_rewriting_enabled",
+                "query_rewriting_model",
+                "query_rewriting_timeout_ms",
+                "coreference_resolution_enabled",
+            ],
+            "embedding_advanced": [
+                "use_instruction_templates",
+                "query_prefix_template",
+                "document_prefix_template",
+                "embedding_text_format",
+                "query_expansion_enabled",
+                "max_query_variants",
+                "include_query_translations",
+                "include_query_synonyms",
+            ],
             "performance": [
                 "state_cache_maxsize",
                 "conversation_cache_maxsize",
@@ -1567,6 +1583,179 @@ class AppSettings(BaseSettings):
             metadata[category] = category_metadata
 
         return metadata
+
+    # Query Rewriting & Advanced Search Configuration
+    query_rewriting_enabled: bool = Field(
+        default=True,
+        env="QUERY_REWRITING_ENABLED",
+        title_hu="Query átírás engedélyezése",
+        title_en="Enable Query Rewriting",
+        description_hu="LLM-alapú többfordulós query átírás engedélyezése coreference resolution-nel",
+        description_en="Enable LLM-based multi-turn query rewriting with coreference resolution",
+    )
+
+    query_rewriting_model: str = Field(
+        default="mistral-7b",
+        env="QUERY_REWRITING_MODEL",
+        title_hu="Query átíró modell",
+        title_en="Query Rewriting Model",
+        description_hu="LLM modell a query átíráshoz",
+        description_en="LLM model for query rewriting",
+        enum=["mistral-7b", "llama-3.2", "disabled"],
+        recommendation_hu="mistral-7b: gyors és pontos | llama-3.2: alternatív | disabled: kikapcsolva",
+        recommendation_en="mistral-7b: fast and accurate | llama-3.2: alternative | disabled: turned off",
+    )
+
+    query_rewriting_timeout_ms: int = Field(
+        default=200,
+        env="QUERY_REWRITING_TIMEOUT_MS",
+        title_hu="Query átírás timeout (ms)",
+        title_en="Query Rewriting Timeout (ms)",
+        description_hu="Maximális várakozási idő query átírásra milliszekundumban",
+        description_en="Maximum waiting time for query rewriting in milliseconds",
+        ge=50,
+        le=2000,
+    )
+
+    coreference_resolution_enabled: bool = Field(
+        default=True,
+        env="COREFERENCE_RESOLUTION_ENABLED",
+        title_hu="Anafora feloldás engedélyezése",
+        title_en="Enable Coreference Resolution",
+        description_hu="Pronoun és referencia feloldás beszélgetési kontextusban",
+        description_en="Pronoun and reference resolution in conversational context",
+    )
+
+    # Embedding Advanced Configuration
+    use_instruction_templates: bool = Field(
+        default=True,
+        env="USE_INSTRUCTION_TEMPLATES",
+        title_hu="Instruction template-ek használata",
+        title_en="Use Instruction Templates",
+        description_hu="Query és document specifikus embedding prefix-ek használata",
+        description_en="Use query and document specific embedding prefixes",
+    )
+
+    query_prefix_template: str = Field(
+        default="query: ",
+        env="QUERY_PREFIX_TEMPLATE",
+        title_hu="Query prefix template",
+        title_en="Query Prefix Template",
+        description_hu="Template prefix query embedding-ekhez",
+        description_en="Template prefix for query embeddings",
+    )
+
+    document_prefix_template: str = Field(
+        default="passage: ",
+        env="DOCUMENT_PREFIX_TEMPLATE",
+        title_hu="Document prefix template",
+        title_en="Document Prefix Template",
+        description_hu="Template prefix document embedding-ekhez",
+        description_en="Template prefix for document embeddings",
+    )
+
+    embedding_text_format: str = Field(
+        default="structured",
+        env="EMBEDDING_TEXT_FORMAT",
+        title_hu="Embedding szöveg formátum",
+        title_en="Embedding Text Format",
+        description_hu="Embedding szöveg struktúrájának formátuma",
+        description_en="Format of embedding text structure",
+        enum=["legacy", "structured", "minimal"],
+        recommendation_hu="structured: optimalizált | minimal: tömör | legacy: eredeti",
+        recommendation_en="structured: optimized | minimal: compact | legacy: original",
+    )
+
+    # Query Expansion Configuration
+    query_expansion_enabled: bool = Field(
+        default=True,
+        env="QUERY_EXPANSION_ENABLED",
+        title_hu="Query bővítés engedélyezése",
+        title_en="Enable Query Expansion",
+        description_hu="Többféle query variáns generálása jobb keresési eredményekhez",
+        description_en="Generate multiple query variants for better search results",
+    )
+
+    max_query_variants: int = Field(
+        default=3,
+        env="MAX_QUERY_VARIANTS",
+        title_hu="Maximális query variánsok",
+        title_en="Maximum Query Variants",
+        description_hu="Maximálisan generált query variánsok száma",
+        description_en="Maximum number of generated query variants",
+        ge=1,
+        le=5,
+    )
+
+    include_query_translations: bool = Field(
+        default=True,
+        env="INCLUDE_QUERY_TRANSLATIONS",
+        title_hu="Query fordítások beillesztése",
+        title_en="Include Query Translations",
+        description_hu="Magyar-angol fordítási párok a query expansion-ben",
+        description_en="Hungarian-English translation pairs in query expansion",
+    )
+
+    include_query_synonyms: bool = Field(
+        default=True,
+        env="INCLUDE_QUERY_SYNONYMS",
+        title_hu="Query szinonimák beillesztése",
+        title_en="Include Query Synonyms",
+        description_hu="Domain-specifikus szinonimák a query expansion-ben",
+        description_en="Domain-specific synonyms in query expansion",
+    )
+
+    # Model Comparison & Benchmarking
+    model_comparison_enabled: bool = Field(
+        default=False,
+        env="MODEL_COMPARISON_ENABLED",
+        title_hu="Modell összehasonlítás engedélyezése",
+        title_en="Enable Model Comparison",
+        description_hu="A/B testing embedding modellek között",
+        description_en="A/B testing between embedding models",
+    )
+
+    primary_embedding_model: str = Field(
+        default="multilingual",
+        env="PRIMARY_EMBEDDING_MODEL",
+        title_hu="Elsődleges embedding modell",
+        title_en="Primary Embedding Model",
+        description_hu="Fő embedding modell a benchmarking-hez",
+        description_en="Primary embedding model for benchmarking",
+        enum=["multilingual", "hungarian", "e5"],
+        recommendation_hu="multilingual: jelenlegi | hungarian: magyar-specifikus | e5: fejlett",
+        recommendation_en="multilingual: current | hungarian: Hungarian-specific | e5: advanced",
+    )
+
+    comparison_embedding_model: str = Field(
+        default="hungarian",
+        env="COMPARISON_EMBEDDING_MODEL",
+        title_hu="Összehasonlítási embedding modell",
+        title_en="Comparison Embedding Model",
+        description_hu="Alternatív modell az összehasonlításhoz",
+        description_en="Alternative model for comparison",
+        enum=["multilingual", "hungarian", "e5"],
+    )
+
+    model_comparison_traffic_split: int = Field(
+        default=10,
+        env="MODEL_COMPARISON_TRAFFIC_SPLIT",
+        title_hu="Forgalom felosztás (%)",
+        title_en="Traffic Split (%)",
+        description_hu="Az összehasonlítási modellre irányított forgalom százaléka",
+        description_en="Percentage of traffic directed to comparison model",
+        ge=0,
+        le=50,
+    )
+
+    benchmark_logging_enabled: bool = Field(
+        default=True,
+        env="BENCHMARK_LOGGING_ENABLED",
+        title_hu="Benchmark naplózás engedélyezése",
+        title_en="Enable Benchmark Logging",
+        description_hu="Modell összehasonlítási eredmények naplózása",
+        description_en="Log model comparison results",
+    )
 
 
 # Global settings instance

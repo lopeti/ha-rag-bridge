@@ -84,6 +84,62 @@ class LocalBackend(BaseEmbeddingBackend):
         return [e.tolist() for e in embeddings]
 
 
+class EnhancedLocalBackend(LocalBackend):
+    """Enhanced Local Backend with instruction templates and query/document encoding split."""
+    
+    def __init__(self) -> None:
+        super().__init__()
+        
+        # Import config here to avoid circular imports
+        try:
+            from ha_rag_bridge.config import get_settings
+            self.settings = get_settings()
+            self.use_instruction_templates = self.settings.use_instruction_templates
+            self.query_prefix = self.settings.query_prefix_template
+            self.document_prefix = self.settings.document_prefix_template
+        except ImportError:
+            # Fallback if config not available
+            self.use_instruction_templates = True
+            self.query_prefix = "query: "
+            self.document_prefix = "passage: "
+    
+    def embed_query(self, text: str) -> List[float]:
+        """Query-specific embedding with instruction template."""
+        if self.use_instruction_templates:
+            prefixed_text = f"{self.query_prefix}{text}"
+        else:
+            prefixed_text = text
+            
+        return self.embed([prefixed_text])[0]
+    
+    def embed_document(self, text: str) -> List[float]:
+        """Document-specific embedding with instruction template.""" 
+        if self.use_instruction_templates:
+            prefixed_text = f"{self.document_prefix}{text}"
+        else:
+            prefixed_text = text
+            
+        return self.embed([prefixed_text])[0]
+    
+    def embed_multi_query(self, queries: List[str]) -> List[List[float]]:
+        """Batch multi-query embedding with query prefix."""
+        if self.use_instruction_templates:
+            prefixed_queries = [f"{self.query_prefix}{q}" for q in queries]
+        else:
+            prefixed_queries = queries
+            
+        return self.embed(prefixed_queries)
+    
+    def embed_multi_document(self, documents: List[str]) -> List[List[float]]:
+        """Batch multi-document embedding with document prefix."""
+        if self.use_instruction_templates:
+            prefixed_docs = [f"{self.document_prefix}{d}" for d in documents]
+        else:
+            prefixed_docs = documents
+            
+        return self.embed(prefixed_docs)
+
+
 class OpenAIBackend(BaseEmbeddingBackend):
     """Embed texts using the OpenAI API."""
 
@@ -398,4 +454,11 @@ def get_backend(name: str) -> BaseEmbeddingBackend:
         return OpenAIBackend()
     if name == "gemini":
         return GeminiBackend()
+    if name == "enhanced" or name == "enhanced_local":
+        return EnhancedLocalBackend()
     return LocalBackend()
+
+
+def get_enhanced_backend() -> EnhancedLocalBackend:
+    """Get the enhanced backend with instruction template support."""
+    return EnhancedLocalBackend()

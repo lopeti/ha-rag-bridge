@@ -5,6 +5,8 @@ import { useLocation } from 'react-router-dom';
 import { adminApi } from '../lib/api';
 import { ConfigField } from '../components/ConfigField';
 import { ServiceConnectionTest } from '../components/ServiceConnectionTest';
+import { QueryProcessingConfig } from '../components/QueryProcessingConfig';
+import { EmbeddingAdvancedConfig } from '../components/EmbeddingAdvancedConfig';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -23,7 +25,9 @@ import {
   Bug,
   Shield,
   Search,
-  Target
+  Target,
+  Brain,
+  Settings as SettingsIcon
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { ConfigData, ConfigFieldData } from '../lib/api';
@@ -31,6 +35,8 @@ import type { ConfigData, ConfigFieldData } from '../lib/api';
 const categoryIcons: Record<string, React.ComponentType<any>> = {
   database: Database,
   embedding: Cpu,
+  query_processing: Brain,
+  embedding_advanced: SettingsIcon,
   cross_encoder: Target,
   entity_ranking: Search,
   performance: Zap,
@@ -199,9 +205,9 @@ export function Settings() {
   }
 
   const categoryOrder = [
-    'database', 'embedding', 'cross_encoder', 'entity_ranking',
-    'performance', 'query_scope', 'similarity', 'network', 
-    'home_assistant', 'debug', 'security'
+    'database', 'embedding', 'query_processing', 'embedding_advanced',
+    'cross_encoder', 'entity_ranking', 'performance', 'query_scope', 
+    'similarity', 'network', 'home_assistant', 'debug', 'security'
   ];
 
   const categoryEntries = categoryOrder
@@ -463,21 +469,42 @@ export function Settings() {
                 </p>
               </div>
               
-              <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                  {Object.entries(currentCategory[1]).map(([fieldName, fieldData]) => (
-                    <ConfigField
-                      key={fieldName}
-                      category={currentCategory[0]}
-                      fieldName={fieldName}
-                      fieldData={fieldData}
-                      isModified={modifiedFields.has(`${currentCategory[0]}.${fieldName}`)}
-                      currentLang={currentLang}
-                      onValueChange={handleFieldChange}
-                    />
-                  ))}
+              {/* Use specialized components for SBERT categories */}
+              {currentCategory[0] === 'query_processing' ? (
+                <QueryProcessingConfig
+                  config={configValues}
+                  modifiedFields={modifiedFields}
+                  onValueChange={handleFieldChange}
+                  currentLang={currentLang}
+                  isExpanded={true}
+                  onToggle={() => {}}
+                />
+              ) : currentCategory[0] === 'embedding_advanced' ? (
+                <EmbeddingAdvancedConfig
+                  config={configValues}
+                  modifiedFields={modifiedFields}
+                  onValueChange={handleFieldChange}
+                  currentLang={currentLang}
+                  isExpanded={true}
+                  onToggle={() => {}}
+                />
+              ) : (
+                <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    {Object.entries(currentCategory[1]).map(([fieldName, fieldData]) => (
+                      <ConfigField
+                        key={fieldName}
+                        category={currentCategory[0]}
+                        fieldName={fieldName}
+                        fieldData={fieldData}
+                        isModified={modifiedFields.has(`${currentCategory[0]}.${fieldName}`)}
+                        currentLang={currentLang}
+                        onValueChange={handleFieldChange}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </section>
           )}
         </div>
