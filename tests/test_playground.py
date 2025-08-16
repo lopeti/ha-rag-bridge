@@ -15,4 +15,3 @@ def test_streamlit_app_import(monkeypatch):
     monkeypatch.setattr("ha_rag_bridge.query", lambda *_a, **_kw: {})
 
     importlib.import_module("ha_rag_bridge.playground.streamlit_app")
-

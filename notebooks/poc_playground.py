@@ -11,7 +11,7 @@
 # # ha-rag-bridge Playground (Notebook)
 #
 # Rövid, önmagában futtatható notebook a retriever & prompt vizsgálatához.
-# 
+#
 # * Kérdés megadása
 # * `top_k` paraméter állítása
 # * JSON kimenet megjelenítése
@@ -37,4 +37,3 @@ print(json.dumps(response, indent=2, ensure_ascii=False))
 
 # %%
 print(response.get("prompt", "<nincs prompt mező>"))
-

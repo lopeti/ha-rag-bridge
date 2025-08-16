@@ -179,7 +179,6 @@ def determine_retry_strategy(state: RAGState) -> dict:
 
     errors = state.get("errors", [])
     retry_count = state.get("retry_count", 0)
-    detected_scope = state.get("detected_scope")
 
     strategy = {
         "should_retry": False,

@@ -10,7 +10,9 @@ from ha_rag_bridge import query as rag_query
 #  Page config & layout
 # --------------------------------------------------------------------------- #
 
-st.set_page_config(page_title="ha-rag-bridge Playground", page_icon="🧩", layout="centered")
+st.set_page_config(
+    page_title="ha-rag-bridge Playground", page_icon="🧩", layout="centered"
+)
 st.title("🧩 ha-rag-bridge Playground")
 st.caption("Gyors tesztfelület a retriever + prompt finomhangolásához.")
 
@@ -42,9 +44,11 @@ if st.button("Futtatás"):
 #  Convenience CLI entry-point
 # --------------------------------------------------------------------------- #
 
+
 def main() -> None:  # pragma: no cover
     """Run via `python -m ha_rag_bridge.playground.streamlit_app`."""
     import subprocess
+
     subprocess.run(
         ["streamlit", "run", "-q", "-"],
         input=__file__.encode(),
@@ -54,4 +58,3 @@ def main() -> None:  # pragma: no cover
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-

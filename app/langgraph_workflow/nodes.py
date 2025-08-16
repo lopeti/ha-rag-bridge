@@ -465,7 +465,6 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
         max_primary = min(
             6, len(filtered_entities) // 2
         )  # At most half should be primary, max 6
-        max_related = len(filtered_entities) - max_primary  # Rest are related
 
         for i, es in enumerate(filtered_entities):
             has_cluster_context = es.entity.get("_cluster_context") is not None

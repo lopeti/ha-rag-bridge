@@ -5,7 +5,7 @@ This module provides LiteLLM callback hooks that:
 2. Inject conversation-aware context into user messages for cache optimization
 3. Optionally execute Home‑Assistant tool calls and attach their results (post‑call)
 
-Cache-friendly approach: Entities are injected into user messages instead of system 
+Cache-friendly approach: Entities are injected into user messages instead of system
 messages to maximize LLM KV-cache reuse and improve response times.
 
 The implementation follows LiteLLM's `CustomLogger` interface and must be
@@ -75,7 +75,7 @@ def _find_system_placeholder(messages: List[Dict[str, Any]]) -> int | None:
 
 
 def _extract_user_question_and_context(
-    messages: List[Dict[str, Any]]
+    messages: List[Dict[str, Any]],
 ) -> tuple[str | None, List[Dict[str, Any]]]:
     """Extract the LAST user question and full conversation context."""
     import re
@@ -194,7 +194,7 @@ def _parse_chat_history(chat_content: str) -> List[Dict[str, Any]]:
 
 
 def _extract_conversation_insights(
-    conversation_context: List[Dict[str, Any]]
+    conversation_context: List[Dict[str, Any]],
 ) -> str | None:
     """Extract insights and previously mentioned entities from conversation."""
     import re
