@@ -214,7 +214,6 @@ class HAConfigAdvisor:
 
             # Check friendly name quality
             friendly_name = entity.get("friendly_name", "")
-            original_name = entity.get("original_name", "")
 
             if not friendly_name:
                 issues.append(
@@ -429,7 +428,6 @@ class HAConfigAdvisor:
 
     def _suggest_friendly_name(self, entity_id: str, current_name: str) -> str:
         """Suggest a better friendly name"""
-        domain = entity_id.split(".")[0] if "." in entity_id else ""
         entity_name = entity_id.split(".")[-1] if "." in entity_id else entity_id
 
         # Basic suggestions based on domain and entity structure
@@ -749,7 +747,7 @@ def main():
     )
     parser.add_argument(
         "--level",
-        choices=[l.value for l in IssueLevel],
+        choices=[level.value for level in IssueLevel],
         help="Filter issues by severity level",
     )
     parser.add_argument(
