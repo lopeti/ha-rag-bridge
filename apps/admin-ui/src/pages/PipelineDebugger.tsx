@@ -10,6 +10,62 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { RefreshCw, Play, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { EntityPipeline } from '@/components/pipeline/EntityPipeline';
 import { ScoreEvolution } from '@/components/pipeline/ScoreEvolution';
+import { EnhancedPipeline } from '@/components/pipeline/EnhancedPipeline';
+
+interface EnhancedPipelineStage {
+  stage_name: string;
+  stage_type: 'transform' | 'search' | 'boost' | 'rank' | 'filter';
+  input_count: number;
+  output_count: number;
+  duration_ms: number;
+  details?: {
+    query_rewrite?: {
+      original: string;
+      rewritten: string;
+      method: string;
+      confidence: number;
+      coreferences_resolved: string[];
+      reasoning?: string;
+    };
+    conversation_summary?: {
+      topic: string;
+      current_focus: string;
+      intent_pattern: string;
+      topic_domains: string[];
+      confidence: number;
+      reasoning: string;
+    };
+    cluster_search?: {
+      cluster_types: string[];
+      cluster_count: number;
+      scope: string;
+      optimal_k: number;
+    };
+    vector_search?: {
+      backend: string;
+      vector_dimension: number;
+      total_entities: number;
+      k_value: number;
+    };
+    memory_boost?: {
+      memory_entities_count: number;
+      boosted_entities: number;
+      session_id: string;
+    };
+    reranking?: {
+      algorithm: string;
+      score_range: {
+        min: number;
+        max: number;
+      };
+      primary_count: number;
+      related_count: number;
+      target_entities: number;
+      filtered_entities: number;
+      formatter_selected: string;
+    };
+  };
+}
 
 interface WorkflowTrace {
   _key: string;
@@ -22,6 +78,7 @@ interface WorkflowTrace {
   status: 'pending' | 'running' | 'success' | 'error';
   node_executions: any[];
   entity_pipeline: any[];
+  enhanced_pipeline_stages: EnhancedPipelineStage[];
   performance_metrics: any;
   errors: string[];
 }
@@ -32,7 +89,7 @@ export const PipelineDebugger: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isTraceLoading, setIsTraceLoading] = useState(false);
   const [isLive, setIsLive] = useState(false);
-  const [activeTab, setActiveTab] = useState('execution');
+  const [activeTab, setActiveTab] = useState('enhanced');
   const [testQuery, setTestQuery] = useState('hány fok van a nappaliban?');
 
   // Fetch recent traces (simplified list)
@@ -257,11 +314,26 @@ export const PipelineDebugger: React.FC = () => {
           
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="enhanced">Enhanced Pipeline</TabsTrigger>
                 <TabsTrigger value="execution">Execution Flow</TabsTrigger>
                 <TabsTrigger value="entities">Entity Pipeline</TabsTrigger>
                 <TabsTrigger value="raw">Raw Data</TabsTrigger>
               </TabsList>
+              
+              <TabsContent value="enhanced" className="mt-6">
+                {isTraceLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-32 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <EnhancedPipeline 
+                    enhancedPipeline={selectedTrace.enhanced_pipeline_stages || []}
+                  />
+                )}
+              </TabsContent>
               
               <TabsContent value="execution" className="mt-6">
                 {isTraceLoading ? (
@@ -274,6 +346,7 @@ export const PipelineDebugger: React.FC = () => {
                   <ScoreEvolution 
                     nodeExecutions={selectedTrace.node_executions || []}
                     entityPipeline={selectedTrace.entity_pipeline || []}
+                    enhancedPipeline={selectedTrace.enhanced_pipeline_stages || []}
                   />
                 )}
               </TabsContent>
@@ -286,7 +359,10 @@ export const PipelineDebugger: React.FC = () => {
                     <Skeleton className="h-24 w-full" />
                   </div>
                 ) : (
-                  <EntityPipeline entityPipeline={selectedTrace.entity_pipeline || []} />
+                  <EntityPipeline 
+                    entityPipeline={selectedTrace.entity_pipeline || []} 
+                    enhancedPipeline={selectedTrace.enhanced_pipeline_stages || []}
+                  />
                 )}
               </TabsContent>
               

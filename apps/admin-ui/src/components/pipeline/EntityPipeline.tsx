@@ -16,8 +16,18 @@ interface EntityStageInfo {
   metadata: any;
 }
 
+interface EnhancedPipelineStage {
+  stage_name: string;
+  stage_type: 'transform' | 'search' | 'boost' | 'rank' | 'filter';
+  input_count: number;
+  output_count: number;
+  duration_ms: number;
+  details?: any;
+}
+
 interface EntityPipelineProps {
   entityPipeline: EntityStageInfo[];
+  enhancedPipeline?: EnhancedPipelineStage[];
 }
 
 const EntityStageCard: React.FC<{ stage: EntityStageInfo; index: number }> = ({ stage, index }) => {
@@ -190,8 +200,12 @@ const EntityStageCard: React.FC<{ stage: EntityStageInfo; index: number }> = ({ 
   );
 };
 
-export const EntityPipeline: React.FC<EntityPipelineProps> = ({ entityPipeline }) => {
-  if (!entityPipeline || entityPipeline.length === 0) {
+export const EntityPipeline: React.FC<EntityPipelineProps> = ({ entityPipeline, enhancedPipeline }) => {
+  // Show enhanced pipeline info if available, fallback to entity pipeline
+  const hasEnhancedData = enhancedPipeline && enhancedPipeline.length > 0;
+  const hasEntityData = entityPipeline && entityPipeline.length > 0;
+  
+  if (!hasEnhancedData && !hasEntityData) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -207,8 +221,35 @@ export const EntityPipeline: React.FC<EntityPipelineProps> = ({ entityPipeline }
 
   return (
     <div className="space-y-6">
-      {/* Pipeline Summary */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Enhanced Pipeline Summary */}
+      {hasEnhancedData && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Database className="h-4 w-4 text-blue-600" />
+              Enhanced Pipeline Overview ({enhancedPipeline!.length} stages)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-5 gap-4 text-sm">
+              {enhancedPipeline!.map((stage, index) => (
+                <div key={index} className="text-center">
+                  <div className="font-semibold text-xs">{stage.stage_name.replace(/_/g, ' ')}</div>
+                  <div className="text-xs text-muted-foreground">{stage.stage_type}</div>
+                  <div className="text-xs">
+                    {stage.input_count} → {stage.output_count}
+                  </div>
+                  <div className="text-xs">{stage.duration_ms.toFixed(0)}ms</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Entity Pipeline Summary */}
+      {hasEntityData && (
+        <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{entityPipeline.length}</div>
@@ -233,14 +274,17 @@ export const EntityPipeline: React.FC<EntityPipelineProps> = ({ entityPipeline }
             <p className="text-xs text-muted-foreground">Reduction Rate</p>
           </CardContent>
         </Card>
-      </div>
+        </div>
+      )}
 
       {/* Pipeline Stages */}
-      <div className="space-y-3">
-        {entityPipeline.map((stage, index) => (
-          <EntityStageCard key={`${stage.stage}-${index}`} stage={stage} index={index} />
-        ))}
-      </div>
+      {hasEntityData && (
+        <div className="space-y-3">
+          {entityPipeline.map((stage, index) => (
+            <EntityStageCard key={`${stage.stage}-${index}`} stage={stage} index={index} />
+          ))}
+        </div>
+      )}
 
       {/* Pipeline Flow Visualization */}
       <Card>

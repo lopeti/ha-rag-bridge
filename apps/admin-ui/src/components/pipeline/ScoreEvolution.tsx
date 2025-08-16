@@ -24,27 +24,84 @@ interface EntityStageInfo {
   metadata: any;
 }
 
+interface EnhancedPipelineStage {
+  stage_name: string;
+  stage_type: 'transform' | 'search' | 'boost' | 'rank' | 'filter';
+  input_count: number;
+  output_count: number;
+  duration_ms: number;
+  details?: any;
+}
+
 interface ScoreEvolutionProps {
   nodeExecutions: NodeExecution[];
   entityPipeline: EntityStageInfo[];
+  enhancedPipeline?: EnhancedPipelineStage[];
 }
 
-export const ScoreEvolution: React.FC<ScoreEvolutionProps> = ({ nodeExecutions, entityPipeline }) => {
-  // Extract score evolution from entity pipeline
-  const scoreEvolution = entityPipeline.map(stage => {
-    const scores = stage.entities
-      .filter(entity => entity._score !== undefined)
-      .map(entity => entity._score);
-    
-    return {
-      stage: stage.stage,
-      entityCount: stage.entity_count,
-      avgScore: scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0,
-      maxScore: scores.length > 0 ? Math.max(...scores) : 0,
-      minScore: scores.length > 0 ? Math.min(...scores) : 0,
-      scores: scores
-    };
-  });
+export const ScoreEvolution: React.FC<ScoreEvolutionProps> = ({ nodeExecutions, entityPipeline, enhancedPipeline }) => {
+  // Create a mapping of entity pipeline stages to their scores
+  const entityScoreMap = new Map();
+  if (entityPipeline && entityPipeline.length > 0) {
+    entityPipeline.forEach(stage => {
+      const scores = stage.entities
+        .filter(entity => entity._score !== undefined)
+        .map(entity => entity._score);
+      
+      entityScoreMap.set(stage.stage, {
+        avgScore: scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0,
+        maxScore: scores.length > 0 ? Math.max(...scores) : 0,
+        minScore: scores.length > 0 ? Math.min(...scores) : 0,
+        scores: scores
+      });
+    });
+  }
+  
+  // Prefer enhanced pipeline data if available, with score injection
+  const pipelineToUse = enhancedPipeline && enhancedPipeline.length > 0 ? enhancedPipeline : null;
+  
+  // Extract score evolution from enhanced pipeline with entity score injection
+  const scoreEvolution = pipelineToUse 
+    ? pipelineToUse.map(stage => {
+        // Try to match enhanced stage to entity stage for score data
+        const matchingEntityStage = entityScoreMap.get('vector_search') || entityScoreMap.get('final_selection');
+        const hasScoreData = stage.stage_name === 'vector_search' || stage.stage_name === 'final_selection';
+        const scoreData = hasScoreData && matchingEntityStage ? matchingEntityStage : {
+          avgScore: 0,
+          maxScore: 0,
+          minScore: 0,
+          scores: []
+        };
+        
+        return {
+          stage: stage.stage_name,
+          entityCount: stage.output_count,
+          avgScore: scoreData.avgScore,
+          maxScore: scoreData.maxScore,
+          minScore: scoreData.minScore,
+          scores: scoreData.scores,
+          duration: stage.duration_ms,
+          stageType: stage.stage_type,
+          hasRealScores: hasScoreData && scoreData.scores.length > 0
+        };
+      })
+    : entityPipeline.map(stage => {
+        const scores = stage.entities
+          .filter(entity => entity._score !== undefined)
+          .map(entity => entity._score);
+        
+        return {
+          stage: stage.stage,
+          entityCount: stage.entity_count,
+          avgScore: scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0,
+          maxScore: scores.length > 0 ? Math.max(...scores) : 0,
+          minScore: scores.length > 0 ? Math.min(...scores) : 0,
+          scores: scores,
+          duration: 0,
+          stageType: 'search',
+          hasRealScores: scores.length > 0
+        };
+      });
 
   // Extract timing data from node executions
   const timingData = nodeExecutions
@@ -109,33 +166,47 @@ export const ScoreEvolution: React.FC<ScoreEvolutionProps> = ({ nodeExecutions, 
                         <Badge variant="outline" className="font-mono text-xs">
                           {stage.entityCount} entities
                         </Badge>
-                        <Badge variant="secondary" className="font-mono text-xs">
-                          Avg: {stage.avgScore.toFixed(3)}
+                        <Badge 
+                          variant={stage.hasRealScores ? "secondary" : "outline"} 
+                          className="font-mono text-xs"
+                        >
+                          Avg: {stage.hasRealScores ? stage.avgScore.toFixed(3) : 'N/A'}
                         </Badge>
+                        {!stage.hasRealScores && (
+                          <Badge variant="outline" className="text-xs">
+                            No scores
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Min: {stage.minScore.toFixed(3)}</span>
-                        <span>Max: {stage.maxScore.toFixed(3)}</span>
+                    {stage.hasRealScores ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Min: {stage.minScore.toFixed(3)}</span>
+                          <span>Max: {stage.maxScore.toFixed(3)}</span>
+                        </div>
+                        <Progress 
+                          value={stage.avgScore * 100} 
+                          className="h-2"
+                        />
+                        
+                        {/* Score distribution */}
+                        {stage.scores.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            <span>Score range: </span>
+                            <span className="font-mono">
+                              [{stage.minScore.toFixed(3)} - {stage.maxScore.toFixed(3)}]
+                            </span>
+                            <span className="ml-2">
+                              (σ = {Math.sqrt(stage.scores.reduce((sum: number, score: number) => sum + Math.pow(score - stage.avgScore, 2), 0) / stage.scores.length).toFixed(3)})
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <Progress 
-                        value={stage.avgScore * 100} 
-                        className="h-2"
-                      />
-                    </div>
-                    
-                    {/* Score distribution */}
-                    {stage.scores.length > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        <span>Score range: </span>
-                        <span className="font-mono">
-                          [{stage.minScore.toFixed(3)} - {stage.maxScore.toFixed(3)}]
-                        </span>
-                        <span className="ml-2">
-                          (σ = {Math.sqrt(stage.scores.reduce((sum, score) => sum + Math.pow(score - stage.avgScore, 2), 0) / stage.scores.length).toFixed(3)})
-                        </span>
+                    ) : (
+                      <div className="py-2 text-xs text-muted-foreground italic">
+                        This stage ({stage.stageType}) does not generate entity similarity scores
                       </div>
                     )}
                   </div>
@@ -220,24 +291,30 @@ export const ScoreEvolution: React.FC<ScoreEvolutionProps> = ({ nodeExecutions, 
                     {stage.stage.replace('_', ' ')}
                   </div>
                   <div className="flex-1">
-                    <div className="h-8 bg-gradient-to-r from-red-200 via-yellow-200 to-green-200 rounded relative overflow-hidden">
-                      {/* Average score marker */}
-                      <div 
-                        className="absolute top-0 bottom-0 w-1 bg-blue-600"
-                        style={{ left: `${stage.avgScore * 100}%` }}
-                      />
-                      {/* Score range */}
-                      <div 
-                        className="absolute top-1 bottom-1 bg-blue-500 opacity-30 rounded"
-                        style={{ 
-                          left: `${stage.minScore * 100}%`,
-                          width: `${(stage.maxScore - stage.minScore) * 100}%`
-                        }}
-                      />
-                    </div>
+                    {stage.hasRealScores ? (
+                      <div className="h-8 bg-gradient-to-r from-red-200 via-yellow-200 to-green-200 rounded relative overflow-hidden">
+                        {/* Average score marker */}
+                        <div 
+                          className="absolute top-0 bottom-0 w-1 bg-blue-600"
+                          style={{ left: `${stage.avgScore * 100}%` }}
+                        />
+                        {/* Score range */}
+                        <div 
+                          className="absolute top-1 bottom-1 bg-blue-500 opacity-30 rounded"
+                          style={{ 
+                            left: `${stage.minScore * 100}%`,
+                            width: `${(stage.maxScore - stage.minScore) * 100}%`
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-8 bg-gray-100 rounded flex items-center justify-center text-xs text-muted-foreground">
+                        No scores available
+                      </div>
+                    )}
                   </div>
                   <div className="w-20 text-xs text-right font-mono">
-                    {stage.avgScore.toFixed(3)}
+                    {stage.hasRealScores ? stage.avgScore.toFixed(3) : 'N/A'}
                   </div>
                 </div>
               ))}
