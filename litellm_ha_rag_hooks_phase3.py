@@ -380,8 +380,17 @@ class HARagHookPhase3(CustomLogger):
                         bridge_url = "http://bridge:8000"
                         session_id = f"litellm_sync_{int(time.time())}"
 
+                        # Extract conversation history from messages
+                        conversation_history = []
+                        for msg in messages[:-1]:  # Exclude current user message
+                            if msg.get("role") in ["user", "assistant"]:
+                                conversation_history.append({
+                                    "role": msg.get("role"),
+                                    "content": msg.get("content", "")
+                                })
+
                         logger.info(
-                            f"🌉 PRE-API: Calling bridge workflow at: {bridge_url}"
+                            f"🌉 PRE-API: Calling bridge workflow at: {bridge_url} with {len(conversation_history)} conversation messages"
                         )
 
                         # Use synchronous httpx client for sync method
@@ -390,7 +399,7 @@ class HARagHookPhase3(CustomLogger):
                                 f"{bridge_url}/process-request-workflow",
                                 json={
                                     "user_message": user_msg,
-                                    "conversation_history": [],
+                                    "conversation_history": conversation_history,
                                     "session_id": session_id,
                                 },
                             )
@@ -474,14 +483,23 @@ class HARagHookPhase3(CustomLogger):
                     bridge_url = "http://bridge:8000"  # Correct Docker URL
                     session_id = f"litellm_hook_{int(__import__('time').time())}"
 
-                    logger.info(f"🌉 REAL PRE: Calling bridge at: {bridge_url}")
+                    # Extract conversation history from messages
+                    conversation_history = []
+                    for msg in messages[:-1]:  # Exclude current user message
+                        if msg.get("role") in ["user", "assistant"]:
+                            conversation_history.append({
+                                "role": msg.get("role"),
+                                "content": msg.get("content", "")
+                            })
+
+                    logger.info(f"🌉 REAL PRE: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages")
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         # Call workflow
                         response = await client.post(
                             f"{bridge_url}/process-request-workflow",
                             json={
                                 "user_message": user_msg,
-                                "conversation_history": [],
+                                "conversation_history": conversation_history,
                                 "session_id": session_id,
                             },
                         )
@@ -566,12 +584,23 @@ class HARagHookPhase3(CustomLogger):
                         )
                         session_id = f"litellm_pre_api_{int(__import__('time').time())}"
 
+                        # Extract conversation history from messages
+                        conversation_history = []
+                        for msg in messages[:-1]:  # Exclude current user message
+                            if msg.get("role") in ["user", "assistant"]:
+                                conversation_history.append({
+                                    "role": msg.get("role"),
+                                    "content": msg.get("content", "")
+                                })
+
+                        logger.info(f"🌉 LOG PRE: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages")
+
                         async with httpx.AsyncClient(timeout=15.0) as client:
                             response = await client.post(
                                 f"{bridge_url}/process-request-workflow",
                                 json={
                                     "user_message": user_msg,
-                                    "conversation_history": [],
+                                    "conversation_history": conversation_history,
                                     "session_id": session_id,
                                 },
                             )
@@ -670,8 +699,17 @@ class HARagHookPhase3(CustomLogger):
                             bridge_url = "http://bridge:8000"
                             session_id = f"litellm_sync_{int(time.time())}"
 
+                            # Extract conversation history from messages (exclude system messages and current user message)
+                            conversation_history = []
+                            for msg in messages[:-1]:  # Exclude current user message
+                                if msg.get("role") in ["user", "assistant"]:
+                                    conversation_history.append({
+                                        "role": msg.get("role"),
+                                        "content": msg.get("content", "")
+                                    })
+
                             logger.info(
-                                f"🌉 SYNC PRE: Calling bridge workflow at: {bridge_url}"
+                                f"🌉 SYNC PRE: Calling bridge workflow at: {bridge_url} with {len(conversation_history)} conversation messages"
                             )
 
                             # Use synchronous httpx client for sync method
@@ -680,7 +718,7 @@ class HARagHookPhase3(CustomLogger):
                                     f"{bridge_url}/process-request-workflow",
                                     json={
                                         "user_message": user_msg,
-                                        "conversation_history": [],
+                                        "conversation_history": conversation_history,
                                         "session_id": session_id,
                                     },
                                 )
@@ -784,14 +822,23 @@ class HARagHookPhase3(CustomLogger):
                         bridge_url = "http://bridge:8000"  # Correct Docker URL
                         session_id = f"litellm_hook_{int(__import__('time').time())}"
 
-                        logger.info(f"🌉 Calling bridge at: {bridge_url}")
+                        # Extract conversation history from messages
+                        conversation_history = []
+                        for msg in messages[:-1]:  # Exclude current user message
+                            if msg.get("role") in ["user", "assistant"]:
+                                conversation_history.append({
+                                    "role": msg.get("role"),
+                                    "content": msg.get("content", "")
+                                })
+
+                        logger.info(f"🌉 ASYNC LOG: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages")
                         async with httpx.AsyncClient(timeout=30.0) as client:
                             # Call workflow
                             response = await client.post(
                                 f"{bridge_url}/process-request-workflow",
                                 json={
                                     "user_message": user_msg,
-                                    "conversation_history": [],
+                                    "conversation_history": conversation_history,
                                     "session_id": session_id,
                                 },
                             )

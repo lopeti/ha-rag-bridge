@@ -30,11 +30,12 @@ export const PipelineDebugger: React.FC = () => {
   const [traces, setTraces] = useState<WorkflowTrace[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<WorkflowTrace | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTraceLoading, setIsTraceLoading] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [activeTab, setActiveTab] = useState('execution');
   const [testQuery, setTestQuery] = useState('hány fok van a nappaliban?');
 
-  // Fetch recent traces
+  // Fetch recent traces (simplified list)
   const fetchTraces = async () => {
     try {
       const response = await fetch('/admin/debug/traces');
@@ -44,13 +45,29 @@ export const PipelineDebugger: React.FC = () => {
         
         // Auto-select most recent if none selected
         if (!selectedTrace && tracesData.length > 0) {
-          setSelectedTrace(tracesData[0]);
+          await fetchTraceDetails(tracesData[0].trace_id);
         }
       }
     } catch (error) {
       console.error('Failed to fetch traces:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Fetch detailed trace data
+  const fetchTraceDetails = async (traceId: string) => {
+    try {
+      setIsTraceLoading(true);
+      const response = await fetch(`/admin/debug/trace/${traceId}`);
+      if (response.ok) {
+        const traceData = await response.json();
+        setSelectedTrace(traceData);
+      }
+    } catch (error) {
+      console.error('Failed to fetch trace details:', error);
+    } finally {
+      setIsTraceLoading(false);
     }
   };
 
@@ -162,8 +179,7 @@ export const PipelineDebugger: React.FC = () => {
             <Select
               value={selectedTrace?.trace_id || ''}
               onValueChange={(traceId) => {
-                const trace = traces.find(t => t.trace_id === traceId);
-                setSelectedTrace(trace || null);
+                fetchTraceDetails(traceId);
               }}
             >
               <SelectTrigger className="w-80">
@@ -248,14 +264,30 @@ export const PipelineDebugger: React.FC = () => {
               </TabsList>
               
               <TabsContent value="execution" className="mt-6">
-                <ScoreEvolution 
-                  nodeExecutions={selectedTrace.node_executions || []}
-                  entityPipeline={selectedTrace.entity_pipeline || []}
-                />
+                {isTraceLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-32 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <ScoreEvolution 
+                    nodeExecutions={selectedTrace.node_executions || []}
+                    entityPipeline={selectedTrace.entity_pipeline || []}
+                  />
+                )}
               </TabsContent>
               
               <TabsContent value="entities" className="mt-6">
-                <EntityPipeline entityPipeline={selectedTrace.entity_pipeline || []} />
+                {isTraceLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-32 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <EntityPipeline entityPipeline={selectedTrace.entity_pipeline || []} />
+                )}
               </TabsContent>
               
               <TabsContent value="raw" className="mt-6">

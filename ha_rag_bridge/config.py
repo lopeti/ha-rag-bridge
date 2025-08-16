@@ -1626,6 +1626,101 @@ class AppSettings(BaseSettings):
         description_en="Pronoun and reference resolution in conversational context",
     )
 
+    # Local LLM Configuration for Query Rewriting
+    query_rewriting_api_base: str = Field(
+        default="http://192.168.1.115:8001/v1",
+        env="QUERY_REWRITING_API_BASE",
+        title_hu="Query átíró API endpoint",
+        title_en="Query Rewriting API Endpoint",
+        description_hu="Local LLM API endpoint a query átíráshoz",
+        description_en="Local LLM API endpoint for query rewriting",
+        recommendation_hu="Használja a local inference szervert a gyors válaszokhoz",
+        recommendation_en="Use local inference server for fast responses",
+    )
+
+    query_rewriting_api_key: str = Field(
+        default="fake-key",
+        env="QUERY_REWRITING_API_KEY",
+        title_hu="Query átíró API kulcs",
+        title_en="Query Rewriting API Key",
+        description_hu="API kulcs (fake-key local LLM-hez)",
+        description_en="API key (fake-key for local LLM)",
+        is_secret=True,
+    )
+
+    # Conversation Summarization Settings
+    conversation_summary_enabled: bool = Field(
+        default=True,
+        env="CONVERSATION_SUMMARY_ENABLED",
+        title_hu="Beszélgetés összefoglaló engedélyezése",
+        title_en="Enable Conversation Summarization",
+        description_hu="LLM-alapú beszélgetés téma követés és kontextus összefoglalás",
+        description_en="LLM-based conversation topic tracking and context summarization",
+        recommendation_hu="Engedélyezve: intelligens téma követés | Kikapcsolva: csak entity memory",
+        recommendation_en="Enabled: smart topic tracking | Disabled: entity memory only",
+    )
+
+    conversation_summary_model: str = Field(
+        default="home-llama-3b",
+        env="CONVERSATION_SUMMARY_MODEL",
+        title_hu="Összefoglaló modell",
+        title_en="Summary Model",
+        description_hu="LLM modell a beszélgetés összefoglaláshoz",
+        description_en="LLM model for conversation summarization",
+        enum=["home-llama-3b", "qwen-7b", "disabled"],
+        recommendation_hu="home-llama-3b: gyors és pontos | qwen-7b: nagyobb kontextus | disabled: kikapcsolva",
+        recommendation_en="home-llama-3b: fast and accurate | qwen-7b: larger context | disabled: turned off",
+    )
+
+    # Enhanced Memory Settings
+    memory_topic_boost_enabled: bool = Field(
+        default=True,
+        env="MEMORY_TOPIC_BOOST_ENABLED",
+        title_hu="Téma-alapú boost engedélyezése",
+        title_en="Enable Topic-based Boost",
+        description_hu="Entity boost a beszélgetés témája és fókusza alapján",
+        description_en="Entity boost based on conversation topic and current focus",
+        recommendation_hu="Engedélyezve: intelligens kontextus boost | Kikapcsolva: alapértelmezett memory boost",
+        recommendation_en="Enabled: smart context boost | Disabled: basic memory boost",
+    )
+
+    memory_decay_constant: int = Field(
+        default=300,
+        env="MEMORY_DECAY_CONSTANT",
+        title_hu="Memory decay időállandó (sec)",
+        title_en="Memory Decay Time Constant (sec)",
+        description_hu="Időállandó a memory boost csökkenéséhez (másodpercben)",
+        description_en="Time constant for memory boost decay (in seconds)",
+        ge=60,
+        le=1800,
+        recommendation_hu="300: 5 perc fél-életidő | 600: 10 perc | 900: 15 perc",
+        recommendation_en="300: 5 min half-life | 600: 10 min | 900: 15 min",
+    )
+
+    # Pipeline Tracing Configuration
+    trace_detail_level: str = Field(
+        default="full",
+        env="TRACE_DETAIL_LEVEL",
+        title_hu="Trace részletesség",
+        title_en="Trace Detail Level",
+        description_hu="Pipeline trace részletességi szint debugginghoz",
+        description_en="Pipeline trace detail level for debugging",
+        enum=["minimal", "standard", "full", "debug"],
+        recommendation_hu="full: teljes pipeline láthatóság | debug: maximális részletesség",
+        recommendation_en="full: complete pipeline visibility | debug: maximum detail",
+    )
+
+    trace_meta_tasks: bool = Field(
+        default=False,
+        env="TRACE_META_TASKS",
+        title_hu="Meta-task trace engedélyezése",
+        title_en="Enable Meta-task Tracing",
+        description_hu="OpenWebUI meta-task-ok trace-elése (címkézés, összefoglalás)",
+        description_en="Trace OpenWebUI meta-tasks (tagging, summarization)",
+        recommendation_hu="False: tiszta trace | True: teljes meta-task láthatóság",
+        recommendation_en="False: clean traces | True: full meta-task visibility",
+    )
+
     # Embedding Advanced Configuration
     use_instruction_templates: bool = Field(
         default=True,

@@ -5,6 +5,9 @@ from app.schemas import ChatMessage
 from ha_rag_bridge.logging import get_logger
 from app.services.conversation_analyzer import ConversationAnalyzer
 from app.services.conversation_memory import ConversationMemoryService
+from app.services.query_rewriter import ConversationalQueryRewriter
+from app.services.conversation_summarizer import ConversationSummarizer
+from app.services.workflow_tracer import EnhancedPipelineStage
 
 from .state import RAGState, QueryScope
 
@@ -12,31 +15,143 @@ logger = get_logger(__name__)
 
 
 async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
-    """Analyze conversation context and extract metadata."""
+    """Analyze conversation context and extract metadata with query rewriting."""
     logger.info(
         f"ConversationAnalysisNode: Processing query: {state['user_query'][:50]}..."
     )
 
     try:
-        analyzer = ConversationAnalyzer()
         # Convert dict messages to ChatMessage objects
         chat_messages = [
             ChatMessage(role=msg["role"], content=msg["content"])
             for msg in state["conversation_history"]
         ]
-        context = analyzer.analyze_conversation(state["user_query"], chat_messages)
-
+        
+        # Step 1: Query rewriting for conversational context
+        from datetime import datetime
+        rewrite_start = datetime.now()
+        
+        query_rewriter = ConversationalQueryRewriter()
+        rewrite_result = await query_rewriter.rewrite_query(
+            current_query=state["user_query"],
+            conversation_history=chat_messages,
+            conversation_memory=None  # TODO: Add memory context
+        )
+        
+        rewrite_duration = (datetime.now() - rewrite_start).total_seconds() * 1000
+        
+        # Update state with rewrite information
+        result_data = {}
+        if rewrite_result.method != "no_rewrite_needed":
+            logger.info(f"Query rewritten: '{rewrite_result.original_query}' -> '{rewrite_result.rewritten_query}'")
+            result_data["original_query"] = rewrite_result.original_query
+            result_data["user_query"] = rewrite_result.rewritten_query
+            result_data["query_rewrite_info"] = {
+                "original": rewrite_result.original_query,
+                "rewritten": rewrite_result.rewritten_query,
+                "confidence": rewrite_result.confidence,
+                "method": rewrite_result.method,
+                "reasoning": rewrite_result.reasoning,
+                "processing_time_ms": rewrite_result.processing_time_ms,
+                "coreferences_resolved": rewrite_result.coreferences_resolved,
+                "intent_inherited": rewrite_result.intent_inherited
+            }
+        else:
+            logger.debug("No query rewriting needed")
+        
+        # Step 2: Conversation analysis (use rewritten query if available)
+        analysis_query = rewrite_result.rewritten_query if rewrite_result.method != "no_rewrite_needed" else state["user_query"]
+        
+        analyzer = ConversationAnalyzer()
+        context = analyzer.analyze_conversation(analysis_query, chat_messages)
+        
         logger.debug(f"Conversation analysis result: {context}")
 
-        return {
-            "conversation_context": {
-                "areas_mentioned": list(context.areas_mentioned),
-                "domains_mentioned": list(context.domains_mentioned),
-                "is_follow_up": context.is_follow_up,
-                "intent": context.intent,
-                "confidence": context.confidence,
-            }
+        result_data["conversation_context"] = {
+            "areas_mentioned": list(context.areas_mentioned),
+            "domains_mentioned": list(context.domains_mentioned),
+            "is_follow_up": context.is_follow_up,
+            "intent": context.intent,
+            "confidence": context.confidence,
         }
+        
+        # Step 3: Generate conversation summary for topic tracking
+        summary_start = datetime.now()
+        summary = None
+        
+        try:
+            summarizer = ConversationSummarizer()
+            
+            # Get existing memory for context
+            memory_service = ConversationMemoryService()
+            session_id = state.get("session_id", "default")
+            existing_memory = await memory_service.get_conversation_memory(session_id)
+            
+            # Generate summary using final query (rewritten if applicable)
+            summary = await summarizer.generate_summary(
+                query=analysis_query,
+                history=chat_messages,
+                memory=existing_memory
+            )
+            
+            result_data["conversation_summary"] = summary.to_dict()
+            logger.info(f"Generated conversation summary: topic='{summary.topic}', focus='{summary.current_focus}'")
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate conversation summary: {e}")
+            result_data["conversation_summary"] = None
+        
+        summary_duration = (datetime.now() - summary_start).total_seconds() * 1000
+        
+        # Add enhanced pipeline stages to trace if available
+        trace_id = state.get("trace_id")
+        if trace_id:
+            from app.services.workflow_tracer import workflow_tracer
+            
+            # Trace query rewriting stage
+            if rewrite_result.method != "no_rewrite_needed":
+                workflow_tracer.add_enhanced_pipeline_stage(
+                    trace_id,
+                    EnhancedPipelineStage(
+                        stage_name="query_rewriting",
+                        stage_type="transform",
+                        input_count=1,
+                        output_count=1,
+                        duration_ms=rewrite_duration,
+                        query_rewrite={
+                            "original": rewrite_result.original_query,
+                            "rewritten": rewrite_result.rewritten_query,
+                            "method": rewrite_result.method,
+                            "confidence": rewrite_result.confidence,
+                            "coreferences_resolved": rewrite_result.coreferences_resolved,
+                            "processing_time_ms": rewrite_result.processing_time_ms
+                        }
+                    )
+                )
+            
+            # Trace conversation summary stage
+            if summary:
+                workflow_tracer.add_enhanced_pipeline_stage(
+                    trace_id,
+                    EnhancedPipelineStage(
+                        stage_name="conversation_summary",
+                        stage_type="transform",
+                        input_count=len(chat_messages) + 1,  # history + current query
+                        output_count=1,
+                        duration_ms=summary_duration,
+                        conversation_summary={
+                            "topic": summary.topic,
+                            "current_focus": summary.current_focus,
+                            "intent_pattern": summary.intent_pattern,
+                            "topic_domains": list(summary.topic_domains),
+                            "context_entities": summary.context_entities,
+                            "confidence": summary.confidence,
+                            "reasoning": summary.reasoning
+                        }
+                    )
+                )
+        
+        return result_data
 
     except Exception as e:
         logger.error(f"Error in conversation analysis: {e}")
@@ -365,6 +480,7 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
             areas_mentioned=set(conversation_context.get("areas_mentioned", [])),
             domains_mentioned=set(conversation_context.get("domains_mentioned", [])),
             query_context=f"Query: {state['user_query']}",
+            conversation_summary=state.get("conversation_summary"),  # Pass the summary
         )
 
         logger.info(

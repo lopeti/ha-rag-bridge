@@ -1,9 +1,10 @@
 """Conversation memory service for multi-turn RAG optimization."""
 
+import math
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Any
-from dataclasses import dataclass
-import os
+from dataclasses import dataclass, field
 from arango import ArangoClient
 
 from ha_rag_bridge.logging import get_logger
@@ -27,7 +28,7 @@ class ConversationEntity:
 
 @dataclass
 class ConversationMemory:
-    """Complete conversation memory state."""
+    """Complete conversation memory state with topic tracking."""
 
     conversation_id: str
     entities: List[ConversationEntity]
@@ -36,6 +37,14 @@ class ConversationMemory:
     last_updated: datetime
     ttl: datetime
     query_count: int = 1
+    
+    # NEW: Topic tracking fields
+    topic_summary: Optional[str] = None
+    current_focus: Optional[str] = None
+    intent_pattern: Optional[str] = None
+    topic_domains: Set[str] = field(default_factory=set)
+    focus_history: List[str] = field(default_factory=list)
+    conversation_summary: Optional[Dict[str, Any]] = None
 
 
 class ConversationMemoryService:
@@ -109,6 +118,13 @@ class ConversationMemoryService:
                     ),
                     ttl=ttl,
                     query_count=doc.get("query_count", 1),
+                    # NEW: Topic tracking fields
+                    topic_summary=doc.get("topic_summary"),
+                    current_focus=doc.get("current_focus"),
+                    intent_pattern=doc.get("intent_pattern"),
+                    topic_domains=set(doc.get("topic_domains", [])),
+                    focus_history=doc.get("focus_history", []),
+                    conversation_summary=doc.get("conversation_summary")
                 )
 
         except Exception as e:
@@ -125,6 +141,7 @@ class ConversationMemoryService:
         areas_mentioned: Set[str],
         domains_mentioned: Set[str],
         query_context: str = "",
+        conversation_summary: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Store or update conversation memory with entities and context."""
         await self._ensure_connection()
@@ -190,6 +207,36 @@ class ConversationMemoryService:
             )
             all_entities = all_entities[:20]
 
+            # Extract topic information from conversation summary
+            topic_summary = None
+            current_focus = None
+            intent_pattern = None
+            topic_domains = set()
+            focus_history = []
+            
+            if existing_memory:
+                # Preserve existing topic information
+                topic_summary = existing_memory.topic_summary
+                current_focus = existing_memory.current_focus
+                intent_pattern = existing_memory.intent_pattern
+                topic_domains = existing_memory.topic_domains.copy()
+                focus_history = existing_memory.focus_history.copy()
+            
+            if conversation_summary:
+                # Update with new summary information
+                topic_summary = conversation_summary.get("topic", topic_summary)
+                new_focus = conversation_summary.get("current_focus", "")
+                if new_focus and new_focus != current_focus:
+                    if current_focus:
+                        focus_history.append(current_focus)
+                    current_focus = new_focus
+                    # Keep last 10 focuses
+                    focus_history = focus_history[-9:]
+                
+                intent_pattern = conversation_summary.get("intent_pattern", intent_pattern)
+                if "topic_domains" in conversation_summary:
+                    topic_domains.update(conversation_summary["topic_domains"])
+
             # Create memory document
             memory = ConversationMemory(
                 conversation_id=conversation_id,
@@ -199,6 +246,13 @@ class ConversationMemoryService:
                 last_updated=current_time,
                 ttl=ttl,
                 query_count=query_count,
+                # NEW: Topic tracking fields
+                topic_summary=topic_summary,
+                current_focus=current_focus,
+                intent_pattern=intent_pattern,
+                topic_domains=topic_domains,
+                focus_history=focus_history,
+                conversation_summary=conversation_summary
             )
 
             # Convert to ArangoDB document
@@ -223,6 +277,13 @@ class ConversationMemoryService:
                 "last_updated": memory.last_updated.isoformat(),
                 "ttl": memory.ttl.isoformat(),
                 "query_count": memory.query_count,
+                # NEW: Topic tracking fields in storage
+                "topic_summary": memory.topic_summary,
+                "current_focus": memory.current_focus,
+                "intent_pattern": memory.intent_pattern,
+                "topic_domains": list(memory.topic_domains),
+                "focus_history": memory.focus_history,
+                "conversation_summary": memory.conversation_summary,
             }
 
             # Store/update in database
@@ -283,6 +344,72 @@ class ConversationMemoryService:
             base_weight *= 1.2
 
         return base_weight
+
+    def _calculate_topic_aware_boost(
+        self, 
+        entity: Dict[str, Any],
+        memory: Optional[ConversationMemory] = None
+    ) -> float:
+        """Calculate boost weight with topic awareness and time decay."""
+        from ha_rag_bridge.config import get_settings
+        
+        settings = get_settings()
+        
+        # Start with base boost calculation
+        base_weight = self._calculate_boost_weight(entity)
+        
+        if not memory or not settings.memory_topic_boost_enabled:
+            return base_weight
+        
+        # Topic domain matching boost
+        entity_domain = entity.get("domain", "")
+        if entity_domain and entity_domain in memory.topic_domains:
+            base_weight *= 1.3  # 30% boost for topic-relevant domains
+            logger.debug(f"Topic domain boost for {entity['entity_id']}: {entity_domain}")
+        
+        # Current focus area matching boost (strongest boost)
+        if memory.current_focus:
+            entity_area = entity.get("area_name", "").lower()
+            focus_lower = memory.current_focus.lower()
+            
+            if entity_area == focus_lower:
+                base_weight *= 2.0  # 100% boost for current focus area
+                logger.debug(f"Focus area boost for {entity['entity_id']}: {entity_area}")
+            elif focus_lower in entity.get("entity_id", "").lower():
+                base_weight *= 1.5  # 50% boost for entity ID containing focus
+            elif entity_area in memory.focus_history:
+                base_weight *= 1.2  # 20% boost for previous focuses
+        
+        # Intent pattern matching boost
+        if memory.intent_pattern:
+            if memory.intent_pattern == "device_control" and entity_domain in ["switch", "light", "climate"]:
+                base_weight *= 1.2  # 20% boost for controllable entities
+            elif memory.intent_pattern == "status_check" and entity_domain == "sensor":
+                base_weight *= 1.2  # 20% boost for sensors during status checks
+            elif memory.intent_pattern == "sequential_rooms" and entity_area:
+                base_weight *= 1.4  # 40% boost for area-specific entities in room sequences
+        
+        # Time decay for conversation memory entities
+        if hasattr(entity, "mentioned_at") and entity.get("mentioned_at"):
+            try:
+                mentioned_at = entity["mentioned_at"]
+                if isinstance(mentioned_at, str):
+                    mentioned_at = datetime.fromisoformat(mentioned_at.replace("Z", ""))
+                elif not isinstance(mentioned_at, datetime):
+                    mentioned_at = datetime.now()  # Fallback
+                
+                time_since = (datetime.now() - mentioned_at).total_seconds()
+                decay_constant = settings.memory_decay_constant  # From config (default 300s)
+                decay_factor = math.exp(-time_since / decay_constant)
+                base_weight *= decay_factor
+                
+                logger.debug(f"Time decay applied to {entity['entity_id']}: {decay_factor:.2f}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to apply time decay to {entity.get('entity_id', 'unknown')}: {e}")
+        
+        # Cap the boost to prevent extreme values
+        return min(base_weight, 3.0)
 
     async def get_relevant_entities(
         self, conversation_id: str, current_query: str, max_entities: int = 10

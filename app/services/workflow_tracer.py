@@ -66,6 +66,45 @@ class EntityStageInfo:
 
 
 @dataclass
+class EnhancedPipelineStage:
+    """Detailed pipeline stage with comprehensive information."""
+    
+    stage_name: str
+    stage_type: str  # "transform", "search", "filter", "rank", "boost"
+    input_count: int
+    output_count: int
+    duration_ms: float
+    
+    # Stage-specific details
+    query_rewrite: Optional[Dict[str, Any]] = None
+    conversation_summary: Optional[Dict[str, Any]] = None
+    cluster_search: Optional[Dict[str, Any]] = None
+    vector_search: Optional[Dict[str, Any]] = None
+    memory_boost: Optional[Dict[str, Any]] = None
+    reranking: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "stage_name": self.stage_name,
+            "stage_type": self.stage_type,
+            "input_count": self.input_count,
+            "output_count": self.output_count,
+            "duration_ms": self.duration_ms,
+            "details": {
+                k: v for k, v in {
+                    "query_rewrite": self.query_rewrite,
+                    "conversation_summary": self.conversation_summary,
+                    "cluster_search": self.cluster_search,
+                    "vector_search": self.vector_search,
+                    "memory_boost": self.memory_boost,
+                    "reranking": self.reranking
+                }.items() if v is not None
+            }
+        }
+
+
+@dataclass
 class WorkflowTrace:
     """Complete workflow execution trace."""
 
@@ -87,6 +126,9 @@ class WorkflowTrace:
 
     # Entity pipeline tracking
     entity_pipeline: List[EntityStageInfo] = field(default_factory=list)
+    
+    # Enhanced pipeline tracking
+    enhanced_pipeline_stages: List[EnhancedPipelineStage] = field(default_factory=list)
 
     # Performance and diagnostics
     performance_metrics: Dict[str, Any] = field(default_factory=dict)
@@ -109,6 +151,7 @@ class WorkflowTrace:
             "workflow_state": self.workflow_state,
             "final_result": self.final_result,
             "entity_pipeline": [stage.to_dict() for stage in self.entity_pipeline],
+            "enhanced_pipeline_stages": [stage.to_dict() for stage in self.enhanced_pipeline_stages],
             "performance_metrics": self.performance_metrics,
             "errors": self.errors,
             "status": self.status,
@@ -254,6 +297,16 @@ class WorkflowTracer:
         trace = self.active_traces[trace_id]
         trace.workflow_state.update(self._sanitize_data(state_update))
 
+    def add_enhanced_pipeline_stage(self, trace_id: str, stage: EnhancedPipelineStage):
+        """Add enhanced pipeline stage information to trace."""
+        if trace_id not in self.active_traces:
+            logger.warning(f"Trace not found: {trace_id}")
+            return
+            
+        trace = self.active_traces[trace_id]
+        trace.enhanced_pipeline_stages.append(stage)
+        logger.debug(f"Added enhanced pipeline stage '{stage.stage_name}' to trace {trace_id}")
+
     def end_trace(
         self,
         trace_id: str,
@@ -270,7 +323,23 @@ class WorkflowTracer:
         trace.total_duration_ms = (
             trace.end_time - trace.start_time
         ).total_seconds() * 1000
-        trace.final_result = self._sanitize_data(final_result)
+        # Store only essential final result data to reduce trace size
+        detected_scope = final_result.get("detected_scope")
+        sanitized_final_result = {
+            "user_query": final_result.get("user_query"),
+            "session_id": final_result.get("session_id"), 
+            "conversation_context": final_result.get("conversation_context"),
+            "detected_scope": detected_scope.value if hasattr(detected_scope, 'value') else str(detected_scope),  # Handle QueryScope enum
+            "scope_confidence": final_result.get("scope_confidence"),
+            "optimal_k": final_result.get("optimal_k"),
+            "entity_count": len(final_result.get("retrieved_entities", [])),  # Store count, not full entities
+            "formatter_type": final_result.get("formatter_type"),
+            "formatted_context_length": len(str(final_result.get("formatted_context", ""))),  # Store length, not full content
+            "errors": final_result.get("errors", []),
+            "retry_count": final_result.get("retry_count", 0),
+            "fallback_used": final_result.get("fallback_used", False),
+        }
+        trace.final_result = sanitized_final_result
         trace.errors = errors or []
         trace.status = "error" if errors else "success"
 
@@ -319,7 +388,7 @@ class WorkflowTracer:
             return []
 
     def _sanitize_data(self, data: Any, max_depth: int = 3) -> Any:
-        """Sanitize data for storage, preventing circular references."""
+        """Sanitize data for storage, preventing circular references and non-serializable objects."""
         if max_depth <= 0:
             return str(data)
 
@@ -329,6 +398,12 @@ class WorkflowTracer:
             return [self._sanitize_data(item, max_depth - 1) for item in data]
         elif isinstance(data, (str, int, float, bool, type(None))):
             return data
+        elif hasattr(data, '__dict__'):
+            # Handle objects with attributes (like QueryScope enum)
+            if hasattr(data, 'value'):
+                return data.value  # For enum objects, use their value
+            else:
+                return str(data)
         else:
             return str(data)
 
@@ -338,20 +413,36 @@ class WorkflowTracer:
         """Sanitize entity data for storage, keeping only essential fields."""
         sanitized = []
 
-        for entity in entities:
+        # Limit to first 20 entities and only store essential data to reduce trace size
+        for entity in entities[:20]:
             sanitized_entity = {
                 "entity_id": entity.get("entity_id"),
                 "domain": entity.get("domain"),
                 "area": entity.get("area") or entity.get("area_name"),
-                "_score": entity.get("_score", 0.0),
-                "state": entity.get("state"),
+                "_score": round(entity.get("_score", 0.0), 3),  # Round score to 3 decimals
+                "state": str(entity.get("state", ""))[:50] if entity.get("state") else None,  # Limit state length
                 "_memory_boosted": entity.get("_memory_boosted", False),
-                "_cluster_context": entity.get("_cluster_context"),
             }
 
-            # Include ranking factors if available
+            # Store simplified cluster context
+            if "_cluster_context" in entity:
+                cluster_ctx = entity["_cluster_context"]
+                if isinstance(cluster_ctx, dict):
+                    sanitized_entity["_cluster_context"] = {
+                        "cluster_key": cluster_ctx.get("cluster_key"),
+                        "role": cluster_ctx.get("role"),
+                        "weight": round(cluster_ctx.get("weight", 0.0), 2),
+                    }
+
+            # Store simplified ranking factors (only scores, not full details)
             if "_ranking_factors" in entity:
-                sanitized_entity["_ranking_factors"] = entity["_ranking_factors"]
+                factors = entity["_ranking_factors"]
+                if isinstance(factors, dict):
+                    sanitized_entity["_ranking_factors"] = {
+                        "final_score": round(factors.get("final_score", 0.0), 3),
+                        "semantic_score": round(factors.get("semantic_score", 0.0), 3),
+                        "memory_boost": round(factors.get("memory_boost", 0.0), 2),
+                    }
 
             sanitized.append(sanitized_entity)
 

@@ -149,7 +149,7 @@ Rewritten: Zárd be az ablakot
 
         try:
             # Try LLM-based rewriting first
-            if self.model in ["mistral-7b", "llama-3.2"]:
+            if self.model not in ["disabled", ""]:
                 result = await self._llm_rewrite(
                     current_query, conversation_history, conversation_memory
                 )
@@ -270,34 +270,32 @@ Rewritten:"""
         return prompt
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call LLM for query rewriting."""
-        import os
-        import openai
+        """Call LLM for query rewriting using LiteLLM with local model support."""
         import asyncio
-
-        # For now, use OpenAI as a quick implementation
-        # TODO: Add local Mistral/Llama support later
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.warning("No OpenAI API key found, falling back to rule-based")
-            raise NotImplementedError("OpenAI API key required")
-
+        
         try:
-            # Initialize OpenAI client
-            client = openai.AsyncOpenAI(api_key=api_key)
-
+            import litellm
+            
+            # Get API configuration from settings
+            api_base = getattr(self.settings, 'query_rewriting_api_base', 'http://192.168.1.115:8001/v1')
+            api_key = getattr(self.settings, 'query_rewriting_api_key', 'fake-key')
+            
+            logger.debug(f"Calling LLM rewriter: model={self.model}, api_base={api_base}")
+            
             # Create chat completion for query rewriting
             response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model="gpt-3.5-turbo",  # Fast and cost-effective for this task
+                litellm.acompletion(
+                    model=f"openai/{self.model}",  # e.g., "openai/home-llama-3b"
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a smart home query rewriter. Rewrite conversational queries to be standalone. Output ONLY the rewritten query, nothing else.",
+                            "content": "You are a smart home query rewriter. Rewrite conversational queries to be standalone. Output ONLY the rewritten query in Hungarian, nothing else.",
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=50,
+                    api_base=api_base,
+                    api_key=api_key,
+                    max_tokens=100,
                     temperature=0.3,
                     timeout=self.timeout_ms / 1000.0,  # Convert ms to seconds
                 ),
@@ -305,6 +303,7 @@ Rewritten:"""
             )
 
             rewritten = response.choices[0].message.content.strip()
+            logger.debug(f"LLM rewrite result: '{rewritten}'")
 
             # Clean up the response (remove quotes, extra text)
             if rewritten.startswith('"') and rewritten.endswith('"'):
@@ -314,16 +313,16 @@ Rewritten:"""
             lines = rewritten.split("\n")
             for line in lines:
                 line = line.strip()
-                if line and not line.startswith("Rewritten:"):
+                if line and not line.startswith("Rewritten:") and not line.startswith("Output:"):
                     return line
 
             return rewritten
 
         except asyncio.TimeoutError:
-            logger.warning(f"OpenAI API timeout after {self.timeout_ms}ms")
+            logger.warning(f"LLM rewriting timeout after {self.timeout_ms}ms")
             raise
         except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
+            logger.error(f"LLM rewriting error: {e}")
             raise
 
     async def _rule_based_rewrite(
