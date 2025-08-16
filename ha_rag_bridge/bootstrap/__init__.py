@@ -291,8 +291,12 @@ def _bootstrap_impl(
                         "includeAllFields": False,
                         "storeValues": "none",
                         "fields": {
-                            "text": {"analyzers": ["text_en"]},  # UI language (Hungarian)
-                            "text_system": {"analyzers": ["text_en"]}  # System language (English)
+                            "text": {
+                                "analyzers": ["text_en"]
+                            },  # UI language (Hungarian)
+                            "text_system": {
+                                "analyzers": ["text_en"]
+                            },  # System language (English)
                         },
                         "features": ["frequency", "norm", "position"],
                     }

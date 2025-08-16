@@ -20,7 +20,9 @@ class DummyHass:
 @pytest.mark.asyncio
 async def test_setup_via_ui():
     hass = DummyHass()
-    result = await hass.config_entries.async_init(DOMAIN, context={"source": "user"}, data={})
+    result = await hass.config_entries.async_init(
+        DOMAIN, context={"source": "user"}, data={}
+    )
     assert result["type"] == "create_entry"
     assert result["title"] == "HA-RAG Expose API"
 
@@ -29,6 +31,8 @@ async def test_setup_via_ui():
 async def test_duplicate_abort():
     hass = DummyHass()
     await hass.config_entries.async_init(DOMAIN, context={"source": "user"}, data={})
-    result = await hass.config_entries.async_init(DOMAIN, context={"source": "user"}, data={})
+    result = await hass.config_entries.async_init(
+        DOMAIN, context={"source": "user"}, data={}
+    )
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"

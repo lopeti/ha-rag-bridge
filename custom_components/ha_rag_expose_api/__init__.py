@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .http import StaticEntitiesView, StateEntitiesView, UpdateFriendlyNameView, BatchUpdateFriendlyNamesView
+from .http import (
+    StaticEntitiesView,
+    StateEntitiesView,
+    UpdateFriendlyNameView,
+    BatchUpdateFriendlyNamesView,
+)
 
 
 async def async_setup(hass, config):

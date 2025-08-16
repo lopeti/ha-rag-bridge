@@ -8,12 +8,14 @@ client = TestClient(app)
 
 
 def test_process_request(monkeypatch):
-    os.environ.update({
-        "ARANGO_URL": "http://db",
-        "ARANGO_USER": "root",
-        "ARANGO_PASS": "pass",
-        "EMBEDDING_BACKEND": "local",
-    })
+    os.environ.update(
+        {
+            "ARANGO_URL": "http://db",
+            "ARANGO_USER": "root",
+            "ARANGO_PASS": "pass",
+            "EMBEDDING_BACKEND": "local",
+        }
+    )
 
     mock_backend = MagicMock()
     mock_backend.embed.return_value = [[0.0] * 1536]
@@ -37,14 +39,24 @@ def test_process_request(monkeypatch):
     class DummyCat:
         async def get_domain_services(self, domain):
             mapping = {
-                "light": {"turn_on": {"fields": {"entity_id": {"required": True, "type": "string"}}}},
-                "switch": {"turn_off": {"fields": {"entity_id": {"required": True, "type": "string"}}}},
+                "light": {
+                    "turn_on": {
+                        "fields": {"entity_id": {"required": True, "type": "string"}}
+                    }
+                },
+                "switch": {
+                    "turn_off": {
+                        "fields": {"entity_id": {"required": True, "type": "string"}}
+                    }
+                },
             }
             return mapping.get(domain, {})
 
     monkeypatch.setattr(main, "service_catalog", DummyCat())
 
-    resp = client.post("/process-request", json={"user_message": "Kapcsold le a nappali lámpát!"})
+    resp = client.post(
+        "/process-request", json={"user_message": "Kapcsold le a nappali lámpát!"}
+    )
     assert resp.status_code == 200
     data = resp.json()
     system = data["messages"][0]["content"]
@@ -54,18 +66,25 @@ def test_process_request(monkeypatch):
     assert "Relevant domains:" in system
     assert isinstance(data.get("tools"), list) and data["tools"]
 
+
 def test_process_request_adds_state(monkeypatch):
-    os.environ.update({
-        "ARANGO_URL": "http://db",
-        "ARANGO_USER": "root",
-        "ARANGO_PASS": "pass",
-        "EMBEDDING_BACKEND": "local",
-    })
+    os.environ.update(
+        {
+            "ARANGO_URL": "http://db",
+            "ARANGO_USER": "root",
+            "ARANGO_PASS": "pass",
+            "EMBEDDING_BACKEND": "local",
+        }
+    )
     mock_backend = MagicMock()
     mock_backend.embed.return_value = [[0.0] * 1536]
     monkeypatch.setattr(main, "LocalBackend", MagicMock(return_value=mock_backend))
     docs = [
-        {"entity_id": "sensor.room_temp", "domain": "sensor", "unit_of_measurement": "°C"},
+        {
+            "entity_id": "sensor.room_temp",
+            "domain": "sensor",
+            "unit_of_measurement": "°C",
+        },
     ]
     mock_cursor = MagicMock()
     mock_cursor.__iter__.return_value = docs

@@ -7,10 +7,12 @@ import pytest
 
 import scripts.watch_entities as watcher
 
-os.environ.update({
-    "HA_URL": "http://ha",
-    "HA_TOKEN": "token",
-})
+os.environ.update(
+    {
+        "HA_URL": "http://ha",
+        "HA_TOKEN": "token",
+    }
+)
 
 
 class DummyWS:
@@ -36,13 +38,15 @@ class DummyWS:
 @pytest.mark.asyncio
 async def test_update_triggers_ingest(monkeypatch):
     msg_auth_ok = json.dumps({"type": "auth_ok"})
-    event_msg = json.dumps({
-        "type": "event",
-        "event": {
-            "event_type": "entity_registry_updated",
-            "data": {"action": "update", "entity_id": "light.test"},
-        },
-    })
+    event_msg = json.dumps(
+        {
+            "type": "event",
+            "event": {
+                "event_type": "entity_registry_updated",
+                "data": {"action": "update", "entity_id": "light.test"},
+            },
+        }
+    )
     dummy_ws = DummyWS([msg_auth_ok, event_msg])
 
     async def connect_mock(*args, **kwargs):

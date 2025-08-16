@@ -8,12 +8,14 @@ client = TestClient(app)
 
 
 def _setup_env():
-    os.environ.update({
-        "ARANGO_URL": "http://db",
-        "ARANGO_USER": "root",
-        "ARANGO_PASS": "pass",
-        "EMBEDDING_BACKEND": "local",
-    })
+    os.environ.update(
+        {
+            "ARANGO_URL": "http://db",
+            "ARANGO_USER": "root",
+            "ARANGO_PASS": "pass",
+            "EMBEDDING_BACKEND": "local",
+        }
+    )
 
 
 def test_adaptive_control_tools(monkeypatch):
@@ -32,14 +34,24 @@ def test_adaptive_control_tools(monkeypatch):
 
     class DummyCat:
         async def get_domain_services(self, domain):
-            return {
-                "turn_on": {"fields": {"entity_id": {"required": True, "type": "string"}}},
-                "turn_off": {"fields": {"entity_id": {"required": True, "type": "string"}}},
-            } if domain == "light" else {}
+            return (
+                {
+                    "turn_on": {
+                        "fields": {"entity_id": {"required": True, "type": "string"}}
+                    },
+                    "turn_off": {
+                        "fields": {"entity_id": {"required": True, "type": "string"}}
+                    },
+                }
+                if domain == "light"
+                else {}
+            )
 
     monkeypatch.setattr(main, "service_catalog", DummyCat())
 
-    resp = client.post("/process-request", json={"user_message": "Kapcsold fel a nappali lámpát"})
+    resp = client.post(
+        "/process-request", json={"user_message": "Kapcsold fel a nappali lámpát"}
+    )
     assert resp.status_code == 200
     data = resp.json()
     tool_names = [t["function"]["name"] for t in data.get("tools", [])]
@@ -66,7 +78,9 @@ def test_adaptive_read_no_tools(monkeypatch):
 
     monkeypatch.setattr(main, "service_catalog", DummyCat())
 
-    resp = client.post("/process-request", json={"user_message": "Hány fok van a nappaliban?"})
+    resp = client.post(
+        "/process-request", json={"user_message": "Hány fok van a nappaliban?"}
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["tools"] == []

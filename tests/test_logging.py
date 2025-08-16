@@ -22,6 +22,7 @@ def test_request_id(caplog, monkeypatch):
     client = TestClient(app)
     # avoid hitting Arango in bootstrap
     monkeypatch.setattr("app.routers.admin.bootstrap", lambda: None)
+
     class DummyCol:
         def indexes(self):
             return []
@@ -46,6 +47,10 @@ def test_request_id(caplog, monkeypatch):
     monkeypatch.setenv("ARANGO_PASS", "pass")
     with caplog.at_level(logging.INFO):
         client.post("/admin/reindex", headers={"X-Admin-Token": "x"}, json={})
-    lines = [json.loads(line[line.find("{"):]) for line in caplog.text.strip().splitlines() if "req_id" in line]
+    lines = [
+        json.loads(line[line.find("{") :])
+        for line in caplog.text.strip().splitlines()
+        if "req_id" in line
+    ]
     req_ids = {line.get("req_id") for line in lines}
     assert len(req_ids) == 1

@@ -1,10 +1,11 @@
 """EGYSZERŰ TESZT HOOK - minimális implementáció"""
-import asyncio
+
 from litellm.integrations.custom_logger import CustomLogger
 import logging
 
 logger = logging.getLogger("simple_test_hook")
 logger.setLevel(logging.INFO)
+
 
 class SimpleTestHook(CustomLogger):
     def __init__(self):
@@ -20,6 +21,7 @@ class SimpleTestHook(CustomLogger):
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
         logger.info(f"🔥🔥🔥 ASYNC PRE CALL HOOK CALLED! call_type={call_type}")
         return data
+
 
 # Create instance
 simple_hook_instance = SimpleTestHook()

@@ -8,7 +8,7 @@ Examples:
     Query: "hány fok van a nappaliban"
     Expanded: [
         "hány fok van a nappaliban",
-        "mennyi a hőmérséklet a nappaliban", 
+        "mennyi a hőmérséklet a nappaliban",
         "what is the temperature in the living room",
         "milyen meleg van a nappaliban"
     ]

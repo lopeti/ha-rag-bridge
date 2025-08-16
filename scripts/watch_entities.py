@@ -6,8 +6,8 @@ import logging
 import websockets
 
 try:
-    from .ingest import ingest        # package run
-except ImportError:                    # direct run
+    from .ingest import ingest  # package run
+except ImportError:  # direct run
     from ingest import ingest
 
 from ha_rag_bridge.logging import get_logger
@@ -17,11 +17,12 @@ logger = get_logger(__name__)
 
 WS_PATH = "/api/websocket"
 
+
 def to_websocket_url(http_url: str) -> str:
     if http_url.startswith("https://"):
-        return "wss://" + http_url[len("https://"):]
+        return "wss://" + http_url[len("https://") :]
     elif http_url.startswith("http://"):
-        return "ws://" + http_url[len("http://"):]
+        return "ws://" + http_url[len("http://") :]
     return http_url
 
 
@@ -40,7 +41,15 @@ async def _handle_messages(ws: websockets.WebSocketClientProtocol) -> None:
 
     # Subscribe to entity registry updates
     try:
-        await ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "entity_registry_updated"}))
+        await ws.send(
+            json.dumps(
+                {
+                    "id": 1,
+                    "type": "subscribe_events",
+                    "event_type": "entity_registry_updated",
+                }
+            )
+        )
         logger.info("Subscribed to entity registry updates")
     except Exception as exc:
         logger.error("Failed to subscribe to entity registry updates", error=str(exc))

@@ -1,4 +1,5 @@
 """Initialize collections and indexes for local development."""
+
 from __future__ import annotations
 
 import os

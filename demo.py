@@ -6,12 +6,16 @@ from typing import List, Dict
 
 import httpx
 from ha_rag_bridge.settings import HTTP_TIMEOUT
+
 try:
     from colorama import Fore, Style
+
     _COLOR = True
 except Exception:
+
     class Dummy:
-        RESET = ''
+        RESET = ""
+
     Fore = Style = Dummy()
     _COLOR = False
 
@@ -65,7 +69,11 @@ async def run_demo(question: str, llm: str = "stub") -> str:
     print(_color(f"> USER: {question}", Fore.GREEN))
     async with httpx.AsyncClient(base_url=API_URL, timeout=HTTP_TIMEOUT) as client:
         r1 = await client.post("/process-request", json={"user_message": question})
-    print(_color(f"\u2192 /process-request: {r1.status_code} {r1.reason_phrase}", Fore.CYAN))
+    print(
+        _color(
+            f"\u2192 /process-request: {r1.status_code} {r1.reason_phrase}", Fore.CYAN
+        )
+    )
     data = r1.json()
     messages = data.get("messages", [])
     tools = data.get("tools", [])
@@ -74,17 +82,27 @@ async def run_demo(question: str, llm: str = "stub") -> str:
         assistant = stub_llm(messages, tools)
         if assistant.get("tool_calls"):
             tc = assistant["tool_calls"][0]
-            print(_color(
-                f"\u2192 Stub-LLM: calling {tc['function']['name']}({tc['function']['arguments']})",
-                Fore.MAGENTA,
-            ))
+            print(
+                _color(
+                    f"\u2192 Stub-LLM: calling {tc['function']['name']}({tc['function']['arguments']})",
+                    Fore.MAGENTA,
+                )
+            )
     else:
-        assistant = {"role": "assistant", "content": messages[-1]["content"], "tool_calls": None}
+        assistant = {
+            "role": "assistant",
+            "content": messages[-1]["content"],
+            "tool_calls": None,
+        }
 
     payload = {"id": "1", "choices": [{"message": assistant}]}
     async with httpx.AsyncClient(base_url=API_URL, timeout=HTTP_TIMEOUT) as client:
         r2 = await client.post("/process-response", json=payload)
-    print(_color(f"\u2192 /process-response: {r2.status_code} {r2.reason_phrase}", Fore.CYAN))
+    print(
+        _color(
+            f"\u2192 /process-response: {r2.status_code} {r2.reason_phrase}", Fore.CYAN
+        )
+    )
     result = r2.json()
     print(_color(f"< ASSISTANT: {result.get('message')}", Fore.YELLOW))
     return result.get("message", "")

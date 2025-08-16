@@ -4,11 +4,14 @@ import httpx
 from fastapi.testclient import TestClient
 import app.main as main
 
+
 def setup_env():
-    os.environ.update({
-        "HA_URL": "http://ha",
-        "HA_TOKEN": "tok",
-    })
+    os.environ.update(
+        {
+            "HA_URL": "http://ha",
+            "HA_TOKEN": "tok",
+        }
+    )
 
 
 def make_payload(content="OK", entity="light.test", func="light.turn_on"):
@@ -25,13 +28,13 @@ def make_payload(content="OK", entity="light.test", func="light.turn_on"):
                             "type": "function",
                             "function": {
                                 "name": func,
-                                "arguments": json.dumps({"entity_id": entity})
-                            }
+                                "arguments": json.dumps({"entity_id": entity}),
+                            },
                         }
-                    ]
+                    ],
                 }
             }
-        ]
+        ],
     }
 
 
@@ -44,6 +47,7 @@ def test_process_response_success(monkeypatch):
         return httpx.Response(200, json={})
 
     transport = httpx.MockTransport(handler)
+
     class FakeHTTPX:
         def __init__(self, real):
             self._real = real
@@ -69,6 +73,7 @@ def test_process_response_error(monkeypatch):
         return httpx.Response(500)
 
     transport = httpx.MockTransport(handler)
+
     class FakeHTTPX:
         def __init__(self, real):
             self._real = real
@@ -83,6 +88,7 @@ def test_process_response_error(monkeypatch):
     client = TestClient(main.app)
     resp = client.post("/process-response", json=make_payload(entity="light.fail"))
     assert resp.status_code == 200
-    assert resp.json() == {"status": "error", "message": "Nem sikerült végrehajtani: light.fail"}
-
-
+    assert resp.json() == {
+        "status": "error",
+        "message": "Nem sikerült végrehajtani: light.fail",
+    }

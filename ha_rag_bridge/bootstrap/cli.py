@@ -55,9 +55,11 @@ def _reindex(
             # Only create vector index if collection has documents with embedding field
             if col.count() > 0:
                 sample_docs = list(col.find({}, limit=1))
-                if sample_docs and 'embedding' in sample_docs[0]:
+                if sample_docs and "embedding" in sample_docs[0]:
                     if not dry_run:
-                        IndexManager(col, db).ensure_vector("embedding", dimensions=embed_dim)
+                        IndexManager(col, db).ensure_vector(
+                            "embedding", dimensions=embed_dim
+                        )
                     created += 1
     logger.info(
         "reindex finished",

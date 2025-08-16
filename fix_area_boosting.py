@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Fix to enable area-based entity boosting in context formatting node."""
 
-import re
 
 # Read the current file
-with open('/app/app/langgraph_workflow/nodes.py', 'r') as f:
+with open("/app/app/langgraph_workflow/nodes.py", "r") as f:
     content = f.read()
 
 # Find the problematic section and replace it
@@ -46,13 +45,15 @@ new_code = """        # Use actual entity reranker with area boosting
 # Apply the fix
 if old_code in content:
     new_content = content.replace(old_code, new_code)
-    
+
     # Write the fixed content
-    with open('/app/app/langgraph_workflow/nodes.py', 'w') as f:
+    with open("/app/app/langgraph_workflow/nodes.py", "w") as f:
         f.write(new_content)
-    
+
     print("✅ Successfully applied area boosting fix!")
-    print("The entity reranker will now apply area-based boosting in the context formatting node.")
+    print(
+        "The entity reranker will now apply area-based boosting in the context formatting node."
+    )
 else:
     print("❌ Could not find the target code section to replace")
     print("The code may have already been modified or the structure has changed")

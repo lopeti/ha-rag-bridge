@@ -37,4 +37,3 @@ def test_meta_collection_created(monkeypatch):
 
     boot.bootstrap()
     assert meta_col.insert.called
-

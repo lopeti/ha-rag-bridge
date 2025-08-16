@@ -100,7 +100,6 @@ class FriendlyNameGenerator:
             "tomorrow": "holnapi",
             "now": "jelenlegi",
             "next": "következő",
-            "current": "jelenlegi",
             "this": "mai",
             # Appliances
             "hutogep": "hűtőgép",

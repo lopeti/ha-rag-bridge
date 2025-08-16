@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """Web-based LangGraph Phase 3 workflow debugger with real-time node visualization."""
 
-import asyncio
-import json
 import time
-from typing import Dict, Any, List
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from app.langgraph_workflow.workflow import run_rag_workflow
@@ -17,10 +13,11 @@ logger = get_logger(__name__)
 
 app = FastAPI(title="LangGraph Phase 3 Workflow Debugger")
 
+
 @app.get("/", response_class=HTMLResponse)
 async def workflow_debugger_ui():
     """Serve the workflow debugger UI."""
-    html_content = '''
+    html_content = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -243,7 +240,7 @@ async def workflow_debugger_ui():
     </script>
 </body>
 </html>
-    '''
+    """
     return html_content
 
 
@@ -253,47 +250,49 @@ async def debug_workflow_endpoint(request: Request):
     try:
         data = await request.json()
         query = data.get("query", "").strip()
-        
+
         if not query:
             return {"success": False, "error": "Query is required"}
-        
+
         logger.info(f"Debugging workflow for query: {query}")
-        
+
         session_id = f"web_debug_{int(time.time())}"
         start_time = time.time()
-        
+
         # Run the workflow
         result = await run_rag_workflow(
-            user_query=query,
-            session_id=session_id,
-            conversation_history=[]
+            user_query=query, session_id=session_id, conversation_history=[]
         )
-        
+
         end_time = time.time()
         duration = end_time - start_time
-        
+
         # Extract and structure the results
         entities = result.get("retrieved_entities", [])
         diagnostics = result.get("diagnostics", {})
-        
+
         # Process top entities
         top_entities = []
         for entity in entities[:8]:  # Top 8 entities
-            top_entities.append({
-                "entity_id": entity.get("entity_id", "unknown"),
-                "score": entity.get("_score", 0.0),
-                "area": entity.get("area_name", "no area"),
-                "memory_boosted": entity.get("_memory_boosted", False),
-                "cluster_context": bool(entity.get("_cluster_context"))
-            })
-        
+            top_entities.append(
+                {
+                    "entity_id": entity.get("entity_id", "unknown"),
+                    "score": entity.get("_score", 0.0),
+                    "area": entity.get("area_name", "no area"),
+                    "memory_boosted": entity.get("_memory_boosted", False),
+                    "cluster_context": bool(entity.get("_cluster_context")),
+                }
+            )
+
         # Structure the response
         response_data = {
             "duration": duration,
             "entity_count": len(entities),
             "quality_score": diagnostics.get("overall_quality", 0.0),
             "conversation_context": result.get("conversation_context", {}),
-            "detected_scope": str(result.get("detected_scope", "unknown")).replace("QueryScope.", ""),
+            "detected_scope": str(result.get("detected_scope", "unknown")).replace(
+                "QueryScope.", ""
+            ),
             "scope_confidence": result.get("scope_confidence", 0.0),
             "optimal_k": result.get("optimal_k", 0),
             "scope_reasoning": result.get("scope_reasoning", ""),
@@ -301,18 +300,21 @@ async def debug_workflow_endpoint(request: Request):
                 "total": len(entities),
                 "cluster": len(result.get("cluster_entities", [])),
                 "memory": len(result.get("memory_entities", [])),
-                "memory_boosted": len([e for e in entities if e.get("_memory_boosted")])
+                "memory_boosted": len(
+                    [e for e in entities if e.get("_memory_boosted")]
+                ),
             },
             "formatter_type": result.get("formatter_type", "unknown"),
             "context_length": len(result.get("formatted_context", "")),
-            "context_preview": result.get("formatted_context", "")[:500] + ("..." if len(result.get("formatted_context", "")) > 500 else ""),
+            "context_preview": result.get("formatted_context", "")[:500]
+            + ("..." if len(result.get("formatted_context", "")) > 500 else ""),
             "top_entities": top_entities,
             "errors": result.get("errors", []),
-            "diagnostics": diagnostics if diagnostics else None
+            "diagnostics": diagnostics if diagnostics else None,
         }
-        
+
         return {"success": True, "data": response_data}
-        
+
     except Exception as e:
         logger.error(f"Debug workflow error: {e}", exc_info=True)
         return {"success": False, "error": str(e)}

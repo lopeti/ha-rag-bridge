@@ -35,7 +35,15 @@ class Device:
 
 
 class Entity:
-    def __init__(self, entity_id, platform, device_id=None, area_id=None, domain=None, original_name=None):
+    def __init__(
+        self,
+        entity_id,
+        platform,
+        device_id=None,
+        area_id=None,
+        domain=None,
+        original_name=None,
+    ):
         self.entity_id = entity_id
         self.platform = platform
         self.device_id = device_id
@@ -72,11 +80,24 @@ async def test_static_entities(monkeypatch):
     area_reg = FakeAreaReg(areas)
     device = Device("d1", "Lamp", "L1", "Acme", area_id="a1")
     dev_reg = FakeDeviceReg([device])
-    ent1 = Entity("light.lamp", "light", device_id="d1", area_id="a1", domain="light", original_name="Lamp")
-    ent2 = Entity("sensor.temp", "sensor", area_id="a2", domain="sensor", original_name="Temp")
+    ent1 = Entity(
+        "light.lamp",
+        "light",
+        device_id="d1",
+        area_id="a1",
+        domain="light",
+        original_name="Lamp",
+    )
+    ent2 = Entity(
+        "sensor.temp", "sensor", area_id="a2", domain="sensor", original_name="Temp"
+    )
     ent_reg = FakeEntityReg([ent1, ent2])
 
-    monkeypatch.setattr(http, "_helpers", (FakeModule(area_reg), FakeModule(dev_reg), FakeModule(ent_reg)))
+    monkeypatch.setattr(
+        http,
+        "_helpers",
+        (FakeModule(area_reg), FakeModule(dev_reg), FakeModule(ent_reg)),
+    )
 
     hass = object()
     res = await StaticEntitiesView().get(FakeReq(hass))

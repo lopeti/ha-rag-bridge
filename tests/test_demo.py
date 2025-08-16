@@ -23,7 +23,9 @@ async def test_demo_success(monkeypatch, capsys):
                     "name": "light.turn_on",
                     "parameters": {
                         "type": "object",
-                        "properties": {"entity_id": {"type": "string", "required": True}},
+                        "properties": {
+                            "entity_id": {"type": "string", "required": True}
+                        },
                         "required": ["entity_id"],
                     },
                 },
@@ -61,7 +63,9 @@ async def test_demo_success(monkeypatch, capsys):
 
 
 def test_demo_argparse():
-    proc = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "demo.py")], capture_output=True)
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[1] / "demo.py")],
+        capture_output=True,
+    )
     assert proc.returncode == 2
     assert b"usage" in proc.stderr.lower()
-

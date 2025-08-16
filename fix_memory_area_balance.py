@@ -2,7 +2,7 @@
 """Fix memory vs area boosting balance."""
 
 # Read the entity reranker file
-with open('/app/app/services/entity_reranker.py', 'r') as f:
+with open("/app/app/services/entity_reranker.py", "r") as f:
     content = f.read()
 
 # Find the area boosting section and make it stronger
@@ -31,12 +31,14 @@ new_boosting = """        # Calculate final score with enhanced area boosting wh
 # Apply the fix
 if old_boosting in content:
     new_content = content.replace(old_boosting, new_boosting)
-    
-    with open('/app/app/services/entity_reranker.py', 'w') as f:
+
+    with open("/app/app/services/entity_reranker.py", "w") as f:
         f.write(new_content)
-    
+
     print("✅ Successfully applied memory vs area boosting balance fix!")
-    print("Area matches will now use multiplicative boosting to compete with memory entities.")
+    print(
+        "Area matches will now use multiplicative boosting to compete with memory entities."
+    )
 else:
     print("❌ Could not find the target boosting code")
     print("The code structure may have changed")

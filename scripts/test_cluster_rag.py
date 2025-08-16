@@ -12,10 +12,10 @@ sys.path.insert(0, str(project_root))
 from ha_rag_bridge.logging import get_logger  # noqa: E402
 from scripts.embedding_backends import get_backend  # noqa: E402
 from app.services.cluster_manager import ClusterManager  # noqa: E402
-from app.services.query_scope_detector import (
+from app.services.query_scope_detector import (  # noqa: E402
     query_scope_detector,
     QueryScope,
-)  # noqa: E402
+)
 
 logger = get_logger(__name__)
 

@@ -618,9 +618,7 @@ def _get_english_domain_terms(domain: str, unit_of_measurement: str = "") -> lis
     return terms
 
 
-def build_doc(
-    entity: dict, embedding: List[float], text: str
-) -> dict:
+def build_doc(entity: dict, embedding: List[float], text: str) -> dict:
     """Construct the ArangoDB document for an entity with multilingual text."""
 
     attrs = entity.get("attributes", {})

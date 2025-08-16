@@ -4,6 +4,7 @@ from typing import Iterable
 
 TOKEN_LIMIT = 512
 
+
 def split_text(text: str, width: int = TOKEN_LIMIT) -> Iterable[str]:
     """
     Split the input text into chunks of at most ``width`` characters, ensuring safe Unicode handling.

@@ -2,7 +2,7 @@
 
 This is the enhanced version that integrates the Phase 3 LangGraph workflow with:
 1. Conversation memory persistence with TTL
-2. Advanced conditional routing and error handling  
+2. Advanced conditional routing and error handling
 3. Multi-turn context enhancement
 4. Comprehensive fallback mechanisms
 
@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Literal, List
+import re
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import httpx
 from litellm.integrations.custom_logger import CustomLogger
@@ -32,8 +33,6 @@ get_translation_service = None
 
 def extract_entity_ids_from_prompt(prompt_text: str) -> List[str]:
     """Extract entity IDs and entity data from prompt text for entity proof tracking."""
-    import re
-
     # Look for explicit entity IDs in common patterns
     entity_id_patterns = [
         r"\b(sensor\.[a-zA-Z0-9_]+)",
@@ -72,9 +71,6 @@ def extract_entity_ids_from_prompt(prompt_text: str) -> List[str]:
     ]  # Return max 10 unique entities to avoid log spam
 
 
-# Simple type hints without importing proxy server
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
     from litellm.proxy.proxy_server import DualCache, UserAPIKeyAuth
 else:
@@ -109,7 +105,7 @@ logger = logging.getLogger("litellm_ha_rag_hook_phase3")
 
 
 def _extract_user_question_and_context(
-    messages: List[Dict[str, Any]]
+    messages: List[Dict[str, Any]],
 ) -> tuple[str | None, List[Dict[str, Any]]]:
     """Extract the LAST user question and full conversation context."""
     import re
@@ -298,24 +294,29 @@ class HARagHookPhase3(CustomLogger):
         # Debug: list all methods to check what hooks are available
         hook_methods = [method for method in dir(self) if "hook" in method.lower()]
         logger.info(f"🔧 Available hook methods in this class: {hook_methods}")
-        
+
         # MANUALLY register to litellm.callbacks as well
         try:
             import litellm
-            if not hasattr(litellm, 'callbacks'):
+
+            if not hasattr(litellm, "callbacks"):
                 litellm.callbacks = []
             if self not in litellm.callbacks:
                 litellm.callbacks.append(self)
-                logger.info(f"🔧 MANUALLY added hook to litellm.callbacks: {litellm.callbacks}")
+                logger.info(
+                    f"🔧 MANUALLY added hook to litellm.callbacks: {litellm.callbacks}"
+                )
             else:
-                logger.info(f"🔧 Hook already in litellm.callbacks: {litellm.callbacks}")
+                logger.info(
+                    f"🔧 Hook already in litellm.callbacks: {litellm.callbacks}"
+                )
         except Exception as e:
             logger.error(f"🔧 Failed to manually add to litellm.callbacks: {e}")
 
     # MINDEN HOOK TESZTELÉSE
     def log_success_event(self, kwargs, response_obj, start_time, end_time):
         """SYNC logging test."""
-        logger.info(f"🔥🔥🔥 SYNC log_success_event CALLED!")
+        logger.info("🔥🔥🔥 SYNC log_success_event CALLED!")
         return super().log_success_event(kwargs, response_obj, start_time, end_time)
 
     # MINDEN LEHETSÉGES PRE-CALL HOOK TESZTELÉSE
@@ -323,7 +324,7 @@ class HARagHookPhase3(CustomLogger):
         """PRE-call hook - ez az igazi hely a kontextus injektálásra."""
         logger.info(f"🔥🔥🔥 ASYNC_PRE_CALL_HOOK CALLED! call_type={call_type}")
         logger.info(f"🔥🔥🔥 data keys: {list(data.keys()) if data else 'None'}")
-        
+
         # Simple context injection test
         if data and "messages" in data:
             messages = data["messages"]
@@ -334,12 +335,12 @@ class HARagHookPhase3(CustomLogger):
                     # Inject simple context
                     system_msg = {
                         "role": "system",
-                        "content": "HA RAG Context: Temperature in living room is 22.75°C from sensor.nappali_szoba_szenzor_temperature"
+                        "content": "HA RAG Context: Temperature in living room is 22.75°C from sensor.nappali_szoba_szenzor_temperature",
                     }
                     data["messages"].insert(0, system_msg)
                     logger.info("🔥🔥🔥 CONTEXT INJECTED VIA ASYNC_PRE_CALL_HOOK!")
                     logger.info(f"🔥🔥🔥 New message count: {len(data['messages'])}")
-        
+
         return data
 
     # Próbáljuk meg a sync verzió is
@@ -353,17 +354,14 @@ class HARagHookPhase3(CustomLogger):
         """Moderation hook."""
         logger.info(f"🔥🔥🔥 ASYNC_MODERATION_HOOK CALLED! call_type={call_type}")
         return data
-        
-    async def async_post_call_success_hook(self, data, user_api_key_dict, response):
-        """POST call success test."""
-        logger.info(f"🔥🔥🔥 async_post_call_success_hook CALLED!")
-        return await super().async_post_call_success_hook(data, user_api_key_dict, response)
 
-    async def async_logging_hook(self, kwargs, result, call_type=None, start_time=None, end_time=None):
+    async def async_logging_hook(
+        self, kwargs, result, call_type=None, start_time=None, end_time=None
+    ):
         """Debug method to see if ANY async method is being called."""
         logger.info("🚨 DEBUG: async_logging_hook called (POST-call)")
         logger.info(f"🚨 DEBUG: call_type={call_type}")
-        
+
         # Ez POST-call, már késő kontextust injektálni
         # A CustomLogger super class nem támogatja ezeket a paramétereket, vissza kell adni (kwargs, result) tuple-t
         return (kwargs, result)
@@ -371,24 +369,28 @@ class HARagHookPhase3(CustomLogger):
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         """Extended debug for success logging."""
         logger.info("🚨 DEBUG: async_log_success_event called")
-        logger.info(f"🚨 DEBUG: kwargs keys={list(kwargs.keys()) if kwargs else 'None'}")
-        
+        logger.info(
+            f"🚨 DEBUG: kwargs keys={list(kwargs.keys()) if kwargs else 'None'}"
+        )
+
         # Try to manually trigger pre-call logic here as workaround
         if kwargs and "messages" in kwargs:
             logger.info("🔧 WORKAROUND: Running pre-call logic in success event")
             try:
                 # Simulate pre-call hook manually
-                modified_data = await self.async_pre_call_hook(
-                    user_api_key_dict=None, 
-                    cache=None, 
-                    data=kwargs, 
-                    call_type="completion"
+                await self.async_pre_call_hook(
+                    user_api_key_dict=None,
+                    cache=None,
+                    data=kwargs,
+                    call_type="completion",
                 )
                 logger.info("🔧 WORKAROUND: Pre-call logic completed successfully")
             except Exception as e:
                 logger.error(f"🔧 WORKAROUND: Pre-call logic failed: {e}")
-        
-        await super().async_log_success_event(kwargs, response_obj, start_time, end_time)
+
+        await super().async_log_success_event(
+            kwargs, response_obj, start_time, end_time
+        )
 
     # ────────────────────────────────
     # Pre‑call: inject entities using Phase 3 workflow
@@ -518,10 +520,6 @@ class HARagHookPhase3(CustomLogger):
     # ────────────────────────────────
     # Fallback: basic success logging
     # ────────────────────────────────
-
-    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
-        """Basic success logging fallback method."""
-        logger.info("HA RAG Hook Phase 3 async_log_success_event called")
 
 
 # Exported instance – reference this in litellm_config.yaml

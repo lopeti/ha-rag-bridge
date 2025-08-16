@@ -8,7 +8,7 @@ Examples:
     User: "Hány fok van a nappaliban?"
     Assistant: "A nappaliban 22.5 fok van."
     User: "És a kertben?"
-    
+
     Rewritten: "Hány fok van a kertben?"
 """
 

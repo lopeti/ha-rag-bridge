@@ -3,24 +3,72 @@ import pytest
 
 from ha_rag_bridge.bootstrap import cli
 
+
 @pytest.mark.parametrize(
     "argv,exp",
     [
-        (["--dry-run"], {"dry_run": True, "force": False, "reindex": None, "skip_invalid": False, "rename_invalid": False}),
-        (["--force", "--reindex", "embeddings"], {"dry_run": False, "force": True, "reindex": "embeddings", "skip_invalid": False, "rename_invalid": False}),
-        (["--skip-invalid"], {"dry_run": False, "force": False, "reindex": None, "skip_invalid": True, "rename_invalid": False}),
-        (["--rename-invalid"], {"dry_run": False, "force": False, "reindex": None, "skip_invalid": False, "rename_invalid": True}),
+        (
+            ["--dry-run"],
+            {
+                "dry_run": True,
+                "force": False,
+                "reindex": None,
+                "skip_invalid": False,
+                "rename_invalid": False,
+            },
+        ),
+        (
+            ["--force", "--reindex", "embeddings"],
+            {
+                "dry_run": False,
+                "force": True,
+                "reindex": "embeddings",
+                "skip_invalid": False,
+                "rename_invalid": False,
+            },
+        ),
+        (
+            ["--skip-invalid"],
+            {
+                "dry_run": False,
+                "force": False,
+                "reindex": None,
+                "skip_invalid": True,
+                "rename_invalid": False,
+            },
+        ),
+        (
+            ["--rename-invalid"],
+            {
+                "dry_run": False,
+                "force": False,
+                "reindex": None,
+                "skip_invalid": False,
+                "rename_invalid": True,
+            },
+        ),
     ],
 )
 def test_cli_parsing(monkeypatch, argv, exp):
     called = {}
 
-    def fake_run(plan, *, dry_run=False, force=False, skip_invalid=False, rename_invalid=False):
-        called["run"] = {"dry_run": dry_run, "force": force, "skip_invalid": skip_invalid, "rename_invalid": rename_invalid}
+    def fake_run(
+        plan, *, dry_run=False, force=False, skip_invalid=False, rename_invalid=False
+    ):
+        called["run"] = {
+            "dry_run": dry_run,
+            "force": force,
+            "skip_invalid": skip_invalid,
+            "rename_invalid": rename_invalid,
+        }
         return 0
 
     def fake_reindex(collection=None, *, force=False, dry_run=False):
-        called["reindex"] = {"collection": collection, "force": force, "dry_run": dry_run}
+        called["reindex"] = {
+            "collection": collection,
+            "force": force,
+            "dry_run": dry_run,
+        }
         return 0
 
     monkeypatch.setattr(cli, "bootstrap_run", fake_run)
