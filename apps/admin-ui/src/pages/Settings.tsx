@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
 import { ConfigField } from '../components/ConfigField';
+import { QueryProcessingConfig } from '../components/QueryProcessingConfig';
+import { EmbeddingAdvancedConfig } from '../components/EmbeddingAdvancedConfig';
 import type { ConfigData } from '../lib/api';
 
 
@@ -31,7 +33,8 @@ export function Settings() {
   const currentLang = i18n.language;
   
   const [expandedCategories, setExpandedCategories] = useState<string[]>([
-    'database', 'embedding', 'performance', 'cross_encoder', 'entity_ranking'
+    'database', 'embedding', 'query_processing', 'embedding_advanced', 
+    'performance', 'cross_encoder', 'entity_ranking'
   ]);
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [configValues, setConfigValues] = useState<ConfigData>({});
@@ -213,9 +216,9 @@ export function Settings() {
   }
 
   const categoryOrder = [
-    'database', 'embedding', 'cross_encoder', 'entity_ranking', 
-    'performance', 'query_scope', 'similarity', 'network', 
-    'home_assistant', 'debug', 'security'
+    'database', 'embedding', 'query_processing', 'embedding_advanced',
+    'cross_encoder', 'entity_ranking', 'performance', 'query_scope', 
+    'similarity', 'network', 'home_assistant', 'debug', 'security'
   ];
 
   const hasRestartRequired = modifiedFields.size > 0 && 
@@ -227,7 +230,7 @@ export function Settings() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h1 className="text-3xl font-bold text-red-500 bg-yellow-300 p-4 border-8 border-red-600">🚨 URGENT CLAUDE TEST 🚨 - Configuration Management</h1>
+        <h1 className="text-3xl font-bold">Configuration Management</h1>
         
         <div className="flex flex-wrap gap-2">
           <Button
@@ -342,6 +345,36 @@ export function Settings() {
             field.startsWith(`${category}.`)
           );
 
+          // Use specialized components for new categories
+          if (category === 'query_processing') {
+            return (
+              <QueryProcessingConfig
+                key={category}
+                config={configValues}
+                modifiedFields={modifiedFields}
+                onValueChange={updateFieldValue}
+                currentLang={currentLang}
+                isExpanded={isExpanded}
+                onToggle={() => toggleCategory(category)}
+              />
+            );
+          }
+          
+          if (category === 'embedding_advanced') {
+            return (
+              <EmbeddingAdvancedConfig
+                key={category}
+                config={configValues}
+                modifiedFields={modifiedFields}
+                onValueChange={updateFieldValue}
+                currentLang={currentLang}
+                isExpanded={isExpanded}
+                onToggle={() => toggleCategory(category)}
+              />
+            );
+          }
+
+          // Default generic category rendering
           return (
             <Card key={category}>
               <Collapsible open={isExpanded} onOpenChange={() => toggleCategory(category)}>

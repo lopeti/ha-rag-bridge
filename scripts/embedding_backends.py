@@ -64,14 +64,14 @@ class LocalBackend(BaseEmbeddingBackend):
             print(f"Loading SentenceTransformer model: {model_name} on {device}")
             print(f"CPU threads: {cpu_threads}")
             LocalBackend._MODEL = SentenceTransformer(model_name, device=device)
-            
+
             # Dynamic dimension detection based on model (only once)
             sample_embedding = LocalBackend._MODEL.encode(
                 ["test"], convert_to_numpy=True, normalize_embeddings=True
             )
             LocalBackend.DIMENSION = len(sample_embedding[0])
             print(f"Model dimension: {LocalBackend.DIMENSION}")
-            
+
         self.model = LocalBackend._MODEL
 
     def embed(self, texts: List[str]) -> List[List[float]]:
@@ -86,13 +86,14 @@ class LocalBackend(BaseEmbeddingBackend):
 
 class EnhancedLocalBackend(LocalBackend):
     """Enhanced Local Backend with instruction templates and query/document encoding split."""
-    
+
     def __init__(self) -> None:
         super().__init__()
-        
+
         # Import config here to avoid circular imports
         try:
             from ha_rag_bridge.config import get_settings
+
             self.settings = get_settings()
             self.use_instruction_templates = self.settings.use_instruction_templates
             self.query_prefix = self.settings.query_prefix_template
@@ -102,41 +103,41 @@ class EnhancedLocalBackend(LocalBackend):
             self.use_instruction_templates = True
             self.query_prefix = "query: "
             self.document_prefix = "passage: "
-    
+
     def embed_query(self, text: str) -> List[float]:
         """Query-specific embedding with instruction template."""
         if self.use_instruction_templates:
             prefixed_text = f"{self.query_prefix}{text}"
         else:
             prefixed_text = text
-            
+
         return self.embed([prefixed_text])[0]
-    
+
     def embed_document(self, text: str) -> List[float]:
-        """Document-specific embedding with instruction template.""" 
+        """Document-specific embedding with instruction template."""
         if self.use_instruction_templates:
             prefixed_text = f"{self.document_prefix}{text}"
         else:
             prefixed_text = text
-            
+
         return self.embed([prefixed_text])[0]
-    
+
     def embed_multi_query(self, queries: List[str]) -> List[List[float]]:
         """Batch multi-query embedding with query prefix."""
         if self.use_instruction_templates:
             prefixed_queries = [f"{self.query_prefix}{q}" for q in queries]
         else:
             prefixed_queries = queries
-            
+
         return self.embed(prefixed_queries)
-    
+
     def embed_multi_document(self, documents: List[str]) -> List[List[float]]:
         """Batch multi-document embedding with document prefix."""
         if self.use_instruction_templates:
             prefixed_docs = [f"{self.document_prefix}{d}" for d in documents]
         else:
             prefixed_docs = documents
-            
+
         return self.embed(prefixed_docs)
 
 
