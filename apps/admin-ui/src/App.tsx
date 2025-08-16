@@ -7,6 +7,7 @@ import { Clusters } from './pages/Clusters';
 import { Maintenance } from './pages/Maintenance';
 import { Monitoring } from './pages/Monitoring';
 import { Settings } from './pages/SettingsNew';
+import { PipelineDebugger } from './pages/PipelineDebugger';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ function App() {
             <Route path="clusters" element={<Clusters />} />
             <Route path="maintenance" element={<Maintenance />} />
             <Route path="monitoring" element={<Monitoring />} />
+            <Route path="pipeline-debugger" element={<PipelineDebugger />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
