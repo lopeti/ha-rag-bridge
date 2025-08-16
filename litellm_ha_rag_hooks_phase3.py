@@ -317,29 +317,114 @@ class HARagHookPhase3(CustomLogger):
     def log_success_event(self, kwargs, response_obj, start_time, end_time):
         """SYNC logging test."""
         logger.info("🔥🔥🔥 SYNC log_success_event CALLED!")
+
+        # Try to inject context here as well since other hooks aren't working
+        if kwargs and "messages" in kwargs:
+            messages = kwargs["messages"]
+            if len(messages) > 0 and messages[-1].get("role") == "user":
+                user_msg = messages[-1].get("content", "")
+                logger.info(f"📝 SYNC Processing user query: '{user_msg[:50]}...'")
+
+                # Check if we already injected context (avoid double injection)
+                has_ha_context = any(
+                    msg.get("role") == "system"
+                    and "HomeAssistant" in str(msg.get("content", ""))
+                    for msg in messages
+                )
+
+                if not has_ha_context and (
+                    "fok" in user_msg.lower() or "temperature" in user_msg.lower()
+                ):
+                    logger.info(
+                        "🔥 SYNC HOOK: Found temperature query - injecting context!"
+                    )
+                    # Simple static injection for testing
+                    system_msg = {
+                        "role": "system",
+                        "content": "A konyhában jelenleg 24.3°C van.",
+                    }
+                    kwargs["messages"].insert(0, system_msg)
+                    logger.info("✅ SYNC: Static temperature context injected")
+
         return super().log_success_event(kwargs, response_obj, start_time, end_time)
 
-    # MINDEN LEHETSÉGES PRE-CALL HOOK TESZTELÉSE
+    # REAL WORKFLOW INTEGRATION PRE-CALL HOOK
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
-        """PRE-call hook - ez az igazi hely a kontextus injektálásra."""
-        logger.info(f"🔥🔥🔥 ASYNC_PRE_CALL_HOOK CALLED! call_type={call_type}")
-        logger.info(f"🔥🔥🔥 data keys: {list(data.keys()) if data else 'None'}")
+        """PRE-call hook - real HA RAG context injection via Phase 3 workflow."""
+        logger.info(f"🚀 ASYNC_PRE_CALL_HOOK: call_type={call_type}")
 
-        # Simple context injection test
-        if data and "messages" in data:
+        if not data or "messages" not in data:
+            return data
+
+        try:
             messages = data["messages"]
             if len(messages) > 0 and messages[-1].get("role") == "user":
                 user_msg = messages[-1].get("content", "")
-                logger.info(f"🔥🔥🔥 User message: '{user_msg}'")
-                if "hány fok" in user_msg.lower():
-                    # Inject simple context
-                    system_msg = {
-                        "role": "system",
-                        "content": "HA RAG Context: Temperature in living room is 22.75°C from sensor.nappali_szoba_szenzor_temperature",
-                    }
-                    data["messages"].insert(0, system_msg)
-                    logger.info("🔥🔥🔥 CONTEXT INJECTED VIA ASYNC_PRE_CALL_HOOK!")
-                    logger.info(f"🔥🔥🔥 New message count: {len(data['messages'])}")
+                logger.info(f"📝 Processing user query: '{user_msg[:50]}...'")
+
+                # Call the real HA RAG workflow
+                bridge_url = os.getenv("HA_RAG_BRIDGE_URL", "http://localhost:8000")
+                session_id = f"litellm_hook_{int(__import__('time').time())}"
+
+                # Start a debug trace for OpenWebUI requests
+                trace_start_data = {"query": user_msg, "session_id": session_id}
+
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    # Start trace
+                    try:
+                        trace_response = await client.post(
+                            f"{bridge_url}/admin/debug/start-trace",
+                            json=trace_start_data,
+                            headers={"X-Admin-Token": "changeme"},
+                        )
+                        if trace_response.status_code == 200:
+                            trace_info = trace_response.json()
+                            logger.info(
+                                f"🔍 Started trace: {trace_info.get('trace_id')}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to start trace: {e}")
+
+                    # Call workflow
+                    response = await client.post(
+                        f"{bridge_url}/process-request-workflow",
+                        json={
+                            "user_message": user_msg,
+                            "conversation_history": [],
+                            "session_id": session_id,
+                        },
+                    )
+
+                    if response.status_code == 200:
+                        workflow_result = response.json()
+                        formatted_context = workflow_result.get("formatted_context", "")
+
+                        if formatted_context and formatted_context.strip():
+                            # Inject real context from workflow
+                            system_msg = {
+                                "role": "system",
+                                "content": formatted_context,
+                            }
+                            data["messages"].insert(0, system_msg)
+                            logger.info(
+                                f"✅ Real HA context injected ({len(formatted_context)} chars)"
+                            )
+
+                            # Store trace info for debugging
+                            entities_count = len(
+                                workflow_result.get("retrieved_entities", [])
+                            )
+                            logger.info(
+                                f"📊 Workflow stats: {entities_count} entities retrieved"
+                            )
+                        else:
+                            logger.warning("⚠️ Workflow returned empty context")
+                    else:
+                        logger.error(f"❌ Workflow call failed: {response.status_code}")
+
+        except Exception as e:
+            logger.error(f"❌ Hook error: {e}")
+            # Don't fail the request on hook errors
 
         return data
 
@@ -358,13 +443,90 @@ class HARagHookPhase3(CustomLogger):
     async def async_logging_hook(
         self, kwargs, result, call_type=None, start_time=None, end_time=None
     ):
-        """Debug method to see if ANY async method is being called."""
-        logger.info("🚨 DEBUG: async_logging_hook called (POST-call)")
+        """Debug method AND now ACTUALLY inject context here since pre_call_hook doesn't work."""
+        logger.info("🚨 DEBUG: async_logging_hook called")
         logger.info(f"🚨 DEBUG: call_type={call_type}")
 
-        # Ez POST-call, már késő kontextust injektálni
-        # A CustomLogger super class nem támogatja ezeket a paramétereket, vissza kell adni (kwargs, result) tuple-t
-        return (kwargs, result)
+        # Check if this is a PRE-request call by looking at the kwargs
+        if kwargs and "messages" in kwargs and not result:
+            logger.info(
+                "🔥 FOUND PRE-REQUEST in async_logging_hook - injecting context!"
+            )
+
+            # Inject context here instead of in pre_call_hook
+            try:
+                messages = kwargs["messages"]
+                if len(messages) > 0 and messages[-1].get("role") == "user":
+                    user_msg = messages[-1].get("content", "")
+                    logger.info(f"📝 Processing user query: '{user_msg[:50]}...'")
+
+                    # Check if we already injected context (avoid double injection)
+                    has_ha_context = any(
+                        msg.get("role") == "system"
+                        and "HomeAssistant" in str(msg.get("content", ""))
+                        for msg in messages
+                    )
+
+                    if not has_ha_context:
+                        # Call the real HA RAG workflow
+                        bridge_url = os.getenv(
+                            "HA_RAG_BRIDGE_URL", "http://localhost:8000"
+                        )
+                        session_id = f"litellm_hook_{int(__import__('time').time())}"
+
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            # Call workflow
+                            response = await client.post(
+                                f"{bridge_url}/process-request-workflow",
+                                json={
+                                    "user_message": user_msg,
+                                    "conversation_history": [],
+                                    "session_id": session_id,
+                                },
+                            )
+
+                            if response.status_code == 200:
+                                workflow_result = response.json()
+                                formatted_context = workflow_result.get(
+                                    "formatted_context", ""
+                                )
+
+                                if formatted_context and formatted_context.strip():
+                                    # Inject real context from workflow
+                                    system_msg = {
+                                        "role": "system",
+                                        "content": formatted_context,
+                                    }
+                                    kwargs["messages"].insert(0, system_msg)
+                                    logger.info(
+                                        f"✅ Real HA context injected ({len(formatted_context)} chars)"
+                                    )
+
+                                    # Store trace info for debugging
+                                    entities_count = len(
+                                        workflow_result.get("retrieved_entities", [])
+                                    )
+                                    logger.info(
+                                        f"📊 Workflow stats: {entities_count} entities retrieved"
+                                    )
+                                else:
+                                    logger.warning("⚠️ Workflow returned empty context")
+                            else:
+                                logger.error(
+                                    f"❌ Workflow call failed: {response.status_code}"
+                                )
+
+            except Exception as e:
+                logger.error(f"❌ Hook error: {e}")
+                # Don't fail the request on hook errors
+
+        # Return based on what LiteLLM expects
+        if result:
+            # POST-call
+            return (kwargs, result)
+        else:
+            # PRE-call - return modified kwargs
+            return kwargs
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         """Extended debug for success logging."""

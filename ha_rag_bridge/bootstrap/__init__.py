@@ -10,7 +10,7 @@ from .naming import safe_create_collection, is_valid, to_valid_name
 from ha_rag_bridge.utils.env import env_true
 from ha_rag_bridge.logging import get_logger
 
-SCHEMA_LATEST = 3
+SCHEMA_LATEST = 4
 
 logger = get_logger(__name__)
 
@@ -187,6 +187,8 @@ def _bootstrap_impl(
         # Phase 1: Cluster-based RAG collections
         "cluster",
         "conversation_memory",
+        # Pipeline Debugger
+        "workflow_traces",
     ]
     existing = {c["name"] for c in db.collections()}
     for orig in doc_cols:

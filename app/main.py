@@ -815,8 +815,18 @@ logger.info("All routers included successfully")
 # Print all registered routes for debugging
 for route in app.routes:
     if hasattr(route, "path"):
-        logger.info(f"Registered route: {route.methods} {route.path}")
+        methods = (
+            getattr(route, "methods", ["WEBSOCKET"])
+            if hasattr(route, "methods")
+            else ["WEBSOCKET"]
+        )
+        logger.info(f"Registered route: {methods} {route.path}")
     elif hasattr(route, "routes"):
         for subroute in route.routes:
             if hasattr(subroute, "path"):
-                logger.info(f"Registered subroute: {subroute.methods} {subroute.path}")
+                methods = (
+                    getattr(subroute, "methods", ["WEBSOCKET"])
+                    if hasattr(subroute, "methods")
+                    else ["WEBSOCKET"]
+                )
+                logger.info(f"Registered subroute: {methods} {subroute.path}")

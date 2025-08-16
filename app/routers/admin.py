@@ -12,8 +12,17 @@ import httpx
 from datetime import datetime, timedelta
 from time import perf_counter
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, HTTPException, status, Response
+from fastapi import (
+    APIRouter,
+    Request,
+    HTTPException,
+    status,
+    Response,
+    WebSocket,
+    Query,
+)
 from fastapi.responses import StreamingResponse
+from websockets.exceptions import ConnectionClosedOK
 from arango import ArangoClient
 from ha_rag_bridge.bootstrap import bootstrap, SCHEMA_LATEST
 from ha_rag_bridge.logging import get_logger
@@ -2681,3 +2690,128 @@ async def get_container_health(request: Request):
     except Exception as e:
         logger.error(f"Failed to get container health: {e}")
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+
+# ====================
+# PIPELINE DEBUGGER API ENDPOINTS
+# ====================
+
+
+@router.get("/debug/traces")
+async def get_workflow_traces(request: Request, limit: int = 50):
+    """Get recent workflow traces for debugging"""
+    _check_token(request)
+
+    try:
+        from app.services.workflow_tracer import workflow_tracer
+
+        traces = workflow_tracer.get_recent_traces(limit=limit)
+        return traces
+    except Exception as e:
+        logger.error(f"Failed to get workflow traces: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get traces: {str(e)}")
+
+
+@router.get("/debug/trace/{trace_id}")
+async def get_workflow_trace(request: Request, trace_id: str):
+    """Get detailed workflow trace by ID"""
+    _check_token(request)
+
+    try:
+        from app.services.workflow_tracer import workflow_tracer
+
+        trace = workflow_tracer.get_trace(trace_id)
+
+        if not trace:
+            raise HTTPException(status_code=404, detail="Trace not found")
+
+        return trace
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get workflow trace {trace_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get trace: {str(e)}")
+
+
+@router.post("/debug/start-trace")
+async def start_test_trace(request: Request):
+    """Start a new test workflow trace"""
+    _check_token(request)
+
+    try:
+        body = await request.json()
+        query = body.get("query", "")
+        session_id = body.get("session_id", f"test_{int(time.time())}")
+
+        if not query.strip():
+            raise HTTPException(status_code=400, detail="Query is required")
+
+        # Import and start workflow
+        from app.langgraph_workflow.workflow import run_rag_workflow
+        from app.services.workflow_tracer import workflow_tracer
+        import asyncio
+
+        # Start trace
+        trace_id = workflow_tracer.start_trace(session_id=session_id, user_query=query)
+
+        # Start async workflow execution (fire and forget)
+        async def run_test_workflow():
+            try:
+                await run_rag_workflow(
+                    user_query=query, session_id=session_id, conversation_history=[]
+                )
+            except Exception as e:
+                logger.error(f"Test workflow failed: {e}")
+
+        # Run in background
+        asyncio.create_task(run_test_workflow())
+
+        return {
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "query": query,
+            "status": "started",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start test trace: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start trace: {str(e)}")
+
+
+@router.websocket("/debug/live/{session_id}")
+async def debug_live_websocket(
+    websocket: WebSocket, session_id: str, token: str = Query(...)
+):
+    """WebSocket endpoint for real-time trace monitoring"""
+
+    # Simple token validation for WebSocket
+    from ha_rag_bridge.config import get_settings
+
+    settings = get_settings()
+    if token != settings.admin_token:
+        await websocket.close(code=1008, reason="Invalid token")
+        return
+
+    await websocket.accept()
+
+    try:
+        # Keep connection alive and send updates
+        while True:
+            # For now, just send a heartbeat every 5 seconds
+            # In the future, this could stream real-time trace updates
+            await asyncio.sleep(5)
+            await websocket.send_json(
+                {
+                    "type": "heartbeat",
+                    "session_id": session_id,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+    except ConnectionClosedOK:
+        logger.info(f"WebSocket connection closed for session {session_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for session {session_id}: {e}")
+        await websocket.close(code=1011, reason="Internal error")
