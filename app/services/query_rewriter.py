@@ -272,16 +272,22 @@ Rewritten:"""
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM for query rewriting using LiteLLM with local model support."""
         import asyncio
-        
+
         try:
             import litellm
-            
+
             # Get API configuration from settings
-            api_base = getattr(self.settings, 'query_rewriting_api_base', 'http://192.168.1.115:8001/v1')
-            api_key = getattr(self.settings, 'query_rewriting_api_key', 'fake-key')
-            
-            logger.debug(f"Calling LLM rewriter: model={self.model}, api_base={api_base}")
-            
+            api_base = getattr(
+                self.settings,
+                "query_rewriting_api_base",
+                "http://192.168.1.115:8001/v1",
+            )
+            api_key = getattr(self.settings, "query_rewriting_api_key", "fake-key")
+
+            logger.debug(
+                f"Calling LLM rewriter: model={self.model}, api_base={api_base}"
+            )
+
             # Create chat completion for query rewriting
             response = await asyncio.wait_for(
                 litellm.acompletion(
@@ -313,7 +319,11 @@ Rewritten:"""
             lines = rewritten.split("\n")
             for line in lines:
                 line = line.strip()
-                if line and not line.startswith("Rewritten:") and not line.startswith("Output:"):
+                if (
+                    line
+                    and not line.startswith("Rewritten:")
+                    and not line.startswith("Output:")
+                ):
                     return line
 
             return rewritten

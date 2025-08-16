@@ -277,6 +277,7 @@ async def run_rag_workflow(
         errors=[],
         retry_count=0,
         fallback_used=False,
+        trace_id=trace_id,  # Add trace_id to state for node access
     )
 
     # Create and run workflow

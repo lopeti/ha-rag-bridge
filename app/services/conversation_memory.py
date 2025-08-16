@@ -37,7 +37,7 @@ class ConversationMemory:
     last_updated: datetime
     ttl: datetime
     query_count: int = 1
-    
+
     # NEW: Topic tracking fields
     topic_summary: Optional[str] = None
     current_focus: Optional[str] = None
@@ -124,7 +124,7 @@ class ConversationMemoryService:
                     intent_pattern=doc.get("intent_pattern"),
                     topic_domains=set(doc.get("topic_domains", [])),
                     focus_history=doc.get("focus_history", []),
-                    conversation_summary=doc.get("conversation_summary")
+                    conversation_summary=doc.get("conversation_summary"),
                 )
 
         except Exception as e:
@@ -213,7 +213,7 @@ class ConversationMemoryService:
             intent_pattern = None
             topic_domains = set()
             focus_history = []
-            
+
             if existing_memory:
                 # Preserve existing topic information
                 topic_summary = existing_memory.topic_summary
@@ -221,7 +221,7 @@ class ConversationMemoryService:
                 intent_pattern = existing_memory.intent_pattern
                 topic_domains = existing_memory.topic_domains.copy()
                 focus_history = existing_memory.focus_history.copy()
-            
+
             if conversation_summary:
                 # Update with new summary information
                 topic_summary = conversation_summary.get("topic", topic_summary)
@@ -232,8 +232,10 @@ class ConversationMemoryService:
                     current_focus = new_focus
                     # Keep last 10 focuses
                     focus_history = focus_history[-9:]
-                
-                intent_pattern = conversation_summary.get("intent_pattern", intent_pattern)
+
+                intent_pattern = conversation_summary.get(
+                    "intent_pattern", intent_pattern
+                )
                 if "topic_domains" in conversation_summary:
                     topic_domains.update(conversation_summary["topic_domains"])
 
@@ -252,7 +254,7 @@ class ConversationMemoryService:
                 intent_pattern=intent_pattern,
                 topic_domains=topic_domains,
                 focus_history=focus_history,
-                conversation_summary=conversation_summary
+                conversation_summary=conversation_summary,
             )
 
             # Convert to ArangoDB document
@@ -346,49 +348,57 @@ class ConversationMemoryService:
         return base_weight
 
     def _calculate_topic_aware_boost(
-        self, 
-        entity: Dict[str, Any],
-        memory: Optional[ConversationMemory] = None
+        self, entity: Dict[str, Any], memory: Optional[ConversationMemory] = None
     ) -> float:
         """Calculate boost weight with topic awareness and time decay."""
         from ha_rag_bridge.config import get_settings
-        
+
         settings = get_settings()
-        
+
         # Start with base boost calculation
         base_weight = self._calculate_boost_weight(entity)
-        
+
         if not memory or not settings.memory_topic_boost_enabled:
             return base_weight
-        
+
         # Topic domain matching boost
         entity_domain = entity.get("domain", "")
         if entity_domain and entity_domain in memory.topic_domains:
             base_weight *= 1.3  # 30% boost for topic-relevant domains
-            logger.debug(f"Topic domain boost for {entity['entity_id']}: {entity_domain}")
-        
+            logger.debug(
+                f"Topic domain boost for {entity['entity_id']}: {entity_domain}"
+            )
+
         # Current focus area matching boost (strongest boost)
         if memory.current_focus:
             entity_area = entity.get("area_name", "").lower()
             focus_lower = memory.current_focus.lower()
-            
+
             if entity_area == focus_lower:
                 base_weight *= 2.0  # 100% boost for current focus area
-                logger.debug(f"Focus area boost for {entity['entity_id']}: {entity_area}")
+                logger.debug(
+                    f"Focus area boost for {entity['entity_id']}: {entity_area}"
+                )
             elif focus_lower in entity.get("entity_id", "").lower():
                 base_weight *= 1.5  # 50% boost for entity ID containing focus
             elif entity_area in memory.focus_history:
                 base_weight *= 1.2  # 20% boost for previous focuses
-        
+
         # Intent pattern matching boost
         if memory.intent_pattern:
-            if memory.intent_pattern == "device_control" and entity_domain in ["switch", "light", "climate"]:
+            if memory.intent_pattern == "device_control" and entity_domain in [
+                "switch",
+                "light",
+                "climate",
+            ]:
                 base_weight *= 1.2  # 20% boost for controllable entities
             elif memory.intent_pattern == "status_check" and entity_domain == "sensor":
                 base_weight *= 1.2  # 20% boost for sensors during status checks
             elif memory.intent_pattern == "sequential_rooms" and entity_area:
-                base_weight *= 1.4  # 40% boost for area-specific entities in room sequences
-        
+                base_weight *= (
+                    1.4  # 40% boost for area-specific entities in room sequences
+                )
+
         # Time decay for conversation memory entities
         if hasattr(entity, "mentioned_at") and entity.get("mentioned_at"):
             try:
@@ -397,17 +407,23 @@ class ConversationMemoryService:
                     mentioned_at = datetime.fromisoformat(mentioned_at.replace("Z", ""))
                 elif not isinstance(mentioned_at, datetime):
                     mentioned_at = datetime.now()  # Fallback
-                
+
                 time_since = (datetime.now() - mentioned_at).total_seconds()
-                decay_constant = settings.memory_decay_constant  # From config (default 300s)
+                decay_constant = (
+                    settings.memory_decay_constant
+                )  # From config (default 300s)
                 decay_factor = math.exp(-time_since / decay_constant)
                 base_weight *= decay_factor
-                
-                logger.debug(f"Time decay applied to {entity['entity_id']}: {decay_factor:.2f}")
-                
+
+                logger.debug(
+                    f"Time decay applied to {entity['entity_id']}: {decay_factor:.2f}"
+                )
+
             except Exception as e:
-                logger.warning(f"Failed to apply time decay to {entity.get('entity_id', 'unknown')}: {e}")
-        
+                logger.warning(
+                    f"Failed to apply time decay to {entity.get('entity_id', 'unknown')}: {e}"
+                )
+
         # Cap the boost to prevent extreme values
         return min(base_weight, 3.0)
 

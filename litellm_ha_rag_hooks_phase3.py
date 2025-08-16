@@ -384,10 +384,12 @@ class HARagHookPhase3(CustomLogger):
                         conversation_history = []
                         for msg in messages[:-1]:  # Exclude current user message
                             if msg.get("role") in ["user", "assistant"]:
-                                conversation_history.append({
-                                    "role": msg.get("role"),
-                                    "content": msg.get("content", "")
-                                })
+                                conversation_history.append(
+                                    {
+                                        "role": msg.get("role"),
+                                        "content": msg.get("content", ""),
+                                    }
+                                )
 
                         logger.info(
                             f"🌉 PRE-API: Calling bridge workflow at: {bridge_url} with {len(conversation_history)} conversation messages"
@@ -487,12 +489,16 @@ class HARagHookPhase3(CustomLogger):
                     conversation_history = []
                     for msg in messages[:-1]:  # Exclude current user message
                         if msg.get("role") in ["user", "assistant"]:
-                            conversation_history.append({
-                                "role": msg.get("role"),
-                                "content": msg.get("content", "")
-                            })
+                            conversation_history.append(
+                                {
+                                    "role": msg.get("role"),
+                                    "content": msg.get("content", ""),
+                                }
+                            )
 
-                    logger.info(f"🌉 REAL PRE: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages")
+                    logger.info(
+                        f"🌉 REAL PRE: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages"
+                    )
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         # Call workflow
                         response = await client.post(
@@ -588,12 +594,16 @@ class HARagHookPhase3(CustomLogger):
                         conversation_history = []
                         for msg in messages[:-1]:  # Exclude current user message
                             if msg.get("role") in ["user", "assistant"]:
-                                conversation_history.append({
-                                    "role": msg.get("role"),
-                                    "content": msg.get("content", "")
-                                })
+                                conversation_history.append(
+                                    {
+                                        "role": msg.get("role"),
+                                        "content": msg.get("content", ""),
+                                    }
+                                )
 
-                        logger.info(f"🌉 LOG PRE: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages")
+                        logger.info(
+                            f"🌉 LOG PRE: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages"
+                        )
 
                         async with httpx.AsyncClient(timeout=15.0) as client:
                             response = await client.post(
@@ -703,10 +713,12 @@ class HARagHookPhase3(CustomLogger):
                             conversation_history = []
                             for msg in messages[:-1]:  # Exclude current user message
                                 if msg.get("role") in ["user", "assistant"]:
-                                    conversation_history.append({
-                                        "role": msg.get("role"),
-                                        "content": msg.get("content", "")
-                                    })
+                                    conversation_history.append(
+                                        {
+                                            "role": msg.get("role"),
+                                            "content": msg.get("content", ""),
+                                        }
+                                    )
 
                             logger.info(
                                 f"🌉 SYNC PRE: Calling bridge workflow at: {bridge_url} with {len(conversation_history)} conversation messages"
@@ -826,12 +838,16 @@ class HARagHookPhase3(CustomLogger):
                         conversation_history = []
                         for msg in messages[:-1]:  # Exclude current user message
                             if msg.get("role") in ["user", "assistant"]:
-                                conversation_history.append({
-                                    "role": msg.get("role"),
-                                    "content": msg.get("content", "")
-                                })
+                                conversation_history.append(
+                                    {
+                                        "role": msg.get("role"),
+                                        "content": msg.get("content", ""),
+                                    }
+                                )
 
-                        logger.info(f"🌉 ASYNC LOG: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages")
+                        logger.info(
+                            f"🌉 ASYNC LOG: Calling bridge at: {bridge_url} with {len(conversation_history)} conversation messages"
+                        )
                         async with httpx.AsyncClient(timeout=30.0) as client:
                             # Call workflow
                             response = await client.post(

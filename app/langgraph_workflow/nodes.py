@@ -26,24 +26,27 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
             ChatMessage(role=msg["role"], content=msg["content"])
             for msg in state["conversation_history"]
         ]
-        
+
         # Step 1: Query rewriting for conversational context
         from datetime import datetime
+
         rewrite_start = datetime.now()
-        
+
         query_rewriter = ConversationalQueryRewriter()
         rewrite_result = await query_rewriter.rewrite_query(
             current_query=state["user_query"],
             conversation_history=chat_messages,
-            conversation_memory=None  # TODO: Add memory context
+            conversation_memory=None,  # TODO: Add memory context
         )
-        
+
         rewrite_duration = (datetime.now() - rewrite_start).total_seconds() * 1000
-        
+
         # Update state with rewrite information
         result_data = {}
         if rewrite_result.method != "no_rewrite_needed":
-            logger.info(f"Query rewritten: '{rewrite_result.original_query}' -> '{rewrite_result.rewritten_query}'")
+            logger.info(
+                f"Query rewritten: '{rewrite_result.original_query}' -> '{rewrite_result.rewritten_query}'"
+            )
             result_data["original_query"] = rewrite_result.original_query
             result_data["user_query"] = rewrite_result.rewritten_query
             result_data["query_rewrite_info"] = {
@@ -54,17 +57,21 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
                 "reasoning": rewrite_result.reasoning,
                 "processing_time_ms": rewrite_result.processing_time_ms,
                 "coreferences_resolved": rewrite_result.coreferences_resolved,
-                "intent_inherited": rewrite_result.intent_inherited
+                "intent_inherited": rewrite_result.intent_inherited,
             }
         else:
             logger.debug("No query rewriting needed")
-        
+
         # Step 2: Conversation analysis (use rewritten query if available)
-        analysis_query = rewrite_result.rewritten_query if rewrite_result.method != "no_rewrite_needed" else state["user_query"]
-        
+        analysis_query = (
+            rewrite_result.rewritten_query
+            if rewrite_result.method != "no_rewrite_needed"
+            else state["user_query"]
+        )
+
         analyzer = ConversationAnalyzer()
         context = analyzer.analyze_conversation(analysis_query, chat_messages)
-        
+
         logger.debug(f"Conversation analysis result: {context}")
 
         result_data["conversation_context"] = {
@@ -74,40 +81,40 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
             "intent": context.intent,
             "confidence": context.confidence,
         }
-        
+
         # Step 3: Generate conversation summary for topic tracking
         summary_start = datetime.now()
         summary = None
-        
+
         try:
             summarizer = ConversationSummarizer()
-            
+
             # Get existing memory for context
             memory_service = ConversationMemoryService()
             session_id = state.get("session_id", "default")
             existing_memory = await memory_service.get_conversation_memory(session_id)
-            
+
             # Generate summary using final query (rewritten if applicable)
             summary = await summarizer.generate_summary(
-                query=analysis_query,
-                history=chat_messages,
-                memory=existing_memory
+                query=analysis_query, history=chat_messages, memory=existing_memory
             )
-            
+
             result_data["conversation_summary"] = summary.to_dict()
-            logger.info(f"Generated conversation summary: topic='{summary.topic}', focus='{summary.current_focus}'")
-            
+            logger.info(
+                f"Generated conversation summary: topic='{summary.topic}', focus='{summary.current_focus}'"
+            )
+
         except Exception as e:
             logger.warning(f"Failed to generate conversation summary: {e}")
             result_data["conversation_summary"] = None
-        
+
         summary_duration = (datetime.now() - summary_start).total_seconds() * 1000
-        
+
         # Add enhanced pipeline stages to trace if available
         trace_id = state.get("trace_id")
         if trace_id:
             from app.services.workflow_tracer import workflow_tracer
-            
+
             # Trace query rewriting stage
             if rewrite_result.method != "no_rewrite_needed":
                 workflow_tracer.add_enhanced_pipeline_stage(
@@ -124,11 +131,11 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
                             "method": rewrite_result.method,
                             "confidence": rewrite_result.confidence,
                             "coreferences_resolved": rewrite_result.coreferences_resolved,
-                            "processing_time_ms": rewrite_result.processing_time_ms
-                        }
-                    )
+                            "processing_time_ms": rewrite_result.processing_time_ms,
+                        },
+                    ),
                 )
-            
+
             # Trace conversation summary stage
             if summary:
                 workflow_tracer.add_enhanced_pipeline_stage(
@@ -146,11 +153,11 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
                             "topic_domains": list(summary.topic_domains),
                             "context_entities": summary.context_entities,
                             "confidence": summary.confidence,
-                            "reasoning": summary.reasoning
-                        }
-                    )
+                            "reasoning": summary.reasoning,
+                        },
+                    ),
                 )
-        
+
         return result_data
 
     except Exception as e:
@@ -490,6 +497,71 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
             f"{memory_boosted_count} memory boosted"
         )
 
+        # Add enhanced pipeline stages to trace if available
+        trace_id = state.get("trace_id")
+        if trace_id:
+            from app.services.workflow_tracer import workflow_tracer
+
+            # Trace cluster search stage (if any cluster entities found)
+            if cluster_entities:
+                workflow_tracer.add_enhanced_pipeline_stage(
+                    trace_id,
+                    EnhancedPipelineStage(
+                        stage_name="cluster_search",
+                        stage_type="search",
+                        input_count=1,  # query
+                        output_count=len(cluster_entities),
+                        duration_ms=50.0,  # estimate, since we don't time individual stages here
+                        cluster_search={
+                            "cluster_types": cluster_types,
+                            "cluster_count": len(cluster_entities),
+                            "scope": (
+                                detected_scope.value
+                                if hasattr(detected_scope, "value")
+                                else str(detected_scope)
+                            ),
+                            "optimal_k": optimal_k,
+                        },
+                    ),
+                )
+
+            # Trace vector search stage
+            workflow_tracer.add_enhanced_pipeline_stage(
+                trace_id,
+                EnhancedPipelineStage(
+                    stage_name="vector_search",
+                    stage_type="search",
+                    input_count=1,  # query vector
+                    output_count=len(retrieved_entities),
+                    duration_ms=100.0,  # estimate
+                    vector_search={
+                        "backend": backend_name,
+                        "vector_dimension": len(query_vector),
+                        "total_entities": len(retrieved_entities),
+                        "k_value": optimal_k,
+                    },
+                ),
+            )
+
+            # Trace memory boost stage (if any memory entities found)
+            if memory_entities:
+                workflow_tracer.add_enhanced_pipeline_stage(
+                    trace_id,
+                    EnhancedPipelineStage(
+                        stage_name="memory_boost",
+                        stage_type="boost",
+                        input_count=len(retrieved_entities),
+                        output_count=len(retrieved_entities),
+                        duration_ms=25.0,  # estimate
+                        memory_boost={
+                            "memory_entities_count": len(memory_entities),
+                            "boosted_entities": memory_boosted_count,
+                            "session_id": session_id,
+                            "conversation_turn": state.get("conversation_history", []),
+                        },
+                    ),
+                )
+
         return {
             "retrieved_entities": retrieved_entities,
             "cluster_entities": cluster_entities,
@@ -655,6 +727,66 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
             enhanced_entity["_ranking_factors"] = es.ranking_factors
             enhanced_entity["_score"] = es.final_score
             enhanced_entities.append(enhanced_entity)
+
+        # Add enhanced pipeline stages to trace if available
+        trace_id = state.get("trace_id")
+        if trace_id:
+            from app.services.workflow_tracer import workflow_tracer
+
+            # Trace reranking stage
+            workflow_tracer.add_enhanced_pipeline_stage(
+                trace_id,
+                EnhancedPipelineStage(
+                    stage_name="reranking",
+                    stage_type="rank",
+                    input_count=len(retrieved_entities),
+                    output_count=len(entity_scores),
+                    duration_ms=150.0,  # estimate for reranking time
+                    reranking={
+                        "algorithm": "entity_reranker",
+                        "score_range": {
+                            "min": (
+                                min(es.final_score for es in entity_scores)
+                                if entity_scores
+                                else 0.0
+                            ),
+                            "max": (
+                                max(es.final_score for es in entity_scores)
+                                if entity_scores
+                                else 0.0
+                            ),
+                        },
+                        "primary_count": len(primary_entities),
+                        "related_count": len(related_entities),
+                        "target_entities": target_entities,
+                        "filtered_entities": len(filtered_entities),
+                        "formatter_selected": formatter_type,
+                    },
+                ),
+            )
+
+            # Trace final selection stage
+            workflow_tracer.add_enhanced_pipeline_stage(
+                trace_id,
+                EnhancedPipelineStage(
+                    stage_name="final_selection",
+                    stage_type="filter",
+                    input_count=len(filtered_entities),
+                    output_count=len(all_entity_scores),
+                    duration_ms=50.0,  # estimate for final selection
+                    reranking={
+                        "context_length": len(formatted_context),
+                        "formatter_type": formatter_type,
+                        "primary_entities": primary_entity_ids,
+                        "related_entities": related_entity_ids,
+                        "scope": (
+                            detected_scope.value
+                            if hasattr(detected_scope, "value")
+                            else str(detected_scope)
+                        ),
+                    },
+                ),
+            )
 
         return {
             "formatted_context": formatted_context,

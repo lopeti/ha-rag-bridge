@@ -68,13 +68,13 @@ class EntityStageInfo:
 @dataclass
 class EnhancedPipelineStage:
     """Detailed pipeline stage with comprehensive information."""
-    
+
     stage_name: str
     stage_type: str  # "transform", "search", "filter", "rank", "boost"
     input_count: int
     output_count: int
     duration_ms: float
-    
+
     # Stage-specific details
     query_rewrite: Optional[Dict[str, Any]] = None
     conversation_summary: Optional[Dict[str, Any]] = None
@@ -82,7 +82,7 @@ class EnhancedPipelineStage:
     vector_search: Optional[Dict[str, Any]] = None
     memory_boost: Optional[Dict[str, Any]] = None
     reranking: Optional[Dict[str, Any]] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
@@ -92,15 +92,17 @@ class EnhancedPipelineStage:
             "output_count": self.output_count,
             "duration_ms": self.duration_ms,
             "details": {
-                k: v for k, v in {
+                k: v
+                for k, v in {
                     "query_rewrite": self.query_rewrite,
                     "conversation_summary": self.conversation_summary,
                     "cluster_search": self.cluster_search,
                     "vector_search": self.vector_search,
                     "memory_boost": self.memory_boost,
-                    "reranking": self.reranking
-                }.items() if v is not None
-            }
+                    "reranking": self.reranking,
+                }.items()
+                if v is not None
+            },
         }
 
 
@@ -126,7 +128,7 @@ class WorkflowTrace:
 
     # Entity pipeline tracking
     entity_pipeline: List[EntityStageInfo] = field(default_factory=list)
-    
+
     # Enhanced pipeline tracking
     enhanced_pipeline_stages: List[EnhancedPipelineStage] = field(default_factory=list)
 
@@ -151,7 +153,9 @@ class WorkflowTrace:
             "workflow_state": self.workflow_state,
             "final_result": self.final_result,
             "entity_pipeline": [stage.to_dict() for stage in self.entity_pipeline],
-            "enhanced_pipeline_stages": [stage.to_dict() for stage in self.enhanced_pipeline_stages],
+            "enhanced_pipeline_stages": [
+                stage.to_dict() for stage in self.enhanced_pipeline_stages
+            ],
             "performance_metrics": self.performance_metrics,
             "errors": self.errors,
             "status": self.status,
@@ -302,10 +306,12 @@ class WorkflowTracer:
         if trace_id not in self.active_traces:
             logger.warning(f"Trace not found: {trace_id}")
             return
-            
+
         trace = self.active_traces[trace_id]
         trace.enhanced_pipeline_stages.append(stage)
-        logger.debug(f"Added enhanced pipeline stage '{stage.stage_name}' to trace {trace_id}")
+        logger.debug(
+            f"Added enhanced pipeline stage '{stage.stage_name}' to trace {trace_id}"
+        )
 
     def end_trace(
         self,
@@ -327,14 +333,22 @@ class WorkflowTracer:
         detected_scope = final_result.get("detected_scope")
         sanitized_final_result = {
             "user_query": final_result.get("user_query"),
-            "session_id": final_result.get("session_id"), 
+            "session_id": final_result.get("session_id"),
             "conversation_context": final_result.get("conversation_context"),
-            "detected_scope": detected_scope.value if hasattr(detected_scope, 'value') else str(detected_scope),  # Handle QueryScope enum
+            "detected_scope": (
+                detected_scope.value
+                if hasattr(detected_scope, "value")
+                else str(detected_scope)
+            ),  # Handle QueryScope enum
             "scope_confidence": final_result.get("scope_confidence"),
             "optimal_k": final_result.get("optimal_k"),
-            "entity_count": len(final_result.get("retrieved_entities", [])),  # Store count, not full entities
+            "entity_count": len(
+                final_result.get("retrieved_entities", [])
+            ),  # Store count, not full entities
             "formatter_type": final_result.get("formatter_type"),
-            "formatted_context_length": len(str(final_result.get("formatted_context", ""))),  # Store length, not full content
+            "formatted_context_length": len(
+                str(final_result.get("formatted_context", ""))
+            ),  # Store length, not full content
             "errors": final_result.get("errors", []),
             "retry_count": final_result.get("retry_count", 0),
             "fallback_used": final_result.get("fallback_used", False),
@@ -398,9 +412,9 @@ class WorkflowTracer:
             return [self._sanitize_data(item, max_depth - 1) for item in data]
         elif isinstance(data, (str, int, float, bool, type(None))):
             return data
-        elif hasattr(data, '__dict__'):
+        elif hasattr(data, "__dict__"):
             # Handle objects with attributes (like QueryScope enum)
-            if hasattr(data, 'value'):
+            if hasattr(data, "value"):
                 return data.value  # For enum objects, use their value
             else:
                 return str(data)
@@ -419,8 +433,12 @@ class WorkflowTracer:
                 "entity_id": entity.get("entity_id"),
                 "domain": entity.get("domain"),
                 "area": entity.get("area") or entity.get("area_name"),
-                "_score": round(entity.get("_score", 0.0), 3),  # Round score to 3 decimals
-                "state": str(entity.get("state", ""))[:50] if entity.get("state") else None,  # Limit state length
+                "_score": round(
+                    entity.get("_score", 0.0), 3
+                ),  # Round score to 3 decimals
+                "state": (
+                    str(entity.get("state", ""))[:50] if entity.get("state") else None
+                ),  # Limit state length
                 "_memory_boosted": entity.get("_memory_boosted", False),
             }
 

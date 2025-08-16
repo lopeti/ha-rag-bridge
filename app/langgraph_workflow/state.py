@@ -49,3 +49,6 @@ class RAGState(TypedDict):
     errors: List[str]
     retry_count: int
     fallback_used: bool
+
+    # Tracing
+    trace_id: Optional[str]

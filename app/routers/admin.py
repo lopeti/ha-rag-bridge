@@ -2706,7 +2706,7 @@ async def get_workflow_traces(request: Request, limit: int = 50):
         from app.services.workflow_tracer import workflow_tracer
 
         traces = workflow_tracer.get_recent_traces(limit=limit)
-        
+
         # Return lightweight summary for performance, not full trace data
         simplified_traces = []
         for trace in traces:
@@ -2715,7 +2715,7 @@ async def get_workflow_traces(request: Request, limit: int = 50):
                 "session_id": trace.get("session_id"),
                 "user_query": trace.get("user_query"),
                 "start_time": trace.get("start_time"),
-                "end_time": trace.get("end_time"), 
+                "end_time": trace.get("end_time"),
                 "total_duration_ms": trace.get("total_duration_ms"),
                 "status": trace.get("status"),
                 "errors": trace.get("errors", []),
@@ -2724,7 +2724,7 @@ async def get_workflow_traces(request: Request, limit: int = 50):
                 "performance_metrics": trace.get("performance_metrics", {}),
             }
             simplified_traces.append(simplified_trace)
-            
+
         return simplified_traces
     except Exception as e:
         logger.error(f"Failed to get workflow traces: {e}")
