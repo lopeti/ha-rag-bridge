@@ -370,25 +370,47 @@ async def get_system_stats(request: Request):
             doc_count = db.collection("document").count()
             stats["total_documents"] = doc_count
 
-        # Get database size (approximate)
+        # Get database size estimate based on document counts
         collections = [
             c["name"] for c in db.collections() if not c["name"].startswith("_")
         ]
-        total_size = 0
+        estimated_size = 0
+        collection_count = len(collections)
+
         for col_name in collections:
             try:
                 col_info = db.collection(col_name).properties()
-                # This is an approximation, actual size calculation varies
-                total_size += col_info.get("count", 0) * 1024  # rough estimate
+                doc_count = col_info.get("count", 0)
+                # Improved estimation based on entity type:
+                # - Entities with embeddings: ~3KB each
+                # - Other documents: ~1KB each
+                if col_name == "entity":
+                    estimated_size += doc_count * 3072  # entities have embeddings
+                else:
+                    estimated_size += doc_count * 1024  # other collections
             except Exception:
                 continue
 
-        if total_size > 1024 * 1024 * 1024:
-            stats["database_size"] = f"{total_size / (1024*1024*1024):.1f} GB"
-        elif total_size > 1024 * 1024:
-            stats["database_size"] = f"{total_size / (1024*1024):.1f} MB"
+        # Add base overhead for collections and indexes
+        if collection_count > 0:
+            estimated_size += collection_count * 8192  # base collection overhead
+
+        # If we have entity count but no collections, estimate from entity count
+        entity_count = stats.get("total_entities", 0)
+        if estimated_size == 0 and isinstance(entity_count, int) and entity_count > 0:
+            estimated_size = entity_count * 3072 + 16384  # entities + overhead
+
+        # Format size appropriately
+        if estimated_size > 1024 * 1024 * 1024:
+            stats["database_size"] = f"{estimated_size / (1024*1024*1024):.1f} GB"
+        elif estimated_size > 1024 * 1024:
+            stats["database_size"] = f"{estimated_size / (1024*1024):.1f} MB"
+        elif estimated_size > 1024:
+            stats["database_size"] = f"{estimated_size / 1024:.1f} KB"
+        elif estimated_size > 0:
+            stats["database_size"] = f"{estimated_size} bytes"
         else:
-            stats["database_size"] = f"{total_size / 1024:.1f} KB"
+            stats["database_size"] = "Empty"
 
     except Exception as e:
         logger.error(f"Database stats error: {e}")
@@ -2842,4 +2864,73 @@ async def debug_live_websocket(
         logger.info(f"WebSocket connection closed for session {session_id}")
     except Exception as e:
         logger.error(f"WebSocket error for session {session_id}: {e}")
-        await websocket.close(code=1011, reason="Internal error")
+
+
+@router.get("/containers/{service}/logs/stream")
+async def stream_container_logs(request: Request, service: str, tail: int = 100):
+    """Stream real-time logs from a specific container"""
+    _check_token(request)
+
+    # Validate service name to prevent injection
+    valid_services = ["bridge", "litellm", "arangodb", "homeassistant"]
+    if service not in valid_services:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid service name. Valid services: {', '.join(valid_services)}",
+        )
+
+    async def generate_log_stream():
+        """Generate real-time log streaming data"""
+        container_name = f"ha-rag-bridge-{service}-1"
+
+        # Send initial message
+        yield f"data: {json.dumps({'event': 'info', 'message': f'🔍 Starting log stream for {service}...', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
+
+        try:
+            # Start docker logs follow command
+            process = subprocess.Popen(
+                ["docker", "logs", "-f", "--tail", str(tail), container_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+            )
+
+            # Stream logs line by line
+            for line in iter(process.stdout.readline, ""):
+                if line:
+                    # Clean the line and send it
+                    clean_line = line.rstrip("\n\r")
+                    if clean_line:
+                        yield f"data: {json.dumps({'event': 'log', 'message': clean_line, 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
+
+                # Check if process is still running
+                if process.poll() is not None:
+                    break
+
+            # Send completion message
+            yield f"data: {json.dumps({'event': 'complete', 'message': f'📋 Log stream for {service} completed', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
+
+        except subprocess.TimeoutExpired:
+            yield f"data: {json.dumps({'event': 'error', 'message': f'⏱️ Log stream timeout for {service}', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'event': 'error', 'message': f'❌ Log stream error: {str(e)}', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
+        finally:
+            # Clean up process
+            if "process" in locals():
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except Exception:
+                    pass
+
+    return StreamingResponse(
+        generate_log_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )

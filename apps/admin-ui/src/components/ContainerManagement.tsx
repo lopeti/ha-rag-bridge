@@ -1,7 +1,9 @@
+import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { 
   RefreshCw, 
@@ -11,7 +13,9 @@ import {
   HardDrive,
   Activity,
   Settings,
-  Hammer
+  Hammer,
+  Terminal,
+  X
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
 
@@ -34,6 +38,14 @@ interface HealthData {
 
 export function ContainerManagement() {
   const queryClient = useQueryClient();
+  
+  // Log streaming state
+  const [logs, setLogs] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [showLogDialog, setShowLogDialog] = useState(false);
+  const [streamTitle, setStreamTitle] = useState('Container Logs');
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Get container status
   const { data: containerData, isLoading: statusLoading } = useQuery({
@@ -118,6 +130,66 @@ export function ContainerManagement() {
   const isBuildableService = (service: string) => {
     const buildableServices = ['bridge', 'litellm'];
     return buildableServices.includes(service);
+  };
+
+  // Log streaming functions
+  const startLogStreaming = (service: string) => {
+    if (isStreaming) return;
+    
+    setIsStreaming(true);
+    setLogs(`🔍 Connecting to ${service} logs...\n`);
+    setShowLogDialog(true);
+    setStreamTitle(`${service} Container Logs`);
+    
+    // Close any existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+    
+    const eventSource = new EventSource(`/admin/containers/${service}/logs/stream`);
+    eventSourceRef.current = eventSource;
+    
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setLogs(prev => {
+        const newLogs = prev + `[${data.timestamp || new Date().toLocaleTimeString()}] ${data.message}\n`;
+        // Auto-scroll to bottom after state update
+        setTimeout(() => {
+          if (scrollContainerRef?.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+        }, 50);
+        return newLogs;
+      });
+      
+      if (data.event === 'complete' || data.event === 'error') {
+        setIsStreaming(false);
+        eventSource.close();
+      }
+    };
+    
+    eventSource.onerror = () => {
+      setLogs(prev => prev + `❌ Connection error occurred\n`);
+      setIsStreaming(false);
+      eventSource.close();
+    };
+  };
+
+  const stopLogStreaming = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setIsStreaming(false);
+    setLogs(prev => prev + `⏹️ Log streaming stopped by user\n`);
+  };
+  
+  const closeLogDialog = () => {
+    if (isStreaming) {
+      stopLogStreaming();
+    }
+    setShowLogDialog(false);
+    setLogs('');
   };
 
   return (
@@ -268,7 +340,19 @@ export function ContainerManagement() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  {/* Log Console Button */}
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    disabled={isStreaming}
+                    onClick={() => startLogStreaming(container.service)}
+                    className="flex items-center gap-1"
+                  >
+                    <Terminal className="h-3 w-3" />
+                    Logok
+                  </Button>
+
                   {isValidService(container.service) && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -352,6 +436,60 @@ export function ContainerManagement() {
           Nincsenek futó konténerek
         </div>
       )}
+
+      {/* Log Stream Dialog */}
+      <Dialog open={showLogDialog} onOpenChange={setShowLogDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Terminal className="h-5 w-5 mr-2" />
+              {streamTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {isStreaming ? 'Live log streaming in progress...' : 'Container log output'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col space-y-4">
+            <div 
+              className="h-96 w-full rounded-md border bg-slate-950 text-slate-50 p-4 overflow-auto"
+              ref={scrollContainerRef}
+            >
+              <pre className="text-xs font-mono whitespace-pre-wrap">
+                {logs || 'No logs available...'}
+              </pre>
+            </div>
+            <div className="flex justify-between gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setLogs('')}
+                disabled={isStreaming}
+              >
+                Clear Logs
+              </Button>
+              <div className="flex gap-2">
+                {isStreaming && (
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={stopLogStreaming}
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Stop Stream
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={closeLogDialog}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
