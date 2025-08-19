@@ -101,7 +101,7 @@ const StageCard: React.FC<StageCardProps> = ({ stage, isActive }) => (
       </div>
       
       {/* Stage-specific metadata */}
-      {Object.keys(stage.metadata).length > 0 && (
+      {stage.metadata && typeof stage.metadata === 'object' && Object.keys(stage.metadata).length > 0 && (
         <div className="mt-2 space-y-1">
           {Object.entries(stage.metadata).map(([key, value]) => (
             <div key={key} className="text-xs text-muted-foreground">
@@ -277,7 +277,7 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
               </div>
               
               {/* Ranking factors breakdown */}
-              {entity.ranking_factors && Object.keys(entity.ranking_factors).length > 0 && (
+              {entity.ranking_factors && typeof entity.ranking_factors === 'object' && Object.keys(entity.ranking_factors).length > 0 && (
                 <div className="mt-4">
                   <h5 className="text-xs font-medium text-muted-foreground mb-2">Ranking Factors</h5>
                   <div className="grid grid-cols-2 gap-2">
@@ -476,7 +476,7 @@ export const SearchDebugger: React.FC = () => {
               </div>
               
               {/* Pipeline Efficiency Metrics */}
-              {Object.keys(debugInfo.pipeline_efficiency).length > 0 && (
+              {debugInfo.pipeline_efficiency && typeof debugInfo.pipeline_efficiency === 'object' && Object.keys(debugInfo.pipeline_efficiency).length > 0 && (
                 <div className="mt-6 pt-4 border-t">
                   <h4 className="text-sm font-medium mb-3">Pipeline Efficiency</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

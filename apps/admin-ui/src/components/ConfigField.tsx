@@ -449,7 +449,7 @@ export function ConfigField({
             </div>
           )}
           
-          {constraints && Object.keys(constraints).length > 0 && (
+          {constraints && typeof constraints === 'object' && Object.keys(constraints).length > 0 && (
             <div>
               <strong>Constraints:</strong>{' '}
               {Object.entries(constraints).map(([key, val]) => `${key}: ${val}`).join(', ')}

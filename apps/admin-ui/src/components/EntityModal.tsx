@@ -471,7 +471,7 @@ export function EntityModal({ entity, isOpen, onClose }: EntityModalProps) {
             <TabsContent value="attributes" className="p-1">
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-medium text-lg mb-3 text-primary">Entity Attributes</h3>
-                {entity.attributes && Object.keys(entity.attributes).length > 0 ? (
+                {entity.attributes && typeof entity.attributes === 'object' && Object.keys(entity.attributes).length > 0 ? (
                   <pre className="text-xs bg-white p-4 rounded border overflow-x-auto font-mono">
                     {JSON.stringify(entity.attributes, null, 2)}
                   </pre>

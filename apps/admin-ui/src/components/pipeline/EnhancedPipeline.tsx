@@ -311,7 +311,7 @@ const EnhancedStageCard: React.FC<{ stage: EnhancedPipelineStage; index: number 
               )}
 
               {/* Entity Boosts */}
-              {Object.keys(stage.details.memory_stage.entity_boosts).length > 0 && (
+              {stage.details.memory_stage.entity_boosts && typeof stage.details.memory_stage.entity_boosts === 'object' && Object.keys(stage.details.memory_stage.entity_boosts).length > 0 && (
                 <div>
                   <span className="font-medium">Entity Boosts:</span>
                   <div className="grid grid-cols-1 gap-1 mt-1 max-h-32 overflow-y-auto">

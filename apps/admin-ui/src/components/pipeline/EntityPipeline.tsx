@@ -168,7 +168,7 @@ const EntityStageCard: React.FC<{ stage: EntityStageInfo; index: number }> = ({ 
             )}
 
             {/* Stage Metadata */}
-            {stage.metadata && Object.keys(stage.metadata).length > 0 && (
+            {stage.metadata && typeof stage.metadata === 'object' && Object.keys(stage.metadata).length > 0 && (
               <div className="mt-4">
                 <h4 className="text-sm font-semibold mb-2">Stage Metadata:</h4>
                 <ScrollArea className="h-32 w-full rounded-md border p-3">
@@ -180,7 +180,7 @@ const EntityStageCard: React.FC<{ stage: EntityStageInfo; index: number }> = ({ 
             )}
 
             {/* Scores */}
-            {stage.scores && Object.keys(stage.scores).length > 0 && (
+            {stage.scores && typeof stage.scores === 'object' && Object.keys(stage.scores).length > 0 && (
               <div className="mt-4">
                 <h4 className="text-sm font-semibold mb-2">Scores:</h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
