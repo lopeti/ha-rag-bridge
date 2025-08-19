@@ -1436,6 +1436,11 @@ class AppSettings(BaseSettings):
                 "query_rewriting_model",
                 "query_rewriting_timeout_ms",
                 "coreference_resolution_enabled",
+                "query_processing_enabled",
+                "query_processing_model",
+                "query_processing_timeout",
+                "query_processing_api_base",
+                "query_processing_api_key",
             ],
             "embedding_advanced": [
                 "use_instruction_templates",
@@ -1446,6 +1451,15 @@ class AppSettings(BaseSettings):
                 "max_query_variants",
                 "include_query_translations",
                 "include_query_synonyms",
+            ],
+            "conversation_memory": [
+                "conversation_summary_enabled",
+                "conversation_summary_model",
+                "conversation_summary_timeout",
+                "conversation_summary_api_base",
+                "conversation_summary_api_key",
+                "memory_topic_boost_enabled",
+                "memory_decay_constant",
             ],
             "performance": [
                 "state_cache_maxsize",
@@ -1648,28 +1662,138 @@ class AppSettings(BaseSettings):
         is_secret=True,
     )
 
-    # Conversation Summarization Settings
+    # Query Processing Settings (for AsyncConversationEnricher)
+    query_processing_enabled: bool = Field(
+        default=True,
+        env="QUERY_PROCESSING_ENABLED",
+        title_hu="Query feldolgozás engedélyezése",
+        title_en="Enable Query Processing",
+        description_hu="LLM-alapú query elemzés és következő kör optimalizálása",
+        description_en="LLM-based query analysis and next-turn optimization",
+        recommendation_hu="Engedélyezve: intelligens következő kör optimalizálás | Kikapcsolva: csak gyors pattern matching",
+        recommendation_en="Enabled: smart next-turn optimization | Disabled: fast pattern matching only",
+    )
+
+    query_processing_model: str = Field(
+        default="gpt-4o-mini",
+        env="QUERY_PROCESSING_MODEL",
+        title_hu="Query feldolgozó modell",
+        title_en="Query Processing Model",
+        description_hu="LLM modell a query részletes elemzéséhez",
+        description_en="LLM model for detailed query analysis",
+        enum=[
+            "disabled",
+            "home-llama-3b",
+            "qwen-7b",
+            "gpt-4o-mini",
+            "gpt-4o",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+        ],
+        recommendation_hu="gpt-4o-mini: gyors és pontos | gpt-4o: legpontosabb | gemini-1.5-flash: gyors alternatíva",
+        recommendation_en="gpt-4o-mini: fast and accurate | gpt-4o: most accurate | gemini-1.5-flash: fast alternative",
+    )
+
+    query_processing_timeout: int = Field(
+        default=3000,
+        env="QUERY_PROCESSING_TIMEOUT",
+        title_hu="Query feldolgozás timeout (ms)",
+        title_en="Query Processing Timeout (ms)",
+        description_hu="Query elemzés timeout milliszekundumban (háttérben fut)",
+        description_en="Query analysis timeout in milliseconds (runs in background)",
+        ge=1000,
+        le=15000,
+        recommendation_hu="3000ms: gyors háttér | 5000ms: alapértelmezett | 10000ms: részletes elemzés",
+        recommendation_en="3000ms: fast background | 5000ms: default | 10000ms: detailed analysis",
+    )
+
+    query_processing_api_base: str = Field(
+        default="",
+        env="QUERY_PROCESSING_API_BASE",
+        title_hu="Query feldolgozó API URL",
+        title_en="Query Processing API Base URL",
+        description_hu="Custom LLM API endpoint URL (üres = cloud szolgáltatás)",
+        description_en="Custom LLM API endpoint URL (empty = cloud service)",
+        recommendation_hu="Üres: cloud modellek | http://IP:PORT/v1: lokális LLM server",
+        recommendation_en="Empty: cloud models | http://IP:PORT/v1: local LLM server",
+    )
+
+    query_processing_api_key: str = Field(
+        default="",
+        env="QUERY_PROCESSING_API_KEY",
+        title_hu="Query feldolgozó API kulcs",
+        title_en="Query Processing API Key",
+        description_hu="API kulcs (ha custom API endpoint használod)",
+        description_en="API key (if using custom API endpoint)",
+        is_sensitive=True,
+        recommendation_hu="Üres: environment változók használata | Kitöltve: custom API kulcs",
+        recommendation_en="Empty: use environment variables | Filled: custom API key",
+    )
+
+    # Conversation Summarization Settings (legacy, AsyncSummarizer használja)
     conversation_summary_enabled: bool = Field(
         default=True,
         env="CONVERSATION_SUMMARY_ENABLED",
         title_hu="Beszélgetés összefoglaló engedélyezése",
         title_en="Enable Conversation Summarization",
-        description_hu="LLM-alapú beszélgetés téma követés és kontextus összefoglalás",
-        description_en="LLM-based conversation topic tracking and context summarization",
-        recommendation_hu="Engedélyezve: intelligens téma követés | Kikapcsolva: csak entity memory",
-        recommendation_en="Enabled: smart topic tracking | Disabled: entity memory only",
+        description_hu="Régi LLM-alapú beszélgetés összefoglalás (AsyncSummarizer)",
+        description_en="Legacy LLM-based conversation summarization (AsyncSummarizer)",
+        recommendation_hu="Engedélyezve: régi összefoglalás rendszer | Kikapcsolva: csak új query processing",
+        recommendation_en="Enabled: legacy summary system | Disabled: new query processing only",
     )
 
     conversation_summary_model: str = Field(
-        default="home-llama-3b",
+        default="disabled",
         env="CONVERSATION_SUMMARY_MODEL",
         title_hu="Összefoglaló modell",
         title_en="Summary Model",
         description_hu="LLM modell a beszélgetés összefoglaláshoz",
         description_en="LLM model for conversation summarization",
-        enum=["home-llama-3b", "qwen-7b", "disabled"],
-        recommendation_hu="home-llama-3b: gyors és pontos | qwen-7b: nagyobb kontextus | disabled: kikapcsolva",
-        recommendation_en="home-llama-3b: fast and accurate | qwen-7b: larger context | disabled: turned off",
+        enum=[
+            "disabled",
+            "home-llama-3b",
+            "qwen-7b",
+            "gpt-4o-mini",
+            "gemini-1.5-flash",
+        ],
+        recommendation_hu="disabled: kikapcsolva | home-llama-3b: gyors lokális | gpt-4o-mini: cloud pontos",
+        recommendation_en="disabled: turned off | home-llama-3b: fast local | gpt-4o-mini: cloud accurate",
+    )
+
+    conversation_summary_timeout: int = Field(
+        default=5000,
+        env="CONVERSATION_SUMMARY_TIMEOUT",
+        title_hu="Összefoglaló timeout (ms)",
+        title_en="Summary Timeout (ms)",
+        description_hu="LLM összefoglaló generálás timeout milliszekundumban",
+        description_en="LLM summary generation timeout in milliseconds",
+        ge=1000,
+        le=30000,
+        recommendation_hu="5000ms: alapértelmezett | 3000ms: gyors | 10000ms: lassú modellek",
+        recommendation_en="5000ms: default | 3000ms: fast | 10000ms: slow models",
+    )
+
+    conversation_summary_api_base: str = Field(
+        default="http://192.168.1.115:8001/v1",
+        env="CONVERSATION_SUMMARY_API_BASE",
+        title_hu="Összefoglaló API URL",
+        title_en="Summary API Base URL",
+        description_hu="Lokális LLM API endpoint URL (csak lokális modellekhez)",
+        description_en="Local LLM API endpoint URL (for local models only)",
+        recommendation_hu="http://192.168.1.115:8001/v1: alapértelmezett | módosítsd az IP-t szükség szerint",
+        recommendation_en="http://192.168.1.115:8001/v1: default | modify IP as needed",
+    )
+
+    conversation_summary_api_key: str = Field(
+        default="fake-key",
+        env="CONVERSATION_SUMMARY_API_KEY",
+        title_hu="Összefoglaló API kulcs",
+        title_en="Summary API Key",
+        description_hu="API kulcs a lokális LLM-hez (vagy OpenAI/Gemini kulcs)",
+        description_en="API key for local LLM (or OpenAI/Gemini key)",
+        is_sensitive=True,
+        recommendation_hu="fake-key: lokális modellekhez | valódi kulcs: cloud szolgáltatásokhoz",
+        recommendation_en="fake-key: for local models | real key: for cloud services",
     )
 
     # Enhanced Memory Settings

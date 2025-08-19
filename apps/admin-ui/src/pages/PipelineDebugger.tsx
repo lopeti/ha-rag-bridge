@@ -52,6 +52,18 @@ interface EnhancedPipelineStage {
       boosted_entities: number;
       session_id: string;
     };
+    memory_stage?: {
+      cache_status: 'hit' | 'miss' | 'pending';
+      background_pending: boolean;
+      entity_boosts: Record<string, number>;
+      processing_source: 'quick_patterns' | 'cached_summary' | 'llm_generated';
+      patterns_detected: number;
+      quick_patterns?: {
+        domains: string[];
+        areas: string[];
+        processing_time_ms: number;
+      };
+    };
     reranking?: {
       algorithm: string;
       score_range: {

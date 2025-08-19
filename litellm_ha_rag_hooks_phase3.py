@@ -353,6 +353,16 @@ class HARagHookPhase3(CustomLogger):
         """PRE-call hook that should work in LiteLLM 1.75.0."""
         logger.info(f"🚀🚀🚀 LOG_PRE_API_CALL: model={model}")
 
+        # ✅ LOOP PREVENTION: Skip internal calls (conversation summary, etc.)
+        metadata = kwargs.get("metadata", {})
+        if metadata.get("internal_call"):
+            purpose = metadata.get("purpose", "unknown")
+            session_id = metadata.get("session_id", "unknown")
+            logger.info(
+                f"🔄 SKIPPING internal call: purpose={purpose}, session={session_id}"
+            )
+            return  # Do not modify internal calls
+
         if messages and len(messages) > 0 and messages[-1].get("role") == "user":
             user_msg = messages[-1].get("content", "")
             logger.info(f"📝 PRE-API Processing: '{user_msg[:50]}...'")

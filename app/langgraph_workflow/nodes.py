@@ -6,7 +6,6 @@ from ha_rag_bridge.logging import get_logger
 from app.services.conversation_analyzer import ConversationAnalyzer
 from app.services.conversation_memory import ConversationMemoryService
 from app.services.query_rewriter import ConversationalQueryRewriter
-from app.services.conversation_summarizer import ConversationSummarizer
 from app.services.workflow_tracer import EnhancedPipelineStage
 
 from .state import RAGState, QueryScope
@@ -82,33 +81,123 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
             "confidence": context.confidence,
         }
 
-        # Step 3: Generate conversation summary for topic tracking
-        summary_start = datetime.now()
-        summary = None
+        # Step 3: NEW - Refactored Async Memory Processing
+        memory_start = datetime.now()
+        session_id = state.get("session_id", "default")
+
+        # Convert ChatMessage objects to history format
+        history_for_processing = []
+        for msg in chat_messages:
+            if msg.role == "user":
+                history_for_processing.append({"user_message": msg.content})
+            elif msg.role == "assistant":
+                history_for_processing.append({"assistant_message": msg.content})
 
         try:
-            summarizer = ConversationSummarizer()
+            # Step 3a: SZINKRON - Gyors pattern elemzés (<50ms)
+            from app.services.quick_pattern_analyzer import QuickPatternAnalyzer
 
-            # Get existing memory for context
-            memory_service = ConversationMemoryService()
-            session_id = state.get("session_id", "default")
-            existing_memory = await memory_service.get_conversation_memory(session_id)
-
-            # Generate summary using final query (rewritten if applicable)
-            summary = await summarizer.generate_summary(
-                query=analysis_query, history=chat_messages, memory=existing_memory
+            quick_analyzer = QuickPatternAnalyzer()
+            quick_context = quick_analyzer.analyze(
+                query=analysis_query, history=history_for_processing
             )
 
-            result_data["conversation_summary"] = summary.to_dict()
             logger.info(
-                f"Generated conversation summary: topic='{summary.topic}', focus='{summary.current_focus}'"
+                f"Quick pattern analysis: domains={quick_context.detected_domains}, areas={quick_context.detected_areas}, type={quick_context.query_type}, time={quick_context.processing_time_ms}ms"
             )
+
+            # Step 3b: CACHE CHECK - Van-e előző körből enriched context?
+            from app.services.async_conversation_enricher import (
+                AsyncConversationEnricher,
+            )
+
+            memory_service = ConversationMemoryService()
+            enricher = AsyncConversationEnricher(memory_service)
+
+            cached_enrichment = await enricher.get_cached_enrichment(session_id)
+
+            # Step 3c: KOMBINÁCIÓ - Quick + Cached context
+            if cached_enrichment:
+                # Merge quick analysis with cached enrichment
+                result_data["conversation_summary"] = {
+                    "detected_domains": list(
+                        set(quick_context.detected_domains)
+                        | set(cached_enrichment.detected_domains)
+                    ),
+                    "mentioned_areas": list(
+                        set(quick_context.detected_areas)
+                        | set(cached_enrichment.mentioned_areas)
+                    ),
+                    "query_type": quick_context.query_type,
+                    "language": quick_context.language,
+                    "processing_source": "quick_analysis + cached_enrichment",
+                    "llm_used": True,
+                    "cached_context": {
+                        "intent_chain": cached_enrichment.intent_chain,
+                        "semantic_context": cached_enrichment.semantic_context,
+                        "expected_followups": cached_enrichment.expected_followups,
+                        "entity_boost_weights": cached_enrichment.entity_boost_weights,
+                        "user_patterns": cached_enrichment.user_patterns,
+                    },
+                }
+                logger.info(
+                    f"Using cached enrichment for session {session_id}: {len(cached_enrichment.entity_boost_weights)} entity boosts"
+                )
+            else:
+                # Use csak quick analysis
+                result_data["conversation_summary"] = {
+                    "detected_domains": list(quick_context.detected_domains),
+                    "mentioned_areas": list(quick_context.detected_areas),
+                    "query_type": quick_context.query_type,
+                    "language": quick_context.language,
+                    "processing_source": "quick_analysis_only",
+                    "llm_used": False,
+                }
+                logger.debug("Using quick pattern analysis for conversation summary")
+
+            # Step 3d: TRIGGER BACKGROUND ENRICHMENT (fire-and-forget)
+            # Fire-and-forget: do NOT await, just trigger background processing
+            import asyncio
+
+            asyncio.create_task(
+                enricher.enrich_async(
+                    session_id=session_id,
+                    query=analysis_query,
+                    history=history_for_processing,
+                    retrieved_entities=None,  # Majd később kapja meg
+                    quick_context=result_data["conversation_summary"],
+                )
+            )
+            logger.info(
+                f"🔥 Background enrichment triggered (fire-and-forget) for session {session_id}"
+            )
+
+            # Add quick analysis details for debugging
+            result_data["quick_analysis"] = {
+                "detected_domains": list(quick_context.detected_domains),
+                "detected_areas": list(quick_context.detected_areas),
+                "entity_patterns": list(quick_context.entity_patterns),
+                "suggested_entity_types": list(quick_context.suggested_entity_types),
+                "confidence": quick_context.confidence,
+                "processing_time_ms": quick_context.processing_time_ms,
+                "pattern_matches": quick_context.pattern_matches,
+                "matched_keywords": quick_context.matched_keywords,
+            }
 
         except Exception as e:
-            logger.warning(f"Failed to generate conversation summary: {e}")
-            result_data["conversation_summary"] = None
+            logger.warning(f"Async memory processing failed: {e}")
+            # Fallback to basic conversation analysis
+            result_data["conversation_summary"] = {
+                "detected_domains": [],
+                "mentioned_areas": [],
+                "query_type": "unknown",
+                "language": "hungarian",  # Default fallback
+                "processing_source": "fallback_basic",
+                "llm_used": False,
+            }
+            result_data["quick_analysis"] = {"error": str(e), "processing_time_ms": 0}
 
-        summary_duration = (datetime.now() - summary_start).total_seconds() * 1000
+        memory_duration = (datetime.now() - memory_start).total_seconds() * 1000
 
         # Add enhanced pipeline stages to trace if available
         trace_id = state.get("trace_id")
@@ -136,27 +225,61 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
                     ),
                 )
 
-            # Trace conversation summary stage
-            if summary:
-                workflow_tracer.add_enhanced_pipeline_stage(
-                    trace_id,
-                    EnhancedPipelineStage(
-                        stage_name="conversation_summary",
-                        stage_type="transform",
-                        input_count=len(chat_messages) + 1,  # history + current query
-                        output_count=1,
-                        duration_ms=summary_duration,
-                        conversation_summary={
-                            "topic": summary.topic,
-                            "current_focus": summary.current_focus,
-                            "intent_pattern": summary.intent_pattern,
-                            "topic_domains": list(summary.topic_domains),
-                            "context_entities": summary.context_entities,
-                            "confidence": summary.confidence,
-                            "reasoning": summary.reasoning,
-                        },
+            # Trace quick pattern analysis stage
+            workflow_tracer.add_enhanced_pipeline_stage(
+                trace_id,
+                EnhancedPipelineStage(
+                    stage_name="quick_pattern_analysis",
+                    stage_type="transform",
+                    input_count=1,
+                    output_count=len(
+                        result_data.get("quick_analysis", {}).get(
+                            "detected_domains", []
+                        )
                     ),
-                )
+                    duration_ms=result_data.get("quick_analysis", {}).get(
+                        "processing_time_ms", 0
+                    ),
+                    quick_analysis=result_data.get("quick_analysis", {}),
+                ),
+            )
+
+            # Trace memory processing stage
+            workflow_tracer.add_enhanced_pipeline_stage(
+                trace_id,
+                EnhancedPipelineStage(
+                    stage_name="memory_processing",
+                    stage_type="transform",
+                    input_count=len(chat_messages) + 1,  # history + current query
+                    output_count=1,
+                    duration_ms=memory_duration,
+                    memory_stage={
+                        "cache_status": "hit" if cached_enrichment else "miss",
+                        "background_enrichment_triggered": True,
+                        "processing_source": result_data.get(
+                            "conversation_summary", {}
+                        ).get("processing_source", "unknown"),
+                        "patterns_detected": len(
+                            result_data.get("quick_analysis", {}).get(
+                                "detected_domains", []
+                            )
+                        )
+                        + len(
+                            result_data.get("quick_analysis", {}).get(
+                                "detected_areas", []
+                            )
+                        ),
+                        "quick_analysis_time_ms": result_data.get(
+                            "quick_analysis", {}
+                        ).get("processing_time_ms", 0),
+                        "cached_entity_boosts": (
+                            len(cached_enrichment.entity_boost_weights)
+                            if cached_enrichment
+                            else 0
+                        ),
+                    },
+                ),
+            )
 
         return result_data
 
@@ -561,6 +684,21 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
                         },
                     ),
                 )
+
+        # Update async memory with successful retrieval
+        try:
+            from app.services.conversation_memory import AsyncConversationMemory
+
+            async_memory = AsyncConversationMemory(memory_service)
+            await async_memory.process_turn(
+                session_id=session_id,
+                query=state["user_query"],
+                retrieved_entities=retrieved_entities[:10],  # Top 10 for learning
+                success_feedback=1.0,  # Assume successful retrieval
+            )
+            logger.debug(f"Updated async memory for session {session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to update async memory: {e}")
 
         return {
             "retrieved_entities": retrieved_entities,

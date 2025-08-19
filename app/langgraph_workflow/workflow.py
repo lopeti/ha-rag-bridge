@@ -33,100 +33,162 @@ logger = get_logger(__name__)
 
 
 def _extract_entity_pipeline(final_state: dict) -> List[dict]:
-    """Extract entity pipeline data from final workflow state."""
-    from app.services.workflow_tracer import EntityStageInfo
+    """Extract comprehensive entity pipeline data using Enhanced Pipeline Stages as the authoritative source."""
+    from app.services.workflow_tracer import EntityStageInfo, workflow_tracer
 
     pipeline_stages = []
 
-    # Stage 1: Cluster Search (if cluster entities exist)
-    if final_state.get("cluster_entities"):
-        cluster_stage = EntityStageInfo(
-            stage="cluster_search",
-            entity_count=len(final_state["cluster_entities"]),
-            entities=final_state["cluster_entities"],
-            scores={},
-            filters_applied=["cluster_based"],
-            metadata={
+    # Get the trace_id to access Enhanced Pipeline Stages from the active trace
+    trace_id = final_state.get("trace_id")
+    enhanced_stages = []
+
+    if trace_id and trace_id in workflow_tracer.active_traces:
+        # Get Enhanced Pipeline Stages from the active trace
+        trace = workflow_tracer.active_traces[trace_id]
+        enhanced_stages = trace.enhanced_pipeline_stages
+
+    # Create Entity Pipeline stages based on Enhanced Pipeline stages
+    for enhanced_stage in enhanced_stages:
+        stage_name = enhanced_stage.stage_name
+        stage_type = enhanced_stage.stage_type
+        input_count = enhanced_stage.input_count
+        output_count = enhanced_stage.output_count
+
+        # Map enhanced stage names to entity data and determine entities to use
+        entities = []
+        filters_applied = []
+        metadata = {}
+
+        if stage_name == "query_rewriting":
+            # Query rewriting doesn't have entities, but track the transformation
+            entities = []
+            filters_applied = ["query_transformation"]
+            metadata = {"rewrite_method": "conversational", "processing_stage": "input"}
+            entity_count = 1  # Always 1 query in/out
+
+        elif stage_name == "conversation_summary":
+            # Conversation summary processes conversation history
+            entities = []
+            filters_applied = ["conversation_analysis"]
+            metadata = {
+                "conversation_turns": input_count,
+                "processing_stage": "context",
+            }
+            entity_count = output_count
+
+        elif stage_name == "cluster_search":
+            # Use cluster entities from final state
+            cluster_entities = final_state.get("cluster_entities", [])
+            entities = workflow_tracer._sanitize_entities(cluster_entities)
+            filters_applied = ["cluster_based"]
+            metadata = {
                 "detected_scope": str(final_state.get("detected_scope", "unknown")),
-                "scope_confidence": final_state.get("scope_confidence", 0.0),
+                "cluster_types": getattr(enhanced_stage, "cluster_search", {}).get(
+                    "cluster_types", []
+                ),
                 "optimal_k": final_state.get("optimal_k", 0),
-            },
-        )
-        pipeline_stages.append(cluster_stage)
+            }
+            entity_count = len(cluster_entities)
 
-    # Stage 2: Vector Search (retrieved entities)
-    if final_state.get("retrieved_entities"):
-        vector_stage = EntityStageInfo(
-            stage=(
-                "vector_fallback"
-                if final_state.get("cluster_entities")
-                else "vector_search"
-            ),
-            entity_count=len(final_state["retrieved_entities"]),
-            entities=final_state["retrieved_entities"],
-            scores={},
-            filters_applied=["vector_similarity"],
-            metadata={
+        elif stage_name == "vector_search":
+            # Use retrieved entities from final state
+            retrieved_entities = final_state.get("retrieved_entities", [])
+            entities = workflow_tracer._sanitize_entities(retrieved_entities)
+            filters_applied = ["vector_similarity"]
+            metadata = {
                 "optimal_k": final_state.get("optimal_k", 0),
+                "backend": getattr(enhanced_stage, "vector_search", {}).get(
+                    "backend", "unknown"
+                ),
                 "fallback_used": final_state.get("fallback_used", False),
-            },
-        )
-        pipeline_stages.append(vector_stage)
+            }
+            entity_count = len(retrieved_entities)
 
-    # Stage 3: Memory Enhancement (if memory entities exist)
-    if final_state.get("memory_entities"):
-        memory_stage = EntityStageInfo(
-            stage="memory_enhancement",
-            entity_count=len(final_state["memory_entities"]),
-            entities=final_state["memory_entities"],
-            scores={},
-            filters_applied=["conversation_memory"],
-            metadata={
+        elif stage_name == "memory_boost":
+            # Use memory entities from final state
+            memory_entities = final_state.get("memory_entities", [])
+            entities = workflow_tracer._sanitize_entities(memory_entities)
+            filters_applied = ["conversation_memory"]
+            metadata = {
                 "session_id": final_state.get("session_id", "unknown"),
-                "memory_boost_applied": True,
-            },
-        )
-        pipeline_stages.append(memory_stage)
+                "memory_boost_applied": len(memory_entities) > 0,
+                "boosted_count": getattr(enhanced_stage, "memory_boost", {}).get(
+                    "boosted_entities", 0
+                ),
+            }
+            entity_count = len(memory_entities)
 
-    # Stage 4: Reranking (reranked entities)
-    if final_state.get("reranked_entities"):
-        rerank_stage = EntityStageInfo(
-            stage="reranking",
-            entity_count=len(final_state["reranked_entities"]),
-            entities=final_state["reranked_entities"],
-            scores={},
-            filters_applied=["cross_encoder_reranking"],
-            metadata={
+        elif stage_name == "reranking":
+            # Use reranked entities or retrieved entities as fallback
+            reranked_entities = final_state.get(
+                "reranked_entities", final_state.get("retrieved_entities", [])
+            )
+            entities = workflow_tracer._sanitize_entities(reranked_entities)
+            filters_applied = ["cross_encoder_reranking"]
+            metadata = {
+                "reranking_method": "semantic_cross_encoder",
+                "original_count": input_count,
+                "reranked_count": len(reranked_entities),
+            }
+            entity_count = len(reranked_entities)
+
+        elif stage_name == "final_selection":
+            # Use the final entities that made it to the formatted context
+            # This should represent the actual entities used in the prompt
+            final_entities = (
+                final_state.get("reranked_entities")
+                or final_state.get("retrieved_entities")
+                or []
+            )
+            # Use output_count from enhanced stage as the authoritative count
+            final_entities_limited = (
+                final_entities[:output_count] if output_count > 0 else final_entities
+            )
+            entities = workflow_tracer._sanitize_entities(final_entities_limited)
+            filters_applied = ["context_formatting", "entity_limit"]
+            metadata = {
                 "formatter_type": final_state.get("formatter_type", "unknown"),
                 "formatted_context_length": len(
                     final_state.get("formatted_context", "")
                 ),
-            },
-        )
-        pipeline_stages.append(rerank_stage)
+                "entities_selected": output_count,
+                "total_available": len(final_entities),
+            }
+            entity_count = (
+                output_count  # Use the authoritative count from enhanced stage
+            )
+        else:
+            # Unknown stage, create a generic entry
+            entities = []
+            filters_applied = [f"unknown_{stage_type}"]
+            metadata = {"stage_type": stage_type}
+            entity_count = output_count
 
-    # Stage 5: Final Selection (this represents the final entities used in context)
-    final_entities = (
-        final_state.get("reranked_entities")
-        or final_state.get("retrieved_entities")
-        or []
-    )
-    if final_entities:
-        final_stage = EntityStageInfo(
-            stage="final_selection",
-            entity_count=len(final_entities),
-            entities=final_entities,
+        # Create EntityStageInfo using the Enhanced Pipeline data
+        entity_stage = EntityStageInfo(
+            stage=stage_name,
+            entity_count=entity_count,
+            entities=entities,
             scores={},
-            filters_applied=["context_formatting"],
-            metadata={
-                "formatted_context_length": len(
-                    final_state.get("formatted_context", "")
-                ),
-                "formatter_type": final_state.get("formatter_type", "unknown"),
-                "total_errors": len(final_state.get("errors", [])),
-            },
+            filters_applied=filters_applied,
+            metadata=metadata,
         )
-        pipeline_stages.append(final_stage)
+        pipeline_stages.append(entity_stage)
+
+    # Fallback: if no enhanced stages found, use the old logic
+    if not pipeline_stages:
+        # Fallback to the old method for backward compatibility
+        if final_state.get("retrieved_entities"):
+            retrieved_entities = final_state["retrieved_entities"]
+            vector_stage = EntityStageInfo(
+                stage="vector_search_fallback",
+                entity_count=len(retrieved_entities),
+                entities=workflow_tracer._sanitize_entities(retrieved_entities),
+                scores={},
+                filters_applied=["vector_similarity"],
+                metadata={"fallback_method": "legacy"},
+            )
+            pipeline_stages.append(vector_stage)
 
     return pipeline_stages
 

@@ -790,6 +790,27 @@ async def process_request_workflow(payload: schemas.Request):
         if errors:
             logger.warning(f"Phase 3 workflow completed with errors: {errors[:3]}")
 
+        # Store API response in trace for debugging
+        trace_id = workflow_result.get("trace_id")
+        if trace_id:
+            try:
+                from app.services.workflow_tracer import workflow_tracer
+
+                # Convert response to dict for storage
+                response_dict = {
+                    "relevant_entities": relevant_entities,
+                    "formatted_content": formatted_context,
+                    "intent": (workflow_result.get("conversation_context") or {}).get(
+                        "intent", "read"
+                    ),
+                    "messages": [{"role": "system", "content": formatted_context}],
+                    "metadata": metadata,
+                }
+                workflow_tracer.update_api_response(trace_id, response_dict)
+                logger.debug(f"Stored API response in trace {trace_id}")
+            except Exception as e:
+                logger.warning(f"Failed to store API response in trace: {e}")
+
         logger.info(
             f"Phase 3 workflow completed: {len(relevant_entities)} entities, quality={diagnostics.get('overall_quality', 0.0):.2f}"
         )

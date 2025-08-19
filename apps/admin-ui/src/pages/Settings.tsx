@@ -23,6 +23,7 @@ import { adminApi } from '../lib/api';
 import { ConfigField } from '../components/ConfigField';
 import { QueryProcessingConfig } from '../components/QueryProcessingConfig';
 import { EmbeddingAdvancedConfig } from '../components/EmbeddingAdvancedConfig';
+import { ConversationMemoryConfig } from '../components/ConversationMemoryConfig';
 import type { ConfigData } from '../lib/api';
 
 
@@ -34,7 +35,7 @@ export function Settings() {
   
   const [expandedCategories, setExpandedCategories] = useState<string[]>([
     'database', 'embedding', 'query_processing', 'embedding_advanced', 
-    'performance', 'cross_encoder', 'entity_ranking'
+    'conversation_memory', 'performance', 'cross_encoder', 'entity_ranking'
   ]);
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [configValues, setConfigValues] = useState<ConfigData>({});
@@ -217,7 +218,7 @@ export function Settings() {
 
   const categoryOrder = [
     'database', 'embedding', 'query_processing', 'embedding_advanced',
-    'cross_encoder', 'entity_ranking', 'performance', 'query_scope', 
+    'conversation_memory', 'cross_encoder', 'entity_ranking', 'performance', 'query_scope', 
     'similarity', 'network', 'home_assistant', 'debug', 'security'
   ];
 
@@ -363,6 +364,20 @@ export function Settings() {
           if (category === 'embedding_advanced') {
             return (
               <EmbeddingAdvancedConfig
+                key={category}
+                config={configValues}
+                modifiedFields={modifiedFields}
+                onValueChange={updateFieldValue}
+                currentLang={currentLang}
+                isExpanded={isExpanded}
+                onToggle={() => toggleCategory(category)}
+              />
+            );
+          }
+
+          if (category === 'conversation_memory') {
+            return (
+              <ConversationMemoryConfig
                 key={category}
                 config={configValues}
                 modifiedFields={modifiedFields}

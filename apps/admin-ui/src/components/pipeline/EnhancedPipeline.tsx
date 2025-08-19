@@ -12,7 +12,8 @@ import {
   Filter, 
   Clock,
   ArrowRight,
-  Zap
+  Zap,
+  Database
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -56,6 +57,18 @@ interface EnhancedPipelineStage {
       boosted_entities: number;
       session_id: string;
     };
+    memory_stage?: {
+      cache_status: 'hit' | 'miss' | 'pending';
+      background_pending: boolean;
+      entity_boosts: Record<string, number>;
+      processing_source: 'quick_patterns' | 'cached_summary' | 'llm_generated';
+      patterns_detected: number;
+      quick_patterns?: {
+        domains: string[];
+        areas: string[];
+        processing_time_ms: number;
+      };
+    };
     reranking?: {
       algorithm: string;
       score_range: {
@@ -82,6 +95,7 @@ const EnhancedStageCard: React.FC<{ stage: EnhancedPipelineStage; index: number 
     switch (stageName.toLowerCase()) {
       case 'query_rewriting': return <MessageSquare className="h-4 w-4 text-blue-600" />;
       case 'conversation_summary': return <Brain className="h-4 w-4 text-purple-600" />;
+      case 'async_memory_processing': return <Database className="h-4 w-4 text-cyan-600" />;
       case 'cluster_search': return <Search className="h-4 w-4 text-green-600" />;
       case 'vector_search': return <Search className="h-4 w-4 text-indigo-600" />;
       case 'memory_boost': return <Zap className="h-4 w-4 text-yellow-600" />;
@@ -104,6 +118,7 @@ const EnhancedStageCard: React.FC<{ stage: EnhancedPipelineStage; index: number 
     switch (stageName.toLowerCase()) {
       case 'query_rewriting': return 'bg-blue-50 border-blue-200';
       case 'conversation_summary': return 'bg-purple-50 border-purple-200';
+      case 'async_memory_processing': return 'bg-cyan-50 border-cyan-200';
       case 'cluster_search': return 'bg-green-50 border-green-200';
       case 'vector_search': return 'bg-indigo-50 border-indigo-200';
       case 'memory_boost': return 'bg-yellow-50 border-yellow-200';
@@ -250,6 +265,123 @@ const EnhancedStageCard: React.FC<{ stage: EnhancedPipelineStage; index: number 
                 <p className="text-xs text-muted-foreground mt-1">
                   {stage.details.conversation_summary.reasoning}
                 </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Memory Stage Details */}
+        {stage.details.memory_stage && (
+          <div className="p-4 bg-cyan-50 rounded-lg border border-cyan-200">
+            <h5 className="font-semibold text-sm mb-2 flex items-center gap-2">
+              <Database className="h-4 w-4 text-cyan-600" />
+              Async Memory Processing
+            </h5>
+            <div className="space-y-3 text-sm">
+              {/* Cache Status and Processing Source */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="font-medium">Cache:</span>
+                  <Badge 
+                    variant={stage.details.memory_stage.cache_status === 'hit' ? 'default' : 'secondary'} 
+                    className={cn(
+                      "ml-2",
+                      stage.details.memory_stage.cache_status === 'hit' ? 'bg-green-100 text-green-800' : 
+                      stage.details.memory_stage.cache_status === 'miss' ? 'bg-orange-100 text-orange-800' : 
+                      'bg-yellow-100 text-yellow-800'
+                    )}
+                  >
+                    {stage.details.memory_stage.cache_status}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="font-medium">Source:</span>
+                  <Badge variant="outline" className="ml-2">
+                    {stage.details.memory_stage.processing_source}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Background Processing Status */}
+              {stage.details.memory_stage.background_pending && (
+                <div className="flex items-center gap-2 p-2 bg-yellow-50 rounded border border-yellow-200">
+                  <Clock className="h-4 w-4 text-yellow-600" />
+                  <span className="text-yellow-800 text-xs">Background LLM summary in progress</span>
+                </div>
+              )}
+
+              {/* Entity Boosts */}
+              {Object.keys(stage.details.memory_stage.entity_boosts).length > 0 && (
+                <div>
+                  <span className="font-medium">Entity Boosts:</span>
+                  <div className="grid grid-cols-1 gap-1 mt-1 max-h-32 overflow-y-auto">
+                    {Object.entries(stage.details.memory_stage.entity_boosts).map(([entityId, boost], idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs bg-white p-2 rounded border">
+                        <span className="font-mono truncate flex-1 pr-2">{entityId}</span>
+                        <Badge 
+                          variant="secondary" 
+                          className={cn(
+                            "text-xs",
+                            boost > 1.5 ? 'bg-green-100 text-green-800' :
+                            boost > 1.2 ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-800'
+                          )}
+                        >
+                          {boost.toFixed(2)}x
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Patterns */}
+              {stage.details.memory_stage.quick_patterns && (
+                <div>
+                  <span className="font-medium">Quick Patterns:</span>
+                  <div className="grid grid-cols-3 gap-4 mt-2">
+                    <div>
+                      <span className="text-xs text-muted-foreground">Domains:</span>
+                      <div className="flex gap-1 mt-1">
+                        {(stage.details.memory_stage.quick_patterns.domains || []).map((domain, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {domain}
+                          </Badge>
+                        ))}
+                        {(!stage.details.memory_stage.quick_patterns.domains || stage.details.memory_stage.quick_patterns.domains.length === 0) && (
+                          <span className="text-xs text-muted-foreground">None detected</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Areas:</span>
+                      <div className="flex gap-1 mt-1">
+                        {(stage.details.memory_stage.quick_patterns.areas || []).map((area, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {area}
+                          </Badge>
+                        ))}
+                        {(!stage.details.memory_stage.quick_patterns.areas || stage.details.memory_stage.quick_patterns.areas.length === 0) && (
+                          <span className="text-xs text-muted-foreground">None detected</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Processing:</span>
+                      <Badge variant="secondary" className="ml-1 text-xs">
+                        {stage.details.memory_stage.quick_patterns.processing_time_ms || 0}ms
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pattern Detection Count */}
+              <div>
+                <span className="font-medium">Patterns Detected:</span>
+                <Badge variant="secondary" className="ml-2">
+                  {stage.details.memory_stage.patterns_detected}
+                </Badge>
               </div>
             </div>
           </div>

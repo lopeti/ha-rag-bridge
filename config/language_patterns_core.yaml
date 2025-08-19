@@ -1,0 +1,242 @@
+# Core Language Patterns for Smart Home Assistant
+# Statikus pattern-ök, amelyek minden HA instance-ban hasznosak
+# Git-ben verziókezelt, ritkán változik
+
+version: "1.0"
+created_at: "2025-01-19"
+description: "Core language patterns for smart home domains, areas, and query types"
+
+# Smart Home Domain Patterns
+domains:
+  temperature:
+    keywords:
+      hu: ["hőmérséklet", "fok", "meleg", "hideg", "forró", "langyos", "hűvös", "melegszik", "hűl"]
+      en: ["temperature", "temp", "degrees", "hot", "cold", "warm", "cool", "celsius", "fahrenheit", "heating", "cooling"]
+    entity_patterns:
+      - "sensor.*temp*"
+      - "sensor.*homerseklet*" 
+      - "climate.*"
+      - "sensor.*thermal*"
+    query_intents: ["status_check", "comparison", "trend_analysis"]
+    
+  humidity:
+    keywords:
+      hu: ["páratartalom", "nedvesség", "párás", "száraz", "nedves", "szárít", "pára"]
+      en: ["humidity", "humid", "moisture", "damp", "dry", "wet", "dampness", "dryness"]
+    entity_patterns:
+      - "sensor.*humidity*"
+      - "sensor.*paratartalom*"
+      - "sensor.*moisture*"
+    query_intents: ["status_check", "comparison", "comfort_analysis"]
+    
+  lighting:
+    keywords:
+      hu: ["lámpa", "világítás", "fény", "felkapcsol", "lekapcsol", "kapcsol", "villanykörte", "világos", "sötét", "dimmer", "fényerő"]
+      en: ["light", "lamp", "illuminate", "bright", "dim", "turn on", "turn off", "switch", "brightness", "bulb", "lighting"]
+    entity_patterns:
+      - "light.*"
+      - "switch.*lamp*"
+      - "switch.*lampa*"
+      - "switch.*light*"
+    query_intents: ["control", "status_check", "scene_setting"]
+    
+  energy:
+    keywords:
+      hu: ["energia", "fogyasztás", "termelés", "áram", "napelem", "solar", "watt", "kilowatt", "villany", "elektromos"]
+      en: ["energy", "power", "consumption", "production", "solar", "electricity", "watt", "kilowatt", "electric", "grid"]
+    entity_patterns:
+      - "sensor.*power*"
+      - "sensor.*energy*"
+      - "sensor.*solar*"
+      - "sensor.*napelem*"
+      - "sensor.*consumption*"
+    query_intents: ["status_check", "monitoring", "analysis", "cost_calculation"]
+    
+  security:
+    keywords:
+      hu: ["biztonság", "riasztó", "zár", "kulcs", "mozgás", "nyitva", "zárva", "ajtó", "ablak", "védelem"]
+      en: ["security", "alarm", "lock", "key", "motion", "open", "closed", "door", "window", "safety", "protection"]
+    entity_patterns:
+      - "binary_sensor.*door*"
+      - "binary_sensor.*window*"
+      - "binary_sensor.*motion*"
+      - "lock.*"
+      - "alarm.*"
+      - "sensor.*security*"
+    query_intents: ["status_check", "control", "monitoring", "alert_management"]
+    
+  climate:
+    keywords:
+      hu: ["klíma", "fűtés", "hűtés", "légkondicionáló", "radiátor", "termosztát", "szellőzés", "ventillátor"]
+      en: ["climate", "heating", "cooling", "hvac", "air conditioning", "radiator", "thermostat", "ventilation", "fan", "ac"]
+    entity_patterns:
+      - "climate.*"
+      - "fan.*"
+      - "sensor.*hvac*"
+      - "switch.*heating*"
+      - "switch.*cooling*"
+    query_intents: ["control", "status_check", "scheduling", "efficiency"]
+
+  media:
+    keywords:
+      hu: ["média", "zene", "tv", "televízió", "hang", "hangerő", "lejátszás", "videó", "film"]
+      en: ["media", "music", "tv", "television", "audio", "volume", "play", "video", "movie", "sound"]
+    entity_patterns:
+      - "media_player.*"
+      - "switch.*tv*"
+      - "sensor.*media*"
+    query_intents: ["control", "status_check", "content_management"]
+
+# Area/Room Patterns
+areas:
+  common_hungarian:
+    nappali:
+      keywords: ["nappali", "living", "szoba", "előszoba", "társalgó"]
+      aliases: ["living_room", "lounge", "sitting_room"]
+    konyha:
+      keywords: ["konyha", "kitchen", "étkezde", "konyhapult"]
+      aliases: ["kitchen", "dining_area"]
+    hálószoba:
+      keywords: ["hálószoba", "háló", "bedroom", "alvószoba", "hálókamra"]
+      aliases: ["bedroom", "master_bedroom", "guest_room"]
+    fürdőszoba:
+      keywords: ["fürdőszoba", "fürdő", "bathroom", "mosdó", "wc", "vécé"]
+      aliases: ["bathroom", "toilet", "washroom"]
+    kert:
+      keywords: ["kert", "garden", "terasz", "balkon", "udvar", "kinti", "kültér", "kerti"]
+      aliases: ["garden", "yard", "terrace", "patio", "outdoor"]
+    étkező:
+      keywords: ["étkező", "dining", "ebédlő", "étkezőasztal"]
+      aliases: ["dining_room", "dining_area"]
+    iroda:
+      keywords: ["iroda", "office", "dolgozószoba", "munkaszoba", "íróasztal"]
+      aliases: ["office", "study", "workspace"]
+    garázs:
+      keywords: ["garázs", "garage", "műhely", "kocsibeálló"]
+      aliases: ["garage", "workshop", "carport"]
+    pince:
+      keywords: ["pince", "basement", "alagsor", "kazánház"]
+      aliases: ["basement", "cellar", "utility_room"]
+    padlás:
+      keywords: ["padlás", "attic", "tetőtér", "födém"]
+      aliases: ["attic", "loft", "roof_space"]
+      
+  common_english:
+    living_room:
+      keywords: ["living", "room", "lounge", "sitting", "family"]
+      aliases: ["nappali", "társalgó"]
+    kitchen:
+      keywords: ["kitchen", "dining", "cook", "food"]
+      aliases: ["konyha", "étkezde"]
+    bedroom:
+      keywords: ["bedroom", "bed", "sleep", "master", "guest"]
+      aliases: ["hálószoba", "háló"]
+    bathroom:
+      keywords: ["bathroom", "bath", "shower", "toilet", "wash"]
+      aliases: ["fürdőszoba", "mosdó"]
+    garden:
+      keywords: ["garden", "yard", "outdoor", "outside", "patio", "deck"]
+      aliases: ["kert", "udvar", "terasz"]
+    office:
+      keywords: ["office", "study", "work", "desk"]
+      aliases: ["iroda", "dolgozószoba"]
+    garage:
+      keywords: ["garage", "workshop", "car"]
+      aliases: ["garázs", "műhely"]
+
+# Query Type Patterns
+query_types:
+  status_check:
+    keywords:
+      hu: ["hány", "mennyi", "milyen", "hogyan", "mi", "mekkora", "van-e", "mikor", "meddig"]
+      en: ["how", "what", "which", "is", "are", "many", "much", "any", "when", "where"]
+    patterns:
+      - "^(mi|what).*(van|is)"
+      - "(hány|how many).*(fok|degree)"
+      - "(mennyi|how much).*(áram|power)"
+    confidence_boost: 1.2
+    
+  control:
+    keywords:
+      hu: ["kapcsold", "állítsd", "indítsd", "állítsd le", "nyisd", "zárd", "emelj", "csökkentsd", "változtasd"]
+      en: ["turn", "set", "start", "stop", "open", "close", "increase", "decrease", "switch", "adjust"]
+    patterns:
+      - "(kapcsold|turn).*(fel|on|le|off)"
+      - "(állítsd|set).*(be|to)"
+      - "(nyisd|open|zárd|close)"
+    confidence_boost: 1.5
+    
+  overview:
+    keywords:
+      hu: ["helyzet", "összefoglaló", "minden", "összes", "mindenhol", "átfogó", "státusz", "áttekintés"]
+      en: ["overview", "summary", "all", "everything", "everywhere", "status", "report", "total"]
+    patterns:
+      - "(minden|all).*(helyzet|status)"
+      - "(összefoglaló|summary|overview)"
+      - "(mi van|what.*happening)"
+    confidence_boost: 1.1
+    
+  comparison:
+    keywords:
+      hu: ["több", "kevesebb", "nagyobb", "kisebb", "jobb", "rosszabb", "különbség", "összehasonlít"]
+      en: ["more", "less", "higher", "lower", "better", "worse", "difference", "compare", "than"]
+    patterns:
+      - "(több|more|kevesebb|less).*(mint|than)"
+      - "(különbség|difference).*(között|between)"
+      - "(jobb|better|rosszabb|worse)"
+    confidence_boost: 1.3
+
+# Entity Type Mappings
+entity_types:
+  sensor:
+    domains: ["temperature", "humidity", "energy", "security"]
+    query_types: ["status_check", "comparison", "overview"]
+    boost_for_status: 1.2
+    
+  switch:
+    domains: ["lighting", "energy", "security"] 
+    query_types: ["control", "status_check"]
+    boost_for_control: 1.5
+    
+  light:
+    domains: ["lighting"]
+    query_types: ["control", "status_check"]
+    boost_for_control: 1.4
+    
+  climate:
+    domains: ["temperature", "climate"]
+    query_types: ["control", "status_check", "overview"]
+    boost_for_control: 1.3
+    
+  binary_sensor:
+    domains: ["security", "climate"]
+    query_types: ["status_check", "overview"]
+    boost_for_status: 1.1
+
+# Language Detection Helpers
+language_indicators:
+  hungarian:
+    characters: ["ő", "ű", "ö", "ü", "é", "á", "í", "ó", "ú"]
+    common_words: ["hány", "mennyi", "van", "hogy", "mit", "hol", "mikor", "miért", "kapcsold", "állítsd"]
+    weight: 2.0
+    
+  english:
+    common_words: ["how", "what", "where", "when", "why", "turn", "set", "is", "are", "the", "and", "a", "an"]
+    weight: 1.0
+
+# Pattern Confidence Thresholds
+confidence_thresholds:
+  domain_detection:
+    high: 0.8
+    medium: 0.6
+    low: 0.4
+    
+  area_detection:
+    high: 0.7
+    medium: 0.5
+    low: 0.3
+    
+  query_type:
+    high: 0.9
+    medium: 0.7
+    low: 0.5

@@ -78,6 +78,7 @@ class EnhancedPipelineStage:
     # Stage-specific details
     query_rewrite: Optional[Dict[str, Any]] = None
     conversation_summary: Optional[Dict[str, Any]] = None
+    memory_stage: Optional[Dict[str, Any]] = None
     cluster_search: Optional[Dict[str, Any]] = None
     vector_search: Optional[Dict[str, Any]] = None
     memory_boost: Optional[Dict[str, Any]] = None
@@ -96,6 +97,7 @@ class EnhancedPipelineStage:
                 for k, v in {
                     "query_rewrite": self.query_rewrite,
                     "conversation_summary": self.conversation_summary,
+                    "memory_stage": self.memory_stage,
                     "cluster_search": self.cluster_search,
                     "vector_search": self.vector_search,
                     "memory_boost": self.memory_boost,
@@ -137,6 +139,9 @@ class WorkflowTrace:
     errors: List[str] = field(default_factory=list)
     status: str = "pending"  # pending, running, success, error
 
+    # API response tracking
+    api_response: Dict[str, Any] = field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for ArangoDB storage."""
         return {
@@ -159,6 +164,7 @@ class WorkflowTrace:
             "performance_metrics": self.performance_metrics,
             "errors": self.errors,
             "status": self.status,
+            "api_response": self.api_response,
         }
 
 
@@ -313,6 +319,135 @@ class WorkflowTracer:
             f"Added enhanced pipeline stage '{stage.stage_name}' to trace {trace_id}"
         )
 
+    def update_api_response(self, trace_id: str, api_response: Dict[str, Any]):
+        """Update the API response in the trace for debugging purposes."""
+        # First try active traces
+        if trace_id in self.active_traces:
+            trace = self.active_traces[trace_id]
+            # Sanitize API response to remove potentially large data
+            sanitized_response = self._sanitize_api_response(api_response)
+            trace.api_response = sanitized_response
+            logger.debug(f"Updated API response for active trace {trace_id}")
+            return
+
+        # If trace is not active, update it directly in the database
+        if not self.db:
+            logger.warning("Cannot update API response: database not available")
+            return
+
+        try:
+            # Sanitize API response
+            sanitized_response = self._sanitize_api_response(api_response)
+
+            # Update the stored trace in database
+            trace_key = f"trace_{trace_id}"
+            trace_doc = self.db.collection("workflow_traces").get(trace_key)
+            if trace_doc:
+                trace_doc["api_response"] = sanitized_response
+                self.db.collection("workflow_traces").update(trace_doc)
+                logger.debug(f"Updated API response for completed trace {trace_id}")
+            else:
+                logger.warning(f"Trace document not found in database: {trace_id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to update API response for trace {trace_id}: {e}")
+
+    def _sanitize_api_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize API response to store only essential debugging information."""
+        sanitized = {}
+
+        # Store response metadata
+        sanitized["response_type"] = type(response).__name__
+        sanitized["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+        # Store essential fields for debugging
+        essential_fields = [
+            "relevant_entities",
+            "formatted_content",
+            "intent",
+            "messages",
+            "metadata",
+        ]
+
+        for essential_field in essential_fields:
+            if essential_field in response:
+                if essential_field == "relevant_entities":
+                    # Store simplified entity information
+                    entities = response[essential_field]
+                    sanitized[essential_field] = []
+                    for entity in entities[:10]:  # Limit to 10 entities
+                        if hasattr(entity, "__dict__"):
+                            # Handle EntityInfo objects
+                            sanitized[essential_field].append(
+                                {
+                                    "entity_id": getattr(
+                                        entity, "entity_id", "unknown"
+                                    ),
+                                    "domain": getattr(entity, "domain", "unknown"),
+                                    "area_name": getattr(entity, "area_name", None),
+                                    "similarity": round(
+                                        getattr(entity, "similarity", 0.0), 3
+                                    ),
+                                    "is_primary": getattr(entity, "is_primary", False),
+                                }
+                            )
+                        elif isinstance(entity, dict):
+                            # Handle dict entities
+                            sanitized[essential_field].append(
+                                {
+                                    "entity_id": entity.get("entity_id", "unknown"),
+                                    "domain": entity.get("domain", "unknown"),
+                                    "area_name": entity.get("area_name"),
+                                    "similarity": round(
+                                        entity.get("similarity", 0.0), 3
+                                    ),
+                                    "is_primary": entity.get("is_primary", False),
+                                }
+                            )
+                elif essential_field == "formatted_content":
+                    # Store content length and preview
+                    content = response[essential_field]
+                    sanitized[essential_field] = {
+                        "length": len(str(content)),
+                        "preview": (
+                            str(content)[:200] + "..."
+                            if len(str(content)) > 200
+                            else str(content)
+                        ),
+                    }
+                elif essential_field == "messages":
+                    # Store message count and types
+                    messages = response[essential_field]
+                    sanitized[essential_field] = []
+                    for msg in messages[:3]:  # Limit to first 3 messages
+                        if hasattr(msg, "__dict__"):
+                            sanitized[essential_field].append(
+                                {
+                                    "role": getattr(msg, "role", "unknown"),
+                                    "content_length": len(
+                                        str(getattr(msg, "content", ""))
+                                    ),
+                                    "content_preview": str(getattr(msg, "content", ""))[
+                                        :100
+                                    ]
+                                    + "...",
+                                }
+                            )
+                        elif isinstance(msg, dict):
+                            sanitized[essential_field].append(
+                                {
+                                    "role": msg.get("role", "unknown"),
+                                    "content_length": len(str(msg.get("content", ""))),
+                                    "content_preview": str(msg.get("content", ""))[:100]
+                                    + "...",
+                                }
+                            )
+                else:
+                    # For other fields, use sanitize_data
+                    sanitized[essential_field] = self._sanitize_data(response[essential_field], max_depth=2)
+
+        return sanitized
+
     def end_trace(
         self,
         trace_id: str,
@@ -407,9 +542,31 @@ class WorkflowTracer:
             return str(data)
 
         if isinstance(data, dict):
-            return {k: self._sanitize_data(v, max_depth - 1) for k, v in data.items()}
+            # Special handling for entity objects with embeddings
+            if "entity_id" in data and "embedding" in data:
+                # This is an entity - use specialized sanitization
+                return self._sanitize_single_entity(data)
+            else:
+                # Check for common entity list keys and sanitize them specially
+                sanitized = {}
+                for k, v in data.items():
+                    if k in [
+                        "retrieved_entities",
+                        "cluster_entities",
+                        "memory_entities",
+                        "reranked_entities",
+                    ] and isinstance(v, list):
+                        # These are entity lists - use specialized sanitization
+                        sanitized[k] = self._sanitize_entities(v)
+                    else:
+                        sanitized[k] = self._sanitize_data(v, max_depth - 1)
+                return sanitized
         elif isinstance(data, list):
-            return [self._sanitize_data(item, max_depth - 1) for item in data]
+            # Check if this looks like a list of entities
+            if data and isinstance(data[0], dict) and "entity_id" in data[0]:
+                return self._sanitize_entities(data)
+            else:
+                return [self._sanitize_data(item, max_depth - 1) for item in data]
         elif isinstance(data, (str, int, float, bool, type(None))):
             return data
         elif hasattr(data, "__dict__"):
@@ -420,6 +577,29 @@ class WorkflowTracer:
                 return str(data)
         else:
             return str(data)
+
+    def _sanitize_single_entity(self, entity: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize a single entity object, removing embedding vector."""
+        return {
+            "entity_id": entity.get("entity_id"),
+            "domain": entity.get("domain"),
+            "area": entity.get("area") or entity.get("area_name"),
+            "_score": (
+                round(entity.get("_score", 0.0), 3) if entity.get("_score") else None
+            ),
+            "state": (
+                str(entity.get("state", ""))[:50] if entity.get("state") else None
+            ),
+            "_memory_boosted": entity.get("_memory_boosted", False),
+            "embedding_dim": len(entity["embedding"]) if entity.get("embedding") else 0,
+            # Include other small metadata but exclude embedding vector
+            "similarity": (
+                round(entity.get("similarity", 0.0), 3)
+                if entity.get("similarity")
+                else None
+            ),
+            "is_primary": entity.get("is_primary", False),
+        }
 
     def _sanitize_entities(
         self, entities: List[Dict[str, Any]]
@@ -440,6 +620,11 @@ class WorkflowTracer:
                     str(entity.get("state", ""))[:50] if entity.get("state") else None
                 ),  # Limit state length
                 "_memory_boosted": entity.get("_memory_boosted", False),
+                # IMPORTANT: Exclude embedding vector to reduce trace size (768 dims = ~3KB each)
+                # "embedding": entity.get("embedding"),  # REMOVED - too large for debugging
+                "embedding_dim": (
+                    len(entity["embedding"]) if entity.get("embedding") else 0
+                ),  # Just store dimension count
             }
 
             # Store simplified cluster context

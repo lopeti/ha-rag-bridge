@@ -2,6 +2,7 @@
 
 import math
 import os
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Any
 from dataclasses import dataclass, field
@@ -680,4 +681,402 @@ class ConversationMemoryService:
             / len(memory.entities),
             "top_areas": list(memory.areas_mentioned),
             "top_domains": list(memory.domains_mentioned),
+        }
+
+    async def store_conversation_summary(
+        self, session_id: str, summary_data: Dict[str, Any], ttl_minutes: int = 15
+    ) -> bool:
+        """
+        Store conversation summary in memory with TTL
+
+        Args:
+            session_id: Session ID for the conversation
+            summary_data: Summary data dictionary
+            ttl_minutes: TTL in minutes
+
+        Returns:
+            True if stored successfully
+        """
+        await self._ensure_connection()
+
+        try:
+            ttl = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+
+            doc = {
+                "_key": f"summary_{session_id}",
+                "session_id": session_id,
+                "summary_data": summary_data,
+                "created_at": datetime.utcnow().isoformat(),
+                "ttl": ttl.isoformat(),
+                "type": "conversation_summary",
+            }
+
+            collection = self._db.collection("conversation_memory")
+            collection.insert(doc, overwrite=True)
+
+            logger.debug(f"Stored conversation summary for session {session_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to store conversation summary: {e}")
+            return False
+
+    async def get_conversation_summary(
+        self, session_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get cached conversation summary if available and not expired
+
+        Args:
+            session_id: Session ID for the conversation
+
+        Returns:
+            Summary data if available and valid, None otherwise
+        """
+        await self._ensure_connection()
+
+        try:
+            collection = self._db.collection("conversation_memory")
+            doc_key = f"summary_{session_id}"
+
+            if collection.has(doc_key):
+                doc = collection.get(doc_key)
+
+                # Check TTL
+                ttl = datetime.fromisoformat(doc["ttl"].replace("Z", ""))
+                if ttl <= datetime.utcnow():
+                    # Expired, clean up
+                    collection.delete(doc_key)
+                    logger.debug(f"Conversation summary expired for {session_id}")
+                    return None
+
+                return doc["summary_data"]
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get conversation summary: {e}")
+            return None
+
+
+@dataclass
+class EntityContextTracker:
+    """Tracks entity importance and patterns across conversation turns"""
+
+    entity_importance: Dict[str, float] = field(default_factory=dict)
+    entity_last_accessed: Dict[str, datetime] = field(default_factory=dict)
+    entity_mentions: Dict[str, int] = field(default_factory=dict)
+    area_patterns: Dict[str, Set[str]] = field(default_factory=dict)
+    domain_patterns: Dict[str, Set[str]] = field(default_factory=dict)
+
+    def update_entity(
+        self,
+        entity_id: str,
+        relevance: float,
+        area: Optional[str] = None,
+        domain: Optional[str] = None,
+    ) -> None:
+        """Update entity tracking information"""
+        current_time = datetime.utcnow()
+
+        # Update importance with exponential moving average
+        if entity_id in self.entity_importance:
+            self.entity_importance[entity_id] = (
+                0.7 * self.entity_importance[entity_id] + 0.3 * relevance
+            )
+        else:
+            self.entity_importance[entity_id] = relevance
+
+        self.entity_last_accessed[entity_id] = current_time
+        self.entity_mentions[entity_id] = self.entity_mentions.get(entity_id, 0) + 1
+
+        # Track area patterns
+        if area:
+            if area not in self.area_patterns:
+                self.area_patterns[area] = set()
+            self.area_patterns[area].add(entity_id)
+
+        # Track domain patterns
+        if domain:
+            if domain not in self.domain_patterns:
+                self.domain_patterns[domain] = set()
+            self.domain_patterns[domain].add(entity_id)
+
+    def get_entity_boost(self, entity_id: str) -> float:
+        """Calculate boost factor for entity based on tracking history"""
+        if entity_id not in self.entity_importance:
+            return 1.0
+
+        # Base importance
+        importance = self.entity_importance[entity_id]
+
+        # Frequency boost
+        mentions = self.entity_mentions.get(entity_id, 1)
+        frequency_boost = min(1.5, 1.0 + (mentions - 1) * 0.2)
+
+        # Recency boost
+        last_accessed = self.entity_last_accessed.get(entity_id, datetime.utcnow())
+        time_diff = (datetime.utcnow() - last_accessed).total_seconds()
+        recency_boost = max(0.5, 1.0 - time_diff / 900)  # 15 minute decay
+
+        return importance * frequency_boost * recency_boost
+
+
+@dataclass
+class QueryExpansionMemory:
+    """Learns successful query patterns for better retrieval"""
+
+    successful_patterns: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    query_entity_associations: Dict[str, Set[str]] = field(default_factory=dict)
+    expansion_templates: Dict[str, List[str]] = field(default_factory=dict)
+
+    def learn_successful_pattern(
+        self, query: str, retrieved_entities: List[str], success_score: float
+    ) -> None:
+        """Learn from successful retrieval patterns"""
+        query_normalized = self._normalize_query(query)
+
+        if query_normalized not in self.successful_patterns:
+            self.successful_patterns[query_normalized] = {
+                "expanded_terms": set(),
+                "boost_entities": set(),
+                "success_rate": 0.0,
+                "sample_count": 0,
+            }
+
+        pattern = self.successful_patterns[query_normalized]
+
+        # Update success rate with moving average
+        pattern["sample_count"] += 1
+        pattern["success_rate"] = (
+            pattern["success_rate"] * (pattern["sample_count"] - 1) + success_score
+        ) / pattern["sample_count"]
+
+        # Track successful entities
+        pattern["boost_entities"].update(retrieved_entities)
+
+        # Track query-entity associations
+        if query_normalized not in self.query_entity_associations:
+            self.query_entity_associations[query_normalized] = set()
+        self.query_entity_associations[query_normalized].update(retrieved_entities)
+
+    def get_expansion_suggestions(self, query: str) -> Dict[str, Any]:
+        """Get expansion suggestions based on learned patterns"""
+        query_normalized = self._normalize_query(query)
+
+        suggestions = {"expanded_terms": [], "boost_entities": [], "confidence": 0.0}
+
+        # Look for similar patterns
+        for pattern_query, pattern_data in self.successful_patterns.items():
+            if self._query_similarity(query_normalized, pattern_query) > 0.6:
+                suggestions["expanded_terms"].extend(pattern_data["expanded_terms"])
+                suggestions["boost_entities"].extend(pattern_data["boost_entities"])
+                suggestions["confidence"] = max(
+                    suggestions["confidence"], pattern_data["success_rate"]
+                )
+
+        return suggestions
+
+    def _normalize_query(self, query: str) -> str:
+        """Normalize query for pattern matching"""
+        return query.lower().strip()
+
+    def _query_similarity(self, query1: str, query2: str) -> float:
+        """Calculate simple similarity between queries"""
+        words1 = set(query1.split())
+        words2 = set(query2.split())
+
+        if not words1 or not words2:
+            return 0.0
+
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+
+        return len(intersection) / len(union)
+
+
+class AsyncConversationMemory:
+    """
+    Hybrid conversation memory system with async background processing
+
+    Combines Entity Context Tracking + Query Expansion Memory patterns
+    for RAG optimization with fire-and-forget architecture.
+    """
+
+    def __init__(self, memory_service: ConversationMemoryService):
+        self.memory_service = memory_service
+
+        # Entity tracking (ChatGPT-style)
+        self.entity_context = EntityContextTracker()
+
+        # Query learning (RAG-specific pattern)
+        self.query_patterns = QueryExpansionMemory()
+
+        # Background processing
+        self.background_tasks: Dict[str, asyncio.Task] = {}
+
+        # Cache for quick access
+        self._summary_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_timestamps: Dict[str, datetime] = {}
+
+    async def process_turn(
+        self,
+        session_id: str,
+        query: str,
+        retrieved_entities: List[Dict[str, Any]],
+        success_feedback: float = 1.0,
+    ) -> Dict[str, Any]:
+        """
+        Process conversation turn with immediate context updates
+
+        Args:
+            session_id: Conversation session ID
+            query: User query
+            retrieved_entities: Retrieved entities from search
+            success_feedback: Success score for learning (0.0-1.0)
+
+        Returns:
+            Enhanced context for next turn
+        """
+        # 1. Update entity context tracking (immediate)
+        for entity in retrieved_entities:
+            self.entity_context.update_entity(
+                entity_id=entity.get("entity_id", ""),
+                relevance=entity.get("rerank_score", entity.get("similarity", 0.0)),
+                area=entity.get("area_name"),
+                domain=entity.get("domain"),
+            )
+
+        # 2. Learn query patterns (immediate)
+        entity_ids = [e.get("entity_id", "") for e in retrieved_entities]
+        self.query_patterns.learn_successful_pattern(
+            query=query, retrieved_entities=entity_ids, success_score=success_feedback
+        )
+
+        # 3. Store in persistent memory (immediate)
+        areas_mentioned = {
+            e.get("area_name") for e in retrieved_entities if e.get("area_name")
+        }
+        domains_mentioned = {
+            e.get("domain") for e in retrieved_entities if e.get("domain")
+        }
+
+        await self.memory_service.store_conversation_memory(
+            conversation_id=session_id,
+            entities=retrieved_entities,
+            areas_mentioned=areas_mentioned,
+            domains_mentioned=domains_mentioned,
+            query_context=query,
+        )
+
+        # 4. Return enhancement data for immediate use
+        return self.get_enhancement_data(session_id, query)
+
+    def get_enhancement_data(self, session_id: str, query: str) -> Dict[str, Any]:
+        """
+        Get immediate enhancement data for current query
+
+        Args:
+            session_id: Session ID
+            query: Current query
+
+        Returns:
+            Enhancement data with boosts and patterns
+        """
+        # Entity boosts from tracking
+        entity_boosts = {}
+        for entity_id, importance in self.entity_context.entity_importance.items():
+            boost = self.entity_context.get_entity_boost(entity_id)
+            if boost > 1.1:  # Only include significant boosts
+                entity_boosts[entity_id] = boost
+
+        # Query expansion suggestions
+        expansion_data = self.query_patterns.get_expansion_suggestions(query)
+
+        # Cached summary if available
+        cached_summary = self._get_cached_summary(session_id)
+
+        return {
+            "entity_boosts": entity_boosts,
+            "expansion_suggestions": expansion_data,
+            "cached_summary": cached_summary,
+            "processing_source": "immediate_context",
+            "background_pending": session_id in self.background_tasks,
+        }
+
+    def _get_cached_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get cached summary with TTL check"""
+        if session_id not in self._summary_cache:
+            return None
+
+        timestamp = self._cache_timestamps.get(session_id)
+        if not timestamp:
+            return None
+
+        # Check 15-minute TTL
+        if (datetime.utcnow() - timestamp).total_seconds() > 900:
+            self._summary_cache.pop(session_id, None)
+            self._cache_timestamps.pop(session_id, None)
+            return None
+
+        return self._summary_cache[session_id]
+
+    def cache_summary(self, session_id: str, summary_data: Dict[str, Any]) -> None:
+        """Cache summary data with timestamp"""
+        self._summary_cache[session_id] = summary_data
+        self._cache_timestamps[session_id] = datetime.utcnow()
+
+    async def get_memory_stage_debug_info(self, session_id: str) -> Dict[str, Any]:
+        """
+        Get debug information for memory stage visualization
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Debug info for pipeline debugger
+        """
+        # Get conversation memory stats
+        memory_stats = await self.memory_service.get_conversation_stats(session_id)
+
+        # Get cached summary info
+        cached_summary = self._get_cached_summary(session_id)
+        summary_age_ms = 0
+        if cached_summary and session_id in self._cache_timestamps:
+            age_seconds = (
+                datetime.utcnow() - self._cache_timestamps[session_id]
+            ).total_seconds()
+            summary_age_ms = int(age_seconds * 1000)
+
+        # Get entity context stats
+        entity_count = len(self.entity_context.entity_importance)
+        active_boosts = {
+            entity_id: boost
+            for entity_id, boost in [
+                (eid, self.entity_context.get_entity_boost(eid))
+                for eid in self.entity_context.entity_importance.keys()
+            ]
+            if boost > 1.1
+        }
+
+        # Background task status
+        active_task = session_id in self.background_tasks
+
+        return {
+            "cache_status": "hit" if cached_summary else "miss",
+            "summary_age_ms": summary_age_ms,
+            "background_tasks": ["summary_pending"] if active_task else [],
+            "entity_boosts": active_boosts,
+            "memory_stats": memory_stats,
+            "entity_tracking": {
+                "tracked_entities": entity_count,
+                "area_patterns": len(self.entity_context.area_patterns),
+                "domain_patterns": len(self.entity_context.domain_patterns),
+            },
+            "query_patterns": {
+                "learned_patterns": len(self.query_patterns.successful_patterns),
+                "entity_associations": len(
+                    self.query_patterns.query_entity_associations
+                ),
+            },
         }

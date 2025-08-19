@@ -113,26 +113,26 @@ export function QueryProcessingConfig({
           })}
         </div>
 
-        {/* Usage Examples */}
+        {/* Query Processing Info */}
         <div className="mt-6 p-4 bg-muted/50 rounded-lg">
           <h4 className="font-medium mb-2">
-            {currentLang === 'hu' ? 'Használati példák:' : 'Usage Examples:'}
+            {currentLang === 'hu' ? 'Query Processing funkciók:' : 'Query Processing features:'}
           </h4>
           <div className="space-y-2 text-sm text-muted-foreground">
             <div>
-              <strong>{currentLang === 'hu' ? 'Bemenet' : 'Input'}:</strong> 
-              <span className="ml-2 font-mono bg-background px-2 py-1 rounded">
+              <strong>{currentLang === 'hu' ? 'Query Rewriting' : 'Query Rewriting'}:</strong> 
+              <span className="ml-2">
                 {currentLang === 'hu' 
-                  ? '"Hány fok van a nappaliban?" → "És a kertben?"'
-                  : '"What is the temperature in the living room?" → "And in the garden?"'}
+                  ? 'Többfordulós beszélgetésben kiegészíti a hiányos kérdéseket. Pl: "És a kertben?" → "Hány fok van a kertben?"'
+                  : 'Completes incomplete questions in multi-turn conversations. E.g.: "And in the garden?" → "What is the temperature in the garden?"'}
               </span>
             </div>
             <div>
-              <strong>{currentLang === 'hu' ? 'Kimenet' : 'Output'}:</strong> 
-              <span className="ml-2 font-mono bg-background px-2 py-1 rounded">
+              <strong>{currentLang === 'hu' ? 'Query Processing' : 'Query Processing'}:</strong> 
+              <span className="ml-2">
                 {currentLang === 'hu' 
-                  ? '"Hány fok van a kertben?"'
-                  : '"What is the temperature in the garden?"'}
+                  ? 'Háttérben elemzi a beszélgetést és optimalizálja a következő kör entitás keresését.'
+                  : 'Analyzes conversations in the background and optimizes entity search for the next turn.'}
               </span>
             </div>
           </div>
