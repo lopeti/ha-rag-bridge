@@ -704,7 +704,7 @@ async def process_request_workflow(payload: schemas.Request):
         # Run the Phase 3 LangGraph workflow
         workflow_result = await run_rag_workflow(
             user_query=payload.user_message,
-            session_id=session_id,
+            session_id=str(session_id),
             conversation_history=conversation_history,
         )
 

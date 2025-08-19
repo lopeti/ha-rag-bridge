@@ -35,6 +35,7 @@ class RAGState(TypedDict):
     # Context Building
     formatted_context: str
     formatter_type: str
+    _force_formatter: Optional[str]
 
     # LLM Integration
     llm_messages: List[Dict[str, str]]

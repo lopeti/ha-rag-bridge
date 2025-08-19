@@ -1,6 +1,6 @@
 """LangGraph workflow nodes for HA RAG system."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, cast
 from app.schemas import ChatMessage
 from ha_rag_bridge.logging import get_logger
 from app.services.conversation_analyzer import ConversationAnalyzer
@@ -41,7 +41,7 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
         rewrite_duration = (datetime.now() - rewrite_start).total_seconds() * 1000
 
         # Update state with rewrite information
-        result_data = {}
+        result_data: Dict[str, Any] = {}
         if rewrite_result.method != "no_rewrite_needed":
             logger.info(
                 f"Query rewritten: '{rewrite_result.original_query}' -> '{rewrite_result.rewritten_query}'"
@@ -165,7 +165,10 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
                     query=analysis_query,
                     history=history_for_processing,
                     retrieved_entities=None,  # Majd később kapja meg
-                    quick_context=result_data["conversation_summary"],
+                    quick_context=cast(
+                        Optional[Dict[str, Any]],
+                        result_data.get("conversation_summary"),
+                    ),
                 )
             )
             logger.info(
@@ -233,14 +236,14 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
                     stage_type="transform",
                     input_count=1,
                     output_count=len(
-                        result_data.get("quick_analysis", {}).get(
+                        cast(Dict[str, Any], result_data.get("quick_analysis", {})).get(
                             "detected_domains", []
                         )
                     ),
-                    duration_ms=result_data.get("quick_analysis", {}).get(
-                        "processing_time_ms", 0
-                    ),
-                    quick_analysis=result_data.get("quick_analysis", {}),
+                    duration_ms=cast(
+                        Dict[str, Any], result_data.get("quick_analysis", {})
+                    ).get("processing_time_ms", 0),
+                    conversation_summary=result_data.get("quick_analysis"),
                 ),
             )
 
@@ -478,7 +481,7 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
                 else str(detected_scope)
             )
             # Enhanced cluster type selection based on query context
-            scope_reasoning = state.get("scope_reasoning", "")
+            scope_reasoning = cast(str, state.get("scope_reasoning", ""))
             if scope_value == "micro":
                 cluster_types = ["specific", "device"]
             elif scope_value == "macro":
@@ -498,7 +501,7 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
         scope_config = ScopeConfig()
 
         # Enhanced conversation context with memory entities
-        conversation_context = state.get("conversation_context", {}).copy()
+        conversation_context = (state.get("conversation_context") or {}).copy()
         if memory_entities:
             # Add memory entity areas and domains to conversation context
             memory_areas = {e.get("area") for e in memory_entities if e.get("area")}
@@ -610,7 +613,9 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
             areas_mentioned=set(conversation_context.get("areas_mentioned", [])),
             domains_mentioned=set(conversation_context.get("domains_mentioned", [])),
             query_context=f"Query: {state['user_query']}",
-            conversation_summary=state.get("conversation_summary"),  # Pass the summary
+            conversation_summary=cast(
+                Optional[Dict[str, Any]], state.get("conversation_summary")
+            ),  # Pass the summary
         )
 
         logger.info(
@@ -640,8 +645,8 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
                             "cluster_count": len(cluster_entities),
                             "scope": (
                                 detected_scope.value
-                                if hasattr(detected_scope, "value")
-                                else str(detected_scope)
+                                if detected_scope and hasattr(detected_scope, "value")
+                                else str(detected_scope) if detected_scope else None
                             ),
                             "optimal_k": optimal_k,
                         },
@@ -741,10 +746,22 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
         )
 
         # Actually call the entity reranker to apply area/domain boosting
+        # Convert conversation history to ChatMessage objects
+        chat_history = (
+            [
+                ChatMessage(
+                    role=msg.get("role", "user"), content=str(msg.get("content", ""))
+                )
+                for msg in conversation_history
+            ]
+            if conversation_history
+            else None
+        )
+
         entity_scores = entity_reranker.rank_entities(
             entities=retrieved_entities,
             query=user_query,
-            conversation_history=conversation_history,
+            conversation_history=chat_history,
             conversation_id=session_id,
             k=len(retrieved_entities),  # Don't limit here, we want all scored entities
         )
@@ -919,8 +936,8 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
                         "related_entities": related_entity_ids,
                         "scope": (
                             detected_scope.value
-                            if hasattr(detected_scope, "value")
-                            else str(detected_scope)
+                            if detected_scope and hasattr(detected_scope, "value")
+                            else str(detected_scope) if detected_scope else None
                         ),
                     },
                 ),

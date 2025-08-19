@@ -3,6 +3,7 @@
 
 import asyncio
 import time
+from typing import List, Dict, Any
 from app.langgraph_workflow.workflow import run_rag_workflow
 from ha_rag_bridge.logging import get_logger
 
@@ -19,7 +20,7 @@ async def debug_workflow_step_by_step(query: str, session_id: str = "debug_sessi
     print("=" * 60)
 
     # Simple conversation history for multi-turn testing
-    conversation_history = []
+    conversation_history: List[Dict[str, Any]] = []
 
     start_time = time.time()
 

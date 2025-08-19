@@ -149,7 +149,11 @@ class ClusterManager:
         """
         # Build AQL query for cluster vector search
         aql_parts: List[str] = ["FOR c IN cluster", "FILTER LENGTH(c.embedding) > 0"]
-        bind_vars = {"query_vector": query_vector, "k": k, "threshold": threshold}
+        bind_vars: Dict[str, Any] = {
+            "query_vector": query_vector,
+            "k": k,
+            "threshold": threshold,
+        }
 
         if cluster_types:
             aql_parts.append("FILTER c.type IN @cluster_types")
@@ -194,7 +198,7 @@ class ClusterManager:
             "LET edge = (FOR e IN cluster_entity FILTER e._from == CONCAT('cluster/', cluster_key)",
             "AND e._to == entity._id RETURN e)[0]",
         ]
-        bind_vars = {"cluster_keys": cluster_keys}
+        bind_vars: Dict[str, Any] = {"cluster_keys": cluster_keys}
 
         if role_filter:
             aql_parts.append("FILTER edge.role == @role_filter")

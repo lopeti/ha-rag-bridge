@@ -559,11 +559,12 @@ class ConversationMemoryService:
                 )
 
         # Sort by memory relevance combined with boost weight
-        relevant_entities.sort(
-            key=lambda e: float(e.get("memory_relevance", 0))
-            * float(e.get("boost_weight", 1)),
-            reverse=True,
-        )
+        def _sort_key(e: Dict[str, Any]) -> float:
+            mem_rel = e.get("memory_relevance", 0)
+            boost_weight = e.get("boost_weight", 1)
+            return float(mem_rel) * float(boost_weight)
+
+        relevant_entities.sort(key=_sort_key, reverse=True)
 
         logger.info(
             f"Found {len(relevant_entities)} relevant entities from memory for query: {current_query}"

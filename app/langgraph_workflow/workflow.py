@@ -1,6 +1,6 @@
 """LangGraph workflow definition for HA RAG system."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, cast
 from langgraph.graph import StateGraph, END
 from ha_rag_bridge.logging import get_logger
 
@@ -32,7 +32,7 @@ from .routing import (
 logger = get_logger(__name__)
 
 
-def _extract_entity_pipeline(final_state: dict) -> List[dict]:
+def _extract_entity_pipeline(final_state: dict) -> List[Any]:
     """Extract comprehensive entity pipeline data using Enhanced Pipeline Stages as the authoritative source."""
     from app.services.workflow_tracer import EntityStageInfo, workflow_tracer
 
@@ -55,9 +55,9 @@ def _extract_entity_pipeline(final_state: dict) -> List[dict]:
         output_count = enhanced_stage.output_count
 
         # Map enhanced stage names to entity data and determine entities to use
-        entities = []
-        filters_applied = []
-        metadata = {}
+        entities: List[Dict[str, Any]] = []
+        filters_applied: List[str] = []
+        metadata: Dict[str, Any] = {}
 
         if stage_name == "query_rewriting":
             # Query rewriting doesn't have entities, but track the transformation
@@ -331,6 +331,7 @@ async def run_rag_workflow(
         reranked_entities=[],
         formatted_context="",
         formatter_type="",
+        _force_formatter=None,
         llm_messages=[],
         llm_response=None,
         tool_calls=[],
@@ -352,7 +353,7 @@ async def run_rag_workflow(
         if trace_id:
             try:
                 workflow_tracer.start_node(
-                    trace_id, "workflow_execution", initial_state
+                    trace_id, "workflow_execution", dict(initial_state)
                 )
             except Exception as e:
                 logger.warning(f"Failed to record workflow start: {e}")
@@ -418,7 +419,7 @@ async def run_rag_workflow(
                 workflow_tracer.end_trace(
                     trace_id=trace_id,
                     final_result=error_state,
-                    errors=error_state.get("errors"),
+                    errors=cast(Optional[List[str]], error_state.get("errors")),
                 )
 
                 logger.info(

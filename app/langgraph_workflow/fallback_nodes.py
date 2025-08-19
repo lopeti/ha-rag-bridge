@@ -295,7 +295,7 @@ async def fallback_entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
         """
 
         # Conservative parameters for fallback
-        k = min(20, state.get("optimal_k", 15))
+        k = min(20, state.get("optimal_k", 15) or 15)
         threshold = 0.5  # Lower threshold for broader coverage
 
         cursor = db.aql.execute(

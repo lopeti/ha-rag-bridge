@@ -401,7 +401,7 @@ async def get_system_overview(request: Request):
     """Get system overview"""
     _check_token(request)
 
-    overview = {
+    overview: Dict[str, Any] = {
         "database": {"name": os.getenv("ARANGO_DB", "_system"), "status": "error"},
         "schema": {"current": 0, "latest": SCHEMA_LATEST},
         "vector": {"dimension": int(os.getenv("EMBED_DIM", "768")), "status": "error"},
@@ -916,7 +916,7 @@ async def get_monitoring_metrics(request: Request):
     """Get real-time monitoring metrics"""
     _check_token(request)
 
-    metrics = {
+    metrics: Dict[str, Any] = {
         "cpu": 0,
         "memory": 0,
         "disk": 0,
@@ -1050,7 +1050,7 @@ async def get_monitoring_logs(
             subprocess.TimeoutExpired,
         ):
             # Docker CLI not available, fallback to mock data
-            return await _get_mock_logs(level)
+            return await _get_mock_logs(level or "info")
 
         # Get recent logs from Docker container using CLI
         cmd = ["docker", "logs", container_name, "--tail=50", "--timestamps"]
@@ -1058,12 +1058,12 @@ async def get_monitoring_logs(
 
         if result.returncode != 0:
             # Fallback to mock data if docker logs fails
-            return await _get_mock_logs(level)
+            return await _get_mock_logs(level or "info")
 
         log_output = result.stdout + result.stderr
         if not log_output:
             # Fallback to mock data if no logs available
-            return await _get_mock_logs(level)
+            return await _get_mock_logs(level or "info")
 
         logs = []
         for line in log_output.split("\n"):
@@ -1130,7 +1130,7 @@ async def get_monitoring_logs(
         return await _get_mock_logs(level)
 
 
-async def _get_mock_logs(level: str = None):
+async def _get_mock_logs(level: Optional[str] = None):
     """Fallback mock logs implementation"""
     import random
     from datetime import datetime, timedelta
@@ -1533,7 +1533,10 @@ async def search_entities_debug(request: Request):
         search_debugger.capture_stage(
             stage=PipelineStage.RERANKING,
             entities_in=entities,
-            entities_out=ranked_entities,
+            entities_out=[
+                entity.to_dict() if hasattr(entity, "to_dict") else entity
+                for entity in ranked_entities
+            ],
             execution_time_ms=rerank_time,
             metadata={"reranker_model": entity_reranker.model_name},
         )
@@ -1543,8 +1546,14 @@ async def search_entities_debug(request: Request):
 
         search_debugger.capture_stage(
             stage=PipelineStage.FINAL_SELECTION,
-            entities_in=ranked_entities,
-            entities_out=final_entities,
+            entities_in=[
+                entity.to_dict() if hasattr(entity, "to_dict") else entity
+                for entity in ranked_entities
+            ],
+            entities_out=[
+                entity.to_dict() if hasattr(entity, "to_dict") else entity
+                for entity in final_entities
+            ],
             execution_time_ms=0.5,  # Minimal time for selection
             metadata={
                 "active_entities": len(
