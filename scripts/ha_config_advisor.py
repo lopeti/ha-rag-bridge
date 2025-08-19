@@ -16,7 +16,7 @@ import os
 import argparse
 import json
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 import re
@@ -329,7 +329,7 @@ class HAConfigAdvisor:
         issues = []
 
         # Find entities that could be grouped better
-        area_entity_map = {}
+        area_entity_map: Dict[str, List[Any]] = {}
         for entity in self.entities:
             area_id = entity.get("area_id")
             if area_id:
@@ -387,7 +387,7 @@ class HAConfigAdvisor:
             progress.update(task3, completed=True)
 
         # Generate summary statistics
-        summary = {}
+        summary: Dict[str, Any] = {}
         for issue in all_issues:
             level_key = f"{issue.level.value}_count"
             category_key = f"{issue.category.value}_count"
@@ -515,7 +515,7 @@ class HAConfigAdvisor:
     def _find_similar_entities_across_areas(self) -> List[List[dict]]:
         """Find groups of similar entities that might belong together"""
         # Group entities by domain and device class
-        groups = {}
+        groups: Dict[str, List[Any]] = {}
 
         for entity in self.entities:
             domain = (
@@ -628,7 +628,7 @@ class HAConfigAdvisor:
             console.print("[bold yellow]🔍 Detailed Issues[/bold yellow]")
 
             # Group issues by category
-            issues_by_category = {}
+            issues_by_category: Dict[str, List[Any]] = {}
             for issue in report.issues:
                 category = issue.category.value
                 if category not in issues_by_category:

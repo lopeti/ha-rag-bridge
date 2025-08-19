@@ -1,6 +1,6 @@
 """Conditional routing logic for LangGraph workflow Phase 3."""
 
-from typing import Literal
+from typing import Literal, Dict, Any
 from ha_rag_bridge.logging import get_logger
 from .state import RAGState, QueryScope
 
@@ -12,7 +12,7 @@ def route_after_conversation_analysis(
 ) -> Literal["scope_detection", "fallback_analysis"]:
     """Route after conversation analysis based on confidence."""
 
-    context = state.get("conversation_context", {})
+    context = state.get("conversation_context") or {}
     confidence = context.get("confidence", 0.0)
 
     if confidence >= 0.5:  # High confidence in conversation analysis
@@ -157,7 +157,8 @@ def should_cleanup_memory(state: RAGState) -> Literal["cleanup_memory", "end"]:
     """Decide whether to run memory cleanup after workflow completion."""
 
     session_id = state.get("session_id", "")
-    query_count = state.get("conversation_context", {}).get("query_count", 1)
+    context = state.get("conversation_context") or {}
+    query_count = context.get("query_count", 1)
 
     # Always run cleanup for test sessions to validate functionality
     should_cleanup = (
@@ -174,13 +175,13 @@ def should_cleanup_memory(state: RAGState) -> Literal["cleanup_memory", "end"]:
         return "end"
 
 
-def determine_retry_strategy(state: RAGState) -> dict:
+def determine_retry_strategy(state: RAGState) -> Dict[str, Any]:
     """Determine retry strategy based on current state and error patterns."""
 
     errors = state.get("errors", [])
     retry_count = state.get("retry_count", 0)
 
-    strategy = {
+    strategy: Dict[str, Any] = {
         "should_retry": False,
         "modify_k": False,
         "new_k": None,
@@ -208,7 +209,7 @@ def determine_retry_strategy(state: RAGState) -> dict:
         strategy["should_retry"] = True
         strategy["modify_k"] = True
         # Increase k for better entity coverage
-        current_k = state.get("optimal_k", 15)
+        current_k = state.get("optimal_k", 15) or 15
         strategy["new_k"] = min(50, current_k * 2)
         logger.info(
             f"Retry strategy: Increasing k from {current_k} to {strategy['new_k']}"
@@ -268,10 +269,10 @@ def get_error_recovery_node(error_type: str) -> str:
     return "fallback_entity_retrieval"
 
 
-def assess_workflow_quality(state: RAGState) -> dict:
+def assess_workflow_quality(state: RAGState) -> Dict[str, Any]:
     """Assess overall workflow quality and provide recommendations."""
 
-    quality_metrics = {
+    quality_metrics: Dict[str, Any] = {
         "conversation_analysis_quality": 0.0,
         "scope_detection_quality": 0.0,
         "entity_retrieval_quality": 0.0,

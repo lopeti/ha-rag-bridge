@@ -529,7 +529,7 @@ class QuickPatternAnalyzer:
     ) -> Dict[str, List[str]]:
         """Matched keywords gyűjtése debug célokra"""
 
-        matched = {"domains": [], "areas": [], "query_types": []}
+        matched: Dict[str, List[str]] = {"domains": [], "areas": [], "query_types": []}
 
         # Domain matches
         for domain in domains:

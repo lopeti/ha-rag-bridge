@@ -379,7 +379,7 @@ class QueryExpander:
         self, query: str, context: Dict[str, Any]
     ) -> List[ExpansionCandidate]:
         """Generate context-aware query variants."""
-        candidates = []
+        candidates: List[ExpansionCandidate] = []
 
         # Use conversation memory for personalization
         if "recent_entities" in context:

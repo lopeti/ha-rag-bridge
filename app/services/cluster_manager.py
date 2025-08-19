@@ -1,6 +1,6 @@
 """Cluster management service for semantic entity clustering."""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 from datetime import datetime, timezone
 from arango import ArangoClient
 from arango.database import StandardDatabase
@@ -148,7 +148,7 @@ class ClusterManager:
             List of matching clusters with similarity scores
         """
         # Build AQL query for cluster vector search
-        aql_parts = ["FOR c IN cluster", "FILTER LENGTH(c.embedding) > 0"]
+        aql_parts: List[str] = ["FOR c IN cluster", "FILTER LENGTH(c.embedding) > 0"]
         bind_vars = {"query_vector": query_vector, "k": k, "threshold": threshold}
 
         if cluster_types:
@@ -188,7 +188,7 @@ class ClusterManager:
         Returns:
             List of entities with cluster context
         """
-        aql_parts = [
+        aql_parts: List[str] = [
             "FOR cluster_key IN @cluster_keys",
             "FOR entity IN 1..1 OUTBOUND CONCAT('cluster/', cluster_key) cluster_entity",
             "LET edge = (FOR e IN cluster_entity FILTER e._from == CONCAT('cluster/', cluster_key)",
@@ -324,7 +324,16 @@ class ClusterManager:
         created_count = 0
         for cluster_def in initial_clusters:
             try:
-                self.create_cluster(**cluster_def)
+                self.create_cluster(
+                    key=cast(str, cluster_def["key"]),
+                    name=cast(str, cluster_def["name"]),
+                    cluster_type=cast(str, cluster_def["cluster_type"]),
+                    description=cast(str, cluster_def["description"]),
+                    query_patterns=cast(List[str], cluster_def["query_patterns"]),
+                    areas=cast(Optional[List[str]], cluster_def.get("areas")),
+                    domains=cast(Optional[List[str]], cluster_def.get("domains")),
+                    scope=cast(str, cluster_def.get("scope", "specific")),
+                )
                 created_count += 1
             except Exception as exc:
                 # Skip if cluster already exists

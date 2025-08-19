@@ -354,7 +354,7 @@ class WorkflowTracer:
 
     def _sanitize_api_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize API response to store only essential debugging information."""
-        sanitized = {}
+        sanitized: Dict[str, Any] = {}
 
         # Store response metadata
         sanitized["response_type"] = type(response).__name__
@@ -444,7 +444,9 @@ class WorkflowTracer:
                             )
                 else:
                     # For other fields, use sanitize_data
-                    sanitized[essential_field] = self._sanitize_data(response[essential_field], max_depth=2)
+                    sanitized[essential_field] = self._sanitize_data(
+                        response[essential_field], max_depth=2
+                    )
 
         return sanitized
 
@@ -472,8 +474,8 @@ class WorkflowTracer:
             "conversation_context": final_result.get("conversation_context"),
             "detected_scope": (
                 detected_scope.value
-                if hasattr(detected_scope, "value")
-                else str(detected_scope)
+                if detected_scope and hasattr(detected_scope, "value")
+                else str(detected_scope) if detected_scope else None
             ),  # Handle QueryScope enum
             "scope_confidence": final_result.get("scope_confidence"),
             "optimal_k": final_result.get("optimal_k"),
@@ -653,7 +655,7 @@ class WorkflowTracer:
 
     def _calculate_metrics(self, trace: WorkflowTrace) -> Dict[str, Any]:
         """Calculate performance metrics from trace."""
-        metrics = {
+        metrics: Dict[str, Any] = {
             "total_nodes": len(trace.node_executions),
             "successful_nodes": len(
                 [n for n in trace.node_executions if n.status == "success"]

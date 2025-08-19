@@ -8,6 +8,7 @@ import pytest
 def _docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
+    return True
 
 
 def _wait_for_service(host: str, port: int, timeout: int = 10) -> None:

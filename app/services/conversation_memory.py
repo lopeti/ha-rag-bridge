@@ -76,6 +76,7 @@ class ConversationMemoryService:
     ) -> Optional[ConversationMemory]:
         """Retrieve conversation memory if it exists and hasn't expired."""
         await self._ensure_connection()
+        assert self._db is not None
 
         try:
             collection = self._db.collection("conversation_memory")
@@ -146,6 +147,7 @@ class ConversationMemoryService:
     ) -> bool:
         """Store or update conversation memory with entities and context."""
         await self._ensure_connection()
+        assert self._db is not None
 
         try:
             current_time = datetime.utcnow()
@@ -558,7 +560,9 @@ class ConversationMemoryService:
 
         # Sort by memory relevance combined with boost weight
         relevant_entities.sort(
-            key=lambda e: e["memory_relevance"] * e["boost_weight"], reverse=True
+            key=lambda e: float(e.get("memory_relevance", 0))
+            * float(e.get("boost_weight", 1)),
+            reverse=True,
         )
 
         logger.info(
@@ -610,6 +614,7 @@ class ConversationMemoryService:
     async def _cleanup_expired_memory(self, conversation_id: str) -> bool:
         """Clean up expired conversation memory."""
         await self._ensure_connection()
+        assert self._db is not None
 
         try:
             collection = self._db.collection("conversation_memory")
@@ -698,6 +703,7 @@ class ConversationMemoryService:
             True if stored successfully
         """
         await self._ensure_connection()
+        assert self._db is not None
 
         try:
             ttl = datetime.utcnow() + timedelta(minutes=ttl_minutes)
@@ -734,6 +740,7 @@ class ConversationMemoryService:
             Summary data if available and valid, None otherwise
         """
         await self._ensure_connection()
+        assert self._db is not None
 
         try:
             collection = self._db.collection("conversation_memory")
@@ -864,7 +871,11 @@ class QueryExpansionMemory:
         """Get expansion suggestions based on learned patterns"""
         query_normalized = self._normalize_query(query)
 
-        suggestions = {"expanded_terms": [], "boost_entities": [], "confidence": 0.0}
+        suggestions: Dict[str, Any] = {
+            "expanded_terms": [],
+            "boost_entities": [],
+            "confidence": 0.0,
+        }
 
         # Look for similar patterns
         for pattern_query, pattern_data in self.successful_patterns.items():
@@ -955,10 +966,10 @@ class AsyncConversationMemory:
 
         # 3. Store in persistent memory (immediate)
         areas_mentioned = {
-            e.get("area_name") for e in retrieved_entities if e.get("area_name")
+            area for area in (e.get("area_name") for e in retrieved_entities) if area
         }
         domains_mentioned = {
-            e.get("domain") for e in retrieved_entities if e.get("domain")
+            domain for domain in (e.get("domain") for e in retrieved_entities) if domain
         }
 
         await self.memory_service.store_conversation_memory(

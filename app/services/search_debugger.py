@@ -336,9 +336,9 @@ class SearchDebugger:
 
     def _calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate pipeline efficiency metrics."""
-        metrics = {}
+        metrics: Dict[str, Any] = {}
 
-        if not self.current_pipeline.stage_results:
+        if not self.current_pipeline or not self.current_pipeline.stage_results:
             return metrics
 
         # Cluster hit rate

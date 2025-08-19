@@ -8,7 +8,7 @@ import websockets
 try:
     from .ingest import ingest  # package run
 except ImportError:  # direct run
-    from ingest import ingest
+    from ingest import ingest  # noqa: F811
 
 from ha_rag_bridge.logging import get_logger
 
