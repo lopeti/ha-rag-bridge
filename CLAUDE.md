@@ -236,6 +236,46 @@ npm run build  # Build React app to dist/
 - **Benefits**: Unified workflow for Docker, Git, files, and database operations through Claude Code interface
 - **Security**: Built-in path validation and controlled access to system resources
 
+## Project Structure
+
+The project has been reorganized for better maintainability and developer experience:
+
+```
+ha-rag-bridge/
+├── app/                          # FastAPI application
+│   ├── services/                 # Service layer (functionally organized)
+│   │   ├── core/                # Core services (state, service catalog)
+│   │   ├── rag/                 # RAG-specific services (retrieval, reranking, clustering)
+│   │   ├── conversation/        # Conversation handling (analysis, memory, summarization)
+│   │   └── integrations/        # External system integrations
+│   ├── langgraph_workflow/      # LangGraph workflow implementation  
+│   ├── routers/                 # FastAPI route handlers
+│   └── middleware/              # Request middleware
+├── ha_rag_bridge/               # Core library and CLI tools
+│   ├── bootstrap/               # Database initialization
+│   ├── cli/                     # Command-line interface
+│   ├── db/                      # Database layer
+│   └── utils/                   # Utility functions
+├── scripts/                     # Standalone utility scripts
+├── tests/                       # All tests organized by type
+│   ├── performance/            # Performance and load tests
+│   ├── integration/            # Integration tests
+│   └── debug/                  # Debug and diagnostic tests
+├── tools/                       # Development and maintenance tools
+│   ├── debug/                  # Debug scripts and utilities
+│   ├── migration/              # Database migration scripts
+│   └── examples/               # Example code and demos
+├── docs/                        # Documentation
+│   ├── architecture/           # Architecture documentation
+│   ├── deployment/             # Deployment guides
+│   └── development/            # Development guides
+├── config/                      # Configuration files
+│   ├── environments/           # Environment-specific configs
+│   └── litellm/               # LiteLLM configurations
+└── deployments/                # Deployment configurations
+    └── docker-compose/         # Docker Compose variants
+```
+
 ## Architecture Overview
 
 This is a Home Assistant RAG (Retrieval Augmented Generation) bridge that syncs HA metadata into ArangoDB and provides semantic search capabilities through a FastAPI service.
@@ -262,17 +302,17 @@ This is a Home Assistant RAG (Retrieval Augmented Generation) bridge that syncs 
 - Handles collection creation, index management, and data migration
 - Validates collection names and provides auto-fix for invalid names
 
-**SBERT Query Processing Pipeline** (`app/services/`) ✨ NEW
-- **Query Rewriter** (`query_rewriter.py`) - LLM-based multi-turn conversation handling with coreference resolution
-- **Query Expander** (`query_expander.py`) - Semantic query expansion with Hungarian-English synonyms and translations
+**SBERT Query Processing Pipeline** (`app/services/rag/`) ✨ NEW
+- **Query Rewriter** (`app/services/rag/query_rewriter.py`) - LLM-based multi-turn conversation handling with coreference resolution
+- **Query Expander** (`app/services/rag/query_expander.py`) - Semantic query expansion with Hungarian-English synonyms and translations
 - **Enhanced Embedding Backend** (`scripts/embedding_backends.py`) - Query/document encoding split with instruction templates
 - Support for "És a kertben?" → "Hány fok van a kertben?" query rewriting
 - 6 domain categories: temperature, humidity, light, energy, security, climate
 - Configurable expansion limits and timeout protection
 
-**Async Conversation Memory System** (`app/services/`) 🚀 REFACTOR PoC - TESTING PHASE
-- **QuickPatternAnalyzer** (`quick_pattern_analyzer.py`) - Szinkron pattern felismerés <50ms garantált válaszidővel
-- **AsyncConversationEnricher** (`async_conversation_enricher.py`) - Fire-and-forget háttérfeldolgozás következő körre
+**Async Conversation Memory System** (`app/services/conversation/`) 🚀 REFACTOR PoC - TESTING PHASE
+- **QuickPatternAnalyzer** (`app/services/conversation/quick_pattern_analyzer.py`) - Szinkron pattern felismerés <50ms garantált válaszidővel
+- **AsyncConversationEnricher** (`app/services/conversation/async_conversation_enricher.py`) - Fire-and-forget háttérfeldolgozás következő körre
 - **Language Patterns Core** (`config/language_patterns_core.yaml`) - Externalized, hierarchikus pattern konfiguráció
 - **Separation of Concerns**: Gyors szinkron elemzés + lassú async gazdagítás szétválasztva
 - **Performance Target**: 5.2s → 1.8s válaszidő javítás (65% reduction)
@@ -393,12 +433,12 @@ The project uses Docker Compose for development with multiple stack configuratio
 - Manual hint injection during query processing
 - Area containment and adjacency relationships
 
-**Smart Home Intelligence System** (`app/services/`)
-- **Conversation Analyzer** (`conversation_analyzer.py`) - Hungarian/English context understanding with area/domain detection
-- **Entity Reranker** (`entity_reranker.py`) - Cross-encoder semantic scoring with multi-primary entity support
+**Smart Home Intelligence System**
+- **Conversation Analyzer** (`app/services/conversation/conversation_analyzer.py`) - Hungarian/English context understanding with area/domain detection
+- **Entity Reranker** (`app/services/rag/entity_reranker.py`) - Cross-encoder semantic scoring with multi-primary entity support
 - **Multi-Formatter System** - Intelligent prompt formatting: compact/detailed/grouped_by_area/tldr based on context
 - **Context-Aware Entity Prioritization** - Replaces hardcoded result selection with semantic relevance scoring
-- **ConversationMemoryService** (`conversation_memory.py`) - TTL-based entity persistence with multi-turn context enhancement
+- **ConversationMemoryService** (`app/services/conversation/conversation_memory.py`) - TTL-based entity persistence with multi-turn context enhancement
 
 **LangGraph Workflow System** (`app/langgraph_workflow/`)
 - **Phase 3 Production Workflow**: Conditional routing with intelligent fallback mechanisms
@@ -407,9 +447,9 @@ The project uses Docker Compose for development with multiple stack configuratio
 - **Quality Assessment**: Real-time workflow performance analysis with actionable recommendations
 - **Memory Integration**: Seamless conversation context persistence and entity boosting across turns
 
-**Async Conversation Memory System** (`app/services/`) ⚡ NEW
-- **AsyncConversationMemory** (`conversation_memory.py`) - Hybrid memory with Entity Context + Query Pattern tracking
-- **AsyncSummarizer** (`async_summarizer.py`) - Background LLM summary generation with TTL caching
+**Async Conversation Memory System** (`app/services/conversation/`) ⚡ NEW
+- **AsyncConversationMemory** (`app/services/conversation/conversation_memory.py`) - Hybrid memory with Entity Context + Query Pattern tracking
+- **AsyncSummarizer** (`app/services/conversation/async_summarizer.py`) - Background LLM summary generation with TTL caching
 - **Fire-and-forget Architecture**: Immediate response with background enrichment for future turns
 - **Meta-information Extraction**: Domains, entities, areas, temporal patterns for next-turn optimization
 - **Debug Pipeline Integration**: Memory stage visualization with cache status and pattern learning metrics
