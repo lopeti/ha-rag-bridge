@@ -15,7 +15,7 @@ from datetime import datetime
 import litellm
 from ha_rag_bridge.config import get_settings
 from ha_rag_bridge.logging import get_logger
-from app.services.conversation_memory import ConversationMemoryService
+from app.services.conversation.conversation_memory import ConversationMemoryService
 
 logger = get_logger(__name__)
 

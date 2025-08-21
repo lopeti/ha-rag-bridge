@@ -16,7 +16,7 @@ from typing import List, Optional, Set, Dict, Any
 from ha_rag_bridge.config import get_settings
 from ha_rag_bridge.logging import get_logger
 from app.schemas import ChatMessage
-from app.services.conversation_memory import ConversationMemory
+from app.services.conversation.conversation_memory import ConversationMemory
 
 logger = get_logger(__name__)
 

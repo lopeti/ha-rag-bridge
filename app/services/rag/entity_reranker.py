@@ -12,7 +12,7 @@ from cachetools import TTLCache  # type: ignore
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.config import get_settings
 from app.schemas import ChatMessage
-from app.services.conversation_analyzer import (
+from app.services.conversation.conversation_analyzer import (
     conversation_analyzer,
     ConversationContext,
 )
@@ -498,7 +498,7 @@ class EntityReranker:
 
         # Availability boost - strongly prefer entities with active state values
         if entity_domain == "sensor" and entity_id:
-            from app.services.state_service import get_last_state
+            from app.services.core.state_service import get_last_state
 
             try:
                 current_value = get_last_state(entity_id)
@@ -788,11 +788,11 @@ class EntityReranker:
         def _get_value_str(cls, entity, use_fresh_data: bool = False):
             """Get formatted value string for entity with optional fresh data"""
             if use_fresh_data:
-                from app.services.state_service import get_fresh_state
+                from app.services.core.state_service import get_fresh_state
 
                 get_state_func = get_fresh_state
             else:
-                from app.services.state_service import get_last_state
+                from app.services.core.state_service import get_last_state
 
                 get_state_func = get_last_state
 
@@ -963,7 +963,9 @@ class EntityReranker:
         top_score = ranked_entities[0].final_score if ranked_entities else 0
 
         # Analyze query context
-        from app.services.conversation_analyzer import conversation_analyzer
+        from app.services.conversation.conversation_analyzer import (
+            conversation_analyzer,
+        )
 
         context = conversation_analyzer.analyze_conversation(query)
         areas_mentioned = context.areas_mentioned
@@ -1044,7 +1046,9 @@ class EntityReranker:
         related_entities: List[EntityScore],
     ) -> str:
         """Intelligently select the best formatter based on query and entity context"""
-        from app.services.conversation_analyzer import conversation_analyzer
+        from app.services.conversation.conversation_analyzer import (
+            conversation_analyzer,
+        )
 
         context = conversation_analyzer.analyze_conversation(query)
         total_entities = len(primary_entities) + len(related_entities)

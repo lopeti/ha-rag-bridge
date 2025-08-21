@@ -28,9 +28,9 @@ from scripts.embedding_backends import (  # noqa: E402
     GeminiBackend,
     get_backend,
 )
-from .services.state_service import get_last_state  # noqa: E402
-from .services.service_catalog import ServiceCatalog  # noqa: E402
-from .services.entity_reranker import entity_reranker  # noqa: E402
+from .services.core.state_service import get_last_state  # noqa: E402
+from .services.core.service_catalog import ServiceCatalog  # noqa: E402
+from .services.rag.entity_reranker import entity_reranker  # noqa: E402
 
 # Import LangGraph workflow at module level to avoid route registration issues
 try:
@@ -579,11 +579,13 @@ async def process_request(payload: schemas.Request):
             )
 
             if top.get("domain") == "sensor":
-                last = get_last_state(top.get("entity_id"))
-                if last is not None:
-                    system_prompt += (
-                        f"Current value of {top['entity_id'].lower()}: {last}\n"
-                    )
+                entity_id = top.get("entity_id")
+                if entity_id:
+                    last = get_last_state(str(entity_id))
+                    if last is not None:
+                        system_prompt += (
+                            f"Current value of {top['entity_id'].lower()}: {last}\n"
+                        )
 
     tools: List[Dict] = []
     if intent == "control":
