@@ -792,7 +792,9 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
             target_entities = min(optimal_k, len(entity_scores))  # Default fallback
 
         # Apply score-based filtering with minimum threshold
-        min_score_threshold = 0.2  # Minimum relevance score
+        min_score_threshold = (
+            0.2  # Restored original threshold with proper multilingual model
+        )
         filtered_entities = [
             es for es in entity_scores if es.final_score > min_score_threshold
         ][:target_entities]

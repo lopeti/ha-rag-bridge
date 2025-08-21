@@ -109,7 +109,7 @@ class ConversationAnalyzer:
             "energy": ["energia", "áram", "watt", "energy", "power"],
             "air_quality": ["levegő", "co2", "air"],
         },
-        "light": ["világítás", "lámpa", "light", "lamp", "kapcsold"],
+        "light": ["világítás", "lámpa", "lámpák", "light", "lamp", "kapcsold"],
         "switch": ["kapcsoló", "switch", "kapcsold"],
         "climate": ["klíma", "fűtés", "heating", "cooling", "thermostat"],
         "cover": ["redőny", "függöny", "blind", "curtain", "cover"],
