@@ -1470,7 +1470,7 @@ async def search_entities_debug(request: Request):
     search_request = SearchDebugRequest(**body)
 
     # Import required services
-    from scripts.embedding_backends import get_backend
+    from app.services.integrations.embeddings import get_backend
     from app.main import retrieve_entities_with_clusters
     from app.services.rag.entity_reranker import entity_reranker
     from app.services.rag.query_scope_detector import query_scope_detector

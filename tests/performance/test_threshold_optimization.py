@@ -7,7 +7,7 @@ Helps improve relevance by adjusting similarity thresholds based on model charac
 import os
 import numpy as np
 
-from scripts.embedding_backends import LocalBackend
+from app.services.integrations.embeddings import LocalBackend
 
 # Set environment after importing
 os.environ["SENTENCE_TRANSFORMER_MODEL"] = "paraphrase-multilingual-MiniLM-L12-v2"

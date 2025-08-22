@@ -10,7 +10,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from ha_rag_bridge.logging import get_logger  # noqa: E402
-from scripts.embedding_backends import get_backend  # noqa: E402
+from app.services.integrations.embeddings import get_backend  # noqa: E402
 from app.services.rag.cluster_manager import ClusterManager  # noqa: E402
 from app.services.query_scope_detector import (  # noqa: E402
     query_scope_detector,

@@ -9,7 +9,7 @@ import numpy as np
 from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
 
-from scripts.embedding_backends import LocalBackend
+from app.services.integrations.embeddings import LocalBackend
 
 # Set environment after importing
 os.environ["SENTENCE_TRANSFORMER_MODEL"] = "paraphrase-multilingual-MiniLM-L12-v2"

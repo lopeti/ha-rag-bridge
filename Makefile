@@ -8,7 +8,7 @@ migrate:
 .PHONY: docs
 docs: docs/architecture.svg
 
-COMPOSE_DEV = docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile dev
+COMPOSE_DEV = docker compose -f deployments/docker-compose/docker-compose.yml -f deployments/docker-compose/docker-compose.dev.yml --profile dev
 
 .PHONY: dev-up dev-up-with-ui dev-down dev-shell
 
@@ -29,10 +29,10 @@ dev-shell:
 
 # Devcontainer deploy (csak devcontainer-en belül látható)
 deploy:
-	./quick-deploy.sh
+	./deployments/scripts/quick-deploy.sh
 
 deploy-to:
-	./quick-deploy.sh $(TARGET)
+	./deployments/scripts/quick-deploy.sh $(TARGET)
 
 deploy-start: deploy
 	cd ~/ha-rag-core && ./start.sh
@@ -43,22 +43,22 @@ deploy-check:
 # Host deploy (Portainer-ben látható)
 deploy-host:
 	@echo "⚠️  Run this OUTSIDE devcontainer for Portainer visibility!"
-	./host-deploy.sh
+	./deployments/scripts/host-deploy.sh
 
 host-deploy:
-	./host-docker-deploy.sh
+	./deployments/scripts/host-docker-deploy.sh
 
 # Monitoring Stack
 .PHONY: monitoring-up monitoring-down monitoring-logs
 
 monitoring-up:
-	docker compose -f docker-compose.monitoring.yml up -d
+	docker compose -f deployments/docker-compose/docker-compose.monitoring.yml up -d
 
 monitoring-down:
-	docker compose -f docker-compose.monitoring.yml down
+	docker compose -f deployments/docker-compose/docker-compose.monitoring.yml down
 
 monitoring-logs:
-	docker compose -f docker-compose.monitoring.yml logs -f
+	docker compose -f deployments/docker-compose/docker-compose.monitoring.yml logs -f
 
 # Docker Cleanup & Maintenance
 .PHONY: docker-cleanup docker-prune docker-clean-dev docker-system-info

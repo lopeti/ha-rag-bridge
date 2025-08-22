@@ -10,7 +10,7 @@ import asyncio
 from unittest.mock import patch
 from app.services.query_rewriter import ConversationalQueryRewriter, QueryRewriteResult
 from app.services.query_expander import QueryExpander, QueryExpansionResult
-from scripts.embedding_backends import EnhancedLocalBackend
+from app.services.integrations.embeddings import EnhancedLocalBackend
 from app.schemas import ChatMessage
 
 

@@ -7,7 +7,7 @@ from arango.database import StandardDatabase
 import os
 
 from ha_rag_bridge.logging import get_logger
-from scripts.embedding_backends import get_backend
+from app.services.integrations.embeddings import get_backend
 
 logger = get_logger(__name__)
 

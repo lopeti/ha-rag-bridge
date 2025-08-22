@@ -21,7 +21,7 @@ import httpx  # noqa: E402
 from arango import ArangoClient  # noqa: E402
 
 from . import schemas  # noqa: E402
-from scripts.embedding_backends import (  # noqa: E402
+from app.services.integrations.embeddings import (  # noqa: E402
     BaseEmbeddingBackend as EmbeddingBackend,
     LocalBackend,
     OpenAIBackend,

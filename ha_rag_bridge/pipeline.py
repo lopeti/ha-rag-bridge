@@ -4,7 +4,7 @@ import os
 from typing import Dict, Any
 from arango import ArangoClient
 
-from scripts.embedding_backends import (
+from app.services.integrations.embeddings import (
     BaseEmbeddingBackend as EmbeddingBackend,
     LocalBackend,
     OpenAIBackend,

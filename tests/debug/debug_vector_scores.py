@@ -5,7 +5,7 @@ import os
 import asyncio
 from arango import ArangoClient
 from ha_rag_bridge.db import BridgeDB
-from scripts.embedding_backends import get_backend
+from app.services.integrations.embeddings import get_backend
 from app.main import query_arango
 
 

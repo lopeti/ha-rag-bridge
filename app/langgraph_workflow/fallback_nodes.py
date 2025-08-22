@@ -254,7 +254,7 @@ async def fallback_entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
 
     try:
         from arango import ArangoClient
-        from scripts.embedding_backends import get_backend
+        from app.services.integrations.embeddings import get_backend
         import os
 
         # Initialize basic database connection

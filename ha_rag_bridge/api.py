@@ -18,7 +18,7 @@ from arango import ArangoClient
 
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
-from scripts.embedding_backends import (
+from app.services.integrations.embeddings import (
     BaseEmbeddingBackend as EmbeddingBackend,
     LocalBackend,
     OpenAIBackend,

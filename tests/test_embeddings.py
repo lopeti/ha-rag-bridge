@@ -2,7 +2,7 @@ import os
 
 import httpx
 
-from scripts.embedding_backends import GeminiBackend
+from app.services.integrations.embeddings import GeminiBackend
 
 
 def test_gemini_embed(monkeypatch):

@@ -5,9 +5,9 @@ __version__ = "0.14.0"
 
 def run_ingest(path: str) -> None:
     """Wrapper to run the ingest pipeline."""
-    from .ingest import run
+    from scripts.ingest import ingest
 
-    run(path)
+    ingest(path)
 
 
 def query(question: str, top_k: int = 3):

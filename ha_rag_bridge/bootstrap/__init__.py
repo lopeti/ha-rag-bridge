@@ -72,7 +72,7 @@ def _bootstrap_impl(
     try:
         if backend_name == "local":
             # For LocalBackend, we need to initialize it to get the actual dimension
-            from scripts.embedding_backends import LocalBackend
+            from app.services.integrations.embeddings import LocalBackend
 
             # Check if model is already loaded to avoid reloading
             if LocalBackend._MODEL is not None:
@@ -82,11 +82,11 @@ def _bootstrap_impl(
                 backend = LocalBackend()
                 embed_dim = backend.DIMENSION
         elif backend_name == "openai":
-            from scripts.embedding_backends import OpenAIBackend
+            from app.services.integrations.embeddings import OpenAIBackend
 
             embed_dim = OpenAIBackend.DIMENSION
         elif backend_name == "gemini":
-            from scripts.embedding_backends import GeminiBackend
+            from app.services.integrations.embeddings import GeminiBackend
 
             embed_dim = GeminiBackend.DIMENSION
         else:

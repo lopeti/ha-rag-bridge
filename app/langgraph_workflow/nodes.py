@@ -437,7 +437,7 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
     try:
         from arango import ArangoClient
         from app.main import retrieve_entities_with_clusters
-        from scripts.embedding_backends import get_backend
+        from app.services.integrations.embeddings import get_backend
         import os
 
         # Initialize conversation memory service
