@@ -6,7 +6,7 @@ from pathlib import Path
 router = APIRouter(tags=["ui"])
 
 # Get the admin UI build directory
-ADMIN_UI_DIR = Path(__file__).parent.parent.parent / "apps" / "admin-ui" / "dist"
+ADMIN_UI_DIR = Path(__file__).parent.parent.parent / "frontend" / "admin-ui" / "dist"
 
 
 # Custom StaticFiles with no-cache headers for CSS/JS
@@ -46,7 +46,7 @@ async def serve_admin_ui(full_path: str = ""):
             <body>
                 <h1>Admin UI Not Built</h1>
                 <p>The admin UI has not been built yet. Please run:</p>
-                <pre>cd apps/admin-ui && npm run build</pre>
+                <pre>cd frontend/admin-ui && npm run build</pre>
                 <p>Then restart the server.</p>
                 <p>Build directory expected at: {}</p>
             </body>

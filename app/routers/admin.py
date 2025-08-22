@@ -653,8 +653,8 @@ async def get_entity_prompt_format(request: Request, entity_id: str):
     _check_token(request)
 
     try:
-        from app.services.entity_reranker import EntityReranker
-        from app.services.state_service import get_fresh_state
+        from app.services.rag.entity_reranker import EntityReranker
+        from app.services.core.state_service import get_fresh_state
 
         # Get entity from database
         arango = ArangoClient(hosts=os.environ["ARANGO_URL"])
@@ -693,9 +693,12 @@ async def get_entity_prompt_format(request: Request, entity_id: str):
         entity = result[0]
 
         # Get current value from state service
+        current_state = None
         current_value = None
         try:
-            current_value = get_fresh_state(entity_id)
+            current_state = get_fresh_state(entity_id)
+            if current_state and "state" in current_state:
+                current_value = current_state["state"]
         except Exception as e:
             logger.warning(f"Could not get fresh state for {entity_id}: {e}")
 
@@ -1469,9 +1472,9 @@ async def search_entities_debug(request: Request):
     # Import required services
     from scripts.embedding_backends import get_backend
     from app.main import retrieve_entities_with_clusters
-    from app.services.entity_reranker import entity_reranker
-    from app.services.query_scope_detector import query_scope_detector
-    from app.services.search_debugger import search_debugger
+    from app.services.rag.entity_reranker import entity_reranker
+    from app.services.rag.query_scope_detector import query_scope_detector
+    from app.services.rag.search_debugger import search_debugger
     from arango import ArangoClient
     import os
 
@@ -1524,7 +1527,7 @@ async def search_entities_debug(request: Request):
         cluster_time = (time.time() - start_time) * 1000
 
         # Import PipelineStage enum
-        from app.services.search_debugger import PipelineStage
+        from app.services.rag.search_debugger import PipelineStage
 
         # Mock stage capture for cluster search (retrieve_entities_with_clusters handles both)
         search_debugger.capture_stage(

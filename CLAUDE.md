@@ -133,19 +133,19 @@ docker compose up -d # Return to quiet production mode
 ⚠️ **CRITICAL**: Frontend changes require build process to be visible in production
 
 **Frontend Development Commands**:
-- `cd apps/admin-ui && npm install` - Install frontend dependencies
-- `cd apps/admin-ui && npm run dev` - Start development server with hot reload
-- `cd apps/admin-ui && npm run build` - Build for production (REQUIRED)
-- `cd apps/admin-ui && npm run preview` - Preview production build
+- `cd frontend/admin-ui && npm install` - Install frontend dependencies
+- `cd frontend/admin-ui && npm run dev` - Start development server with hot reload
+- `cd frontend/admin-ui && npm run build` - Build for production (REQUIRED)
+- `cd frontend/admin-ui && npm run preview` - Preview production build
 
 **⚠️ MANDATORY AFTER UI CHANGES**:
 ```bash
-cd apps/admin-ui
+cd frontend/admin-ui
 npm run build  # Build React app to dist/
 ```
 
 **Why This Matters**:
-- Admin UI serves static files from `apps/admin-ui/dist/`
+- Admin UI serves static files from `frontend/admin-ui/dist/`
 - React development changes are NOT visible until built
 - **Always build after UI component changes** (new components, imports, etc.)
 - **Always test with screenshots** after claiming UI features work
@@ -153,7 +153,7 @@ npm run build  # Build React app to dist/
 
 **Frontend Testing Workflow**:
 1. Make UI changes
-2. `npm run build` in apps/admin-ui
+2. `npm run build` in frontend/admin-ui
 3. Restart bridge container if needed
 4. Take screenshot to verify changes are visible
 5. Only then mark feature as complete

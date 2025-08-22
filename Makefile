@@ -92,13 +92,13 @@ docker-system-info:
 .PHONY: ui-deps ui-dev ui-build ui-up ui-down ui-logs
 
 ui-deps: ## Install frontend dependencies
-	cd frontend && npm install
+	cd frontend/admin-ui && npm install
 
 ui-dev: ## Start UI development server  
-	cd frontend && npm start
+	cd frontend/admin-ui && npm run dev
 
 ui-build: ## Build UI for production
-	cd frontend && npm run build
+	cd frontend/admin-ui && npm run build
 
 ui-up: ## Start full stack with UI
 	docker-compose -f docker-compose.ui.yml up -d
