@@ -66,7 +66,7 @@ export function Monitoring() {
 
     const levelParam = logLevel === 'all' ? 'all' : logLevel;
     const eventSource = new EventSource(
-      `/admin/monitoring/logs/stream?container=${selectedContainer}&level=${levelParam}`
+      `/admin/monitoring/logs/stream?container=${selectedContainer}&level=${levelParam}&token=changeme`
     );
 
     setCurrentEventSource(eventSource);

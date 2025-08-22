@@ -84,7 +84,7 @@ model_list:
 # Phase 3 LangGraph Hook Integration
 litellm_settings:
   # Enable Phase 3 enhanced hook with conversation memory
-  callbacks: ["litellm_ha_rag_hooks_phase3.ha_rag_hook_phase3_instance"]
+  callbacks: ["hooks.ha_rag_hook_phase3_instance"]
   
   # Performance settings for Phase 3 workflow
   request_timeout: 60  # Increased timeout for complex workflow processing

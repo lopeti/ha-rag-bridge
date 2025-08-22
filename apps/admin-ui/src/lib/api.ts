@@ -268,7 +268,10 @@ export interface ConfigValidationResponse {
 // Create axios instance
 const api = axios.create({
   baseURL: '/admin',
-  timeout: 30000,
+  timeout: 60000, // Increased to 60 seconds to reduce timeout errors
+  headers: {
+    'X-Admin-Token': 'changeme', // TODO: Make this configurable
+  },
 });
 
 // Add request interceptor for error handling
@@ -541,3 +544,4 @@ export const adminApi = {
 };
 
 export default adminApi;
+export { api as axiosApi };

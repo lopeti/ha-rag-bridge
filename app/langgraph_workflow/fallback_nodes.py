@@ -2,7 +2,7 @@
 
 from typing import Dict, Any
 from ha_rag_bridge.logging import get_logger
-from app.services.conversation_memory import ConversationMemoryService
+from app.services.conversation.conversation_memory import ConversationMemoryService
 
 from .state import RAGState, QueryScope
 

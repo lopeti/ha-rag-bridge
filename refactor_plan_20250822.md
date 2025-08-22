@@ -258,18 +258,41 @@ mypy app/ && ruff check app/                                # Code quality
 
 ---
 
+## 🐛 **Technical Debt Discovered During Refactor**
+
+### **Fixed Issues:**
+- ✅ **Import path fixes:** LangGraph workflow imports updated to new service structure
+- ✅ **Admin UI authentication:** X-Admin-Token header missing from axios API client  
+- ✅ **EventSource authentication:** Query parameter tokens for streaming endpoints
+- ✅ **Vector dimension mismatch:** EMBED_DIM 1536→768 for local backend consistency
+- ✅ **Pipeline debugger authentication:** fetch() calls replaced with authenticated API calls
+- ✅ **Docker environment variables:** EMBED_DIM properly set in containers
+
+### **Ongoing Issues:**
+- 🔄 **Search quality problem:** Cross-encoder reranker incorrectly prioritizes `sensor.mold_indicator` over `sensor.nappali_homerseklet` despite perfect vector search results
+- 🔄 **Area detection confusion:** Entities have `area_name: None` but area info in text field - reranker logic needs review
+- 🔄 **Score normalization:** Mixed BM25/cosine similarity scores in hybrid search (cosmetic issue)
+
+### **Impact on Refactor:**
+- **Positive:** Issues discovered and fixed incrementally without breaking the overall system
+- **Lessons:** Technical debt repair can be done safely alongside refactor work
+- **Next:** Focus on frontend reorganization (Fázis 4) while noting search quality for future improvement
+
+---
+
 ## 📝 **Progress Tracking**
 
 ### **Állapot Követés:**
-- [ ] **Fázis 1:** Service szervezés 
-- [ ] **Fázis 2:** Duplicate cleanup
-- [ ] **Fázis 3:** Config szervezés  
+- [x] **Fázis 1:** Service szervezés ✅ **ALREADY DONE!**
+- [x] **Fázis 2:** Duplicate cleanup ✅ **ALREADY DONE!**
+- [x] **Fázis 3:** Config szervezés ✅ **COMPLETED!**
 - [ ] **Fázis 4:** Frontend átszervezés
 - [ ] **Fázis 5:** API szervezés (opcionális)
 
 ### **Working Commits:**
 - `main`: d9da001 - Starting point (WORKING)
-- _TODO: Add commits as we progress_
+- `refactor-v2-safe-incremental`: 3b77a21 - Service organization + Config reorganization (WORKING)
+- **Latest:** All environment config files organized in config/environments/
 
 ### **Critical Files to Watch:**
 - `app/main.py` - Service imports
@@ -316,8 +339,12 @@ mypy app/ && ruff check app/                                # Code quality
 
 ## 🔄 **Státusz Frissítések**
 
-**2025-08-22:** Terv létrehozva, backup branch elemezve, biztonságos approach megtervezve.  
-**Következő:** Fázis 1 indítása - service könyvtár szervezés.
+**2025-08-22 10:00:** Terv létrehozva, backup branch elemezve, biztonságos approach megtervezve.  
+**2025-08-22 10:40:** 🎉 **MAJOR DISCOVERY:** Fázis 1-2 már kész volt! Service szervezés működik!  
+**2025-08-22 16:30:** ✅ **Fázis 3 COMPLETED:** Config environments organizálva config/environments/ könyvtárba  
+**2025-08-22 18:00-20:30:** 🔧 **Technical debt:** LangGraph import fixes, admin UI authentication fixes, dimension mismatch fixes, pipeline debugger fixes  
+**2025-08-22 20:30:** 📊 **Search quality issues:** Cross-encoder reranker hibás prioritást ad - vector search alapból jó eredményeket ad  
+**Következő:** Fázis 4 - Frontend átszervezés
 
 ---
 

@@ -1,49 +1,86 @@
 #!/bin/bash
 
-# Helper script to switch between development and home environments
-# Instead of modifying files directly, this script shows the commands to run
+# HA-RAG-Bridge Environment Switcher
+# Usage: ./scripts/switch_env.sh [development|production|testing]
 
-if [ "$1" == "home" ]; then
-  echo "==== Home Environment Configuration ===="
-  echo "To temporarily use the home environment configuration, run this command:"
-  echo ""
-  echo "  cp .devcontainer/devcontainer.json.home .devcontainer/devcontainer.json"
-  echo ""
-  echo "Note: This will modify a file tracked by git. Don't commit this change."
-  echo "After using, you may want to run 'git restore .devcontainer/devcontainer.json'"
-  echo "Then rebuild the container to use the home environment."
+set -e
 
-elif [ "$1" == "dev" ]; then
-  echo "==== Development Environment Configuration ===="
-  echo "To temporarily use the development environment configuration, run this command:"
-  echo ""
-  echo "  cp .devcontainer/devcontainer.json.dev .devcontainer/devcontainer.json"
-  echo ""
-  echo "Note: This will modify a file tracked by git. Don't commit this change."
-  echo "After using, you may want to run 'git restore .devcontainer/devcontainer.json'"
-  echo "Then rebuild the container to use the development environment."
+ENVIRONMENTS_DIR="config/environments"
+TARGET_ENV=".env"
 
-elif [ "$1" == "apply-home" ]; then
-  echo "Switching to home environment..."
-  cp .devcontainer/devcontainer.json.home .devcontainer/devcontainer.json
-  echo "Done! Remember this is a temporary change. Don't commit it to git."
-  echo "Rebuild the container to use the home environment."
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-elif [ "$1" == "apply-dev" ]; then
-  echo "Switching to development environment..."
-  cp .devcontainer/devcontainer.json.dev .devcontainer/devcontainer.json
-  echo "Done! Remember this is a temporary change. Don't commit it to git."
-  echo "Rebuild the container to use the development environment."
+show_help() {
+    echo "HA-RAG-Bridge Environment Switcher"
+    echo ""
+    echo "Usage: $0 [environment]"
+    echo ""
+    echo "Available environments:"
+    echo "  development  - Development config with debug enabled"
+    echo "  production   - Production config with current working values"  
+    echo "  testing      - Testing config with minimal/mock settings"
+    echo ""
+    echo "Examples:"
+    echo "  $0 development"
+    echo "  $0 production"
+    echo ""
+}
 
-else
-  echo "Usage: $0 [home|dev|apply-home|apply-dev]"
-  echo ""
-  echo "Without 'apply-' prefix, the script only shows instructions."
-  echo "With 'apply-' prefix, the script actually makes the changes."
-  echo ""
-  echo "  home       - Show instructions for using external Home Assistant and ArangoDB"
-  echo "  dev        - Show instructions for using local Docker containers"
-  echo "  apply-home - Actually apply the home environment configuration"
-  echo "  apply-dev  - Actually apply the development environment configuration"
-  exit 1
-fi
+switch_environment() {
+    local env_name="$1"
+    local source_file="$ENVIRONMENTS_DIR/.env.$env_name"
+    
+    if [[ ! -f "$source_file" ]]; then
+        echo -e "${RED}Error: Environment file '$source_file' not found${NC}"
+        echo ""
+        echo "Available environment files:"
+        ls -1 "$ENVIRONMENTS_DIR"/.env.* | sed 's|.*/\.env\.||' | grep -v template
+        exit 1
+    fi
+    
+    # Backup existing .env if it exists
+    if [[ -f "$TARGET_ENV" ]]; then
+        cp "$TARGET_ENV" "$TARGET_ENV.backup.$(date +%Y%m%d_%H%M%S)"
+        echo -e "${YELLOW}Backed up existing .env to $TARGET_ENV.backup.$(date +%Y%m%d_%H%M%S)${NC}"
+    fi
+    
+    # Copy new environment
+    cp "$source_file" "$TARGET_ENV"
+    echo -e "${GREEN}Switched to '$env_name' environment${NC}"
+    echo ""
+    echo "Environment details:"
+    echo "  Source: $source_file"
+    echo "  Target: $TARGET_ENV"
+    echo ""
+    echo "Key settings:"
+    grep -E "^(HA_URL|ARANGO_URL|EMBEDDING_BACKEND|LOG_LEVEL|DEBUG)=" "$TARGET_ENV" | sed 's/^/  /'
+    echo ""
+    echo -e "${YELLOW}Remember to restart containers:${NC}"
+    echo "  docker compose down && docker compose up -d"
+}
+
+# Main logic
+case "$1" in
+    "development"|"dev")
+        switch_environment "development"
+        ;;
+    "production"|"prod")
+        switch_environment "production"
+        ;;
+    "testing"|"test")
+        switch_environment "testing"
+        ;;
+    "help"|"-h"|"--help"|"")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Error: Unknown environment '$1'${NC}"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac

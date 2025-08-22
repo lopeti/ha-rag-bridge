@@ -28,6 +28,13 @@ ENV/
 .env.*
 !.env.example
 
+# Config environments (keep templates, ignore actual configs with secrets)
+config/environments/.env.production
+config/environments/.env.development
+config/environments/.env.local
+!config/environments/.env.template
+!config/environments/.env.testing
+
 # IDE & Editor
 .vscode/launch.json
 .idea/

@@ -3,10 +3,10 @@
 from typing import Dict, Any, List, Optional, cast
 from app.schemas import ChatMessage
 from ha_rag_bridge.logging import get_logger
-from app.services.conversation_analyzer import ConversationAnalyzer
-from app.services.conversation_memory import ConversationMemoryService
-from app.services.query_rewriter import ConversationalQueryRewriter
-from app.services.workflow_tracer import EnhancedPipelineStage
+from app.services.conversation.conversation_analyzer import ConversationAnalyzer
+from app.services.conversation.conversation_memory import ConversationMemoryService
+from app.services.rag.query_rewriter import ConversationalQueryRewriter
+from app.services.core.workflow_tracer import EnhancedPipelineStage
 
 from .state import RAGState, QueryScope
 
@@ -95,7 +95,9 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
 
         try:
             # Step 3a: SZINKRON - Gyors pattern elemzés (<50ms)
-            from app.services.quick_pattern_analyzer import QuickPatternAnalyzer
+            from app.services.conversation.quick_pattern_analyzer import (
+                QuickPatternAnalyzer,
+            )
 
             quick_analyzer = QuickPatternAnalyzer()
             quick_context = quick_analyzer.analyze(
@@ -107,7 +109,7 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
             )
 
             # Step 3b: CACHE CHECK - Van-e előző körből enriched context?
-            from app.services.async_conversation_enricher import (
+            from app.services.conversation.async_conversation_enricher import (
                 AsyncConversationEnricher,
             )
 
@@ -205,7 +207,7 @@ async def conversation_analysis_node(state: RAGState) -> Dict[str, Any]:
         # Add enhanced pipeline stages to trace if available
         trace_id = state.get("trace_id")
         if trace_id:
-            from app.services.workflow_tracer import workflow_tracer
+            from app.services.core.workflow_tracer import workflow_tracer
 
             # Trace query rewriting stage
             if rewrite_result.method != "no_rewrite_needed":
@@ -628,7 +630,7 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
         # Add enhanced pipeline stages to trace if available
         trace_id = state.get("trace_id")
         if trace_id:
-            from app.services.workflow_tracer import workflow_tracer
+            from app.services.core.workflow_tracer import workflow_tracer
 
             # Trace cluster search stage (if any cluster entities found)
             if cluster_entities:
@@ -692,7 +694,9 @@ async def entity_retrieval_node(state: RAGState) -> Dict[str, Any]:
 
         # Update async memory with successful retrieval
         try:
-            from app.services.conversation_memory import AsyncConversationMemory
+            from app.services.conversation.conversation_memory import (
+                AsyncConversationMemory,
+            )
 
             async_memory = AsyncConversationMemory(memory_service)
             await async_memory.process_turn(
@@ -725,7 +729,7 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
     logger.info("ContextFormatting: Starting context formatting...")
 
     try:
-        from app.services.entity_reranker import entity_reranker
+        from app.services.rag.entity_reranker import entity_reranker
 
         retrieved_entities = state.get("retrieved_entities", [])
 
@@ -888,7 +892,7 @@ async def context_formatting_node(state: RAGState) -> Dict[str, Any]:
         # Add enhanced pipeline stages to trace if available
         trace_id = state.get("trace_id")
         if trace_id:
-            from app.services.workflow_tracer import workflow_tracer
+            from app.services.core.workflow_tracer import workflow_tracer
 
             # Trace reranking stage
             workflow_tracer.add_enhanced_pipeline_stage(

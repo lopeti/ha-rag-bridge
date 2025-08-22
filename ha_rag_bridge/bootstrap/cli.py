@@ -40,7 +40,7 @@ def _reindex(
             c["name"] for c in db.collections() if not c["name"].startswith("_")
         ]
 
-    embed_dim = int(os.getenv("EMBED_DIM", "1536"))
+    embed_dim = int(os.getenv("EMBED_DIM", "768"))
     dropped = created = 0
     for name in collections:
         col = db.collection(name)
@@ -123,7 +123,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.critical("bootstrap abort", error=str(e))
         raise SystemExit(2)
     took = int((perf_counter() - start) * 1000)
-    dim = int(os.getenv("EMBED_DIM", "1536"))
+    dim = int(os.getenv("EMBED_DIM", "768"))
 
     icon = (
         f"{Fore.GREEN}✓{Style.RESET_ALL}"

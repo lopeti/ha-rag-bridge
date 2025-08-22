@@ -62,7 +62,7 @@ export function Maintenance() {
       eventSourceRef.current.close();
     }
     
-    const eventSource = new EventSource('/admin/maintenance/ingest/stream');
+    const eventSource = new EventSource('/admin/maintenance/ingest/stream?token=changeme');
     eventSourceRef.current = eventSource;
     
     eventSource.onmessage = (event) => {
@@ -104,7 +104,7 @@ export function Maintenance() {
       eventSourceRef.current.close();
     }
     
-    const eventSource = new EventSource('/admin/maintenance/bootstrap/stream');
+    const eventSource = new EventSource('/admin/maintenance/bootstrap/stream?token=changeme');
     eventSourceRef.current = eventSource;
     
     eventSource.onmessage = (event) => {
@@ -148,7 +148,7 @@ export function Maintenance() {
       eventSourceRef.current.close();
     }
     
-    const eventSource = new EventSource('/admin/maintenance/reindex-vectors/stream');
+    const eventSource = new EventSource('/admin/maintenance/reindex-vectors/stream?token=changeme');
     eventSourceRef.current = eventSource;
     
     eventSource.onmessage = (event) => {
@@ -191,7 +191,7 @@ export function Maintenance() {
       eventSourceRef.current.close();
     }
     
-    const eventSource = new EventSource('/admin/test-streaming');
+    const eventSource = new EventSource('/admin/test-streaming?token=changeme');
     eventSourceRef.current = eventSource;
     
     eventSource.onmessage = (event) => {

@@ -11,6 +11,7 @@ import { RefreshCw, Play, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
 import { EntityPipeline } from '@/components/pipeline/EntityPipeline';
 import { ScoreEvolution } from '@/components/pipeline/ScoreEvolution';
 import { EnhancedPipeline } from '@/components/pipeline/EnhancedPipeline';
+import { axiosApi as api } from '@/lib/api';
 
 interface EnhancedPipelineStage {
   stage_name: string;
@@ -107,15 +108,13 @@ export const PipelineDebugger: React.FC = () => {
   // Fetch recent traces (simplified list)
   const fetchTraces = async () => {
     try {
-      const response = await fetch('/admin/debug/traces');
-      if (response.ok) {
-        const tracesData = await response.json();
-        setTraces(tracesData);
-        
-        // Auto-select most recent if none selected
-        if (!selectedTrace && tracesData.length > 0) {
-          await fetchTraceDetails(tracesData[0].trace_id);
-        }
+      const response = await api.get('/debug/traces');
+      const tracesData = response.data;
+      setTraces(tracesData);
+      
+      // Auto-select most recent if none selected
+      if (!selectedTrace && tracesData.length > 0) {
+        await fetchTraceDetails(tracesData[0].trace_id);
       }
     } catch (error) {
       console.error('Failed to fetch traces:', error);
@@ -128,11 +127,8 @@ export const PipelineDebugger: React.FC = () => {
   const fetchTraceDetails = async (traceId: string) => {
     try {
       setIsTraceLoading(true);
-      const response = await fetch(`/admin/debug/trace/${traceId}`);
-      if (response.ok) {
-        const traceData = await response.json();
-        setSelectedTrace(traceData);
-      }
+      const response = await api.get(`/debug/trace/${traceId}`);
+      setSelectedTrace(response.data);
     } catch (error) {
       console.error('Failed to fetch trace details:', error);
     } finally {
@@ -146,19 +142,13 @@ export const PipelineDebugger: React.FC = () => {
 
     try {
       setIsLoading(true);
-      const response = await fetch('/admin/debug/start-trace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: testQuery,
-          session_id: `test_${Date.now()}`
-        })
+      await api.post('/debug/start-trace', {
+        query: testQuery,
+        session_id: `test_${Date.now()}`
       });
-
-      if (response.ok) {
-        // Refresh traces to show the new one
-        setTimeout(fetchTraces, 1000);
-      }
+      
+      // Refresh traces to show the new one
+      setTimeout(fetchTraces, 1000);
     } catch (error) {
       console.error('Failed to start test trace:', error);
     } finally {

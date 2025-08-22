@@ -10,7 +10,7 @@ services:
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_OUTPUT_DIM=1536
-      - EMBED_DIM=1536
+      - EMBED_DIM=768
       - ADMIN_TOKEN=${ADMIN_TOKEN}
       - AUTO_BOOTSTRAP=1
       # Log optimization settings
@@ -28,12 +28,11 @@ services:
     env_file:
       - .env
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    build:
+      context: .
+      dockerfile: litellm.Dockerfile
     ports:
       - "4000:4000"
-    volumes:
-      - ./litellm_config_phase3.yaml:/app/config.yaml
-      - ./litellm_ha_rag_hooks_phase3.py:/app/litellm_ha_rag_hooks_phase3.py
     command: ["--config", "/app/config.yaml", "--detailed_debug"]
     environment:
       - HA_RAG_API_URL=http://bridge:8000

@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 
 def _extract_entity_pipeline(final_state: dict) -> List[Any]:
     """Extract comprehensive entity pipeline data using Enhanced Pipeline Stages as the authoritative source."""
-    from app.services.workflow_tracer import EntityStageInfo, workflow_tracer
+    from app.services.core.workflow_tracer import EntityStageInfo, workflow_tracer
 
     pipeline_stages = []
 
@@ -305,7 +305,7 @@ async def run_rag_workflow(
 
     # Initialize workflow tracer
     try:
-        from app.services.workflow_tracer import workflow_tracer
+        from app.services.core.workflow_tracer import workflow_tracer
 
         # Start a new trace
         trace_id = workflow_tracer.start_trace(

@@ -284,7 +284,7 @@ def retrieve_entities_with_clusters(
     Returns:
         List of relevant entities prioritized by semantic clusters
     """
-    from .services.cluster_manager import cluster_manager
+    from .services.rag.cluster_manager import cluster_manager
 
     try:
         # Phase 1: Search for relevant clusters
@@ -796,7 +796,7 @@ async def process_request_workflow(payload: schemas.Request):
         trace_id = workflow_result.get("trace_id")
         if trace_id:
             try:
-                from app.services.workflow_tracer import workflow_tracer
+                from app.services.core.workflow_tracer import workflow_tracer
 
                 # Convert response to dict for storage
                 response_dict = {

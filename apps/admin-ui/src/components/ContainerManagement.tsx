@@ -146,7 +146,7 @@ export function ContainerManagement() {
       eventSourceRef.current.close();
     }
     
-    const eventSource = new EventSource(`/admin/containers/${service}/logs/stream`);
+    const eventSource = new EventSource(`/admin/containers/${service}/logs/stream?token=changeme`);
     eventSourceRef.current = eventSource;
     
     eventSource.onmessage = (event) => {

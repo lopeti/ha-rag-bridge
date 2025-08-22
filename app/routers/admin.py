@@ -41,7 +41,11 @@ def _check_token(request: Request) -> None:
         return
 
     token = settings.admin_token
-    if request.headers.get("X-Admin-Token") != token:
+    # Check token in header first, then fall back to query parameter
+    request_token = request.headers.get("X-Admin-Token") or request.query_params.get(
+        "token"
+    )
+    if request_token != token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
 
@@ -276,10 +280,13 @@ async def get_health(request: Request):
         # Try to get server version
         server_info = db.version()
         health["database"] = True
-        health["database_version"] = f"ArangoDB {server_info['version']}"
+        if isinstance(server_info, dict) and "version" in server_info:
+            health["database_version"] = f"ArangoDB {server_info['version']}"
+        else:
+            health["database_version"] = "ArangoDB (version unknown)"
 
     except Exception as e:
-        logger.error(f"Database health check failed: {e}")
+        logger.error(f"Database health check failed: {str(e)}")
         health["status"] = "error"
 
     # Check Home Assistant connection
@@ -2734,7 +2741,7 @@ async def get_workflow_traces(request: Request, limit: int = 50):
     _check_token(request)
 
     try:
-        from app.services.workflow_tracer import workflow_tracer
+        from app.services.core.workflow_tracer import workflow_tracer
 
         traces = workflow_tracer.get_recent_traces(limit=limit)
 
@@ -2768,7 +2775,7 @@ async def get_workflow_trace(request: Request, trace_id: str):
     _check_token(request)
 
     try:
-        from app.services.workflow_tracer import workflow_tracer
+        from app.services.core.workflow_tracer import workflow_tracer
 
         trace = workflow_tracer.get_trace(trace_id)
 
@@ -2798,7 +2805,7 @@ async def start_test_trace(request: Request):
 
         # Import and start workflow
         from app.langgraph_workflow.workflow import run_rag_workflow
-        from app.services.workflow_tracer import workflow_tracer
+        from app.services.core.workflow_tracer import workflow_tracer
         import asyncio
 
         # Start trace
