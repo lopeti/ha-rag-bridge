@@ -410,7 +410,7 @@ async def process_request(payload: schemas.Request):
     intent = detect_intent(payload.user_message)
 
     # Phase 1: Detect query scope for adaptive retrieval
-    from .services.query_scope_detector import query_scope_detector
+    from .services.rag.query_scope_detector import query_scope_detector
 
     try:
         detected_scope, scope_config, detection_details = (

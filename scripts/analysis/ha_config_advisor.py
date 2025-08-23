@@ -30,7 +30,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
-from scripts.friendly_name_generator import FriendlyNameGenerator
+from app.services.integrations.embeddings.friendly_name_generator import (
+    FriendlyNameGenerator,
+)
 
 logger = get_logger(__name__)
 console = Console()

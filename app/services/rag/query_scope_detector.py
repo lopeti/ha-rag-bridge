@@ -6,7 +6,7 @@ from enum import Enum
 from dataclasses import dataclass
 
 from ha_rag_bridge.logging import get_logger
-from .conversation_analyzer import ConversationAnalyzer
+from ..conversation.conversation_analyzer import ConversationAnalyzer
 
 logger = get_logger(__name__)
 

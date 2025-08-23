@@ -13,3 +13,7 @@ build/
 .venv/
 .git/
 .gitignore
+node_modules/
+frontend/admin-ui/node_modules/
+screenshots/
+memory-bank/

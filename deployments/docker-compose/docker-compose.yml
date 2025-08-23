@@ -1,10 +1,10 @@
 services:
   bridge:
-    build: .
+    build: ../..
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - ../..:/app
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-local}
