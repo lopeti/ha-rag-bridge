@@ -31,7 +31,7 @@ COPY . .
 RUN poetry install --no-interaction --no-ansi --with dev
 
 # Explicitly copy uvicorn_log.ini to the container
-COPY docker/uvicorn_log.ini /app/docker/
+COPY config/docker/uvicorn_log.ini /app/docker/
 
 # Debug: List contents of /app/docker
 RUN echo "Contents of /app/docker:" && ls -R /app/docker
