@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test script to demonstrate the new embedding text format."""
 
-from scripts.ingest import build_text
+from scripts.ingestion.ingest import build_text
 
 # Example entities of different types
 test_entities = [

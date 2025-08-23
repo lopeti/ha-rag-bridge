@@ -1,7 +1,7 @@
 import os
 from unittest.mock import MagicMock
 
-import scripts.ingest_docs as ingest_docs
+import scripts.ingestion.ingest_docs as ingest_docs
 
 
 def setup_env():

@@ -1,7 +1,7 @@
 import os
 from unittest.mock import MagicMock
 
-import scripts.ingest as ingest
+import scripts.ingestion.ingest as ingest
 
 
 def test_ingest_devices_areas(monkeypatch):

@@ -5,7 +5,7 @@ __version__ = "0.14.0"
 
 def run_ingest(path: str) -> None:
     """Wrapper to run the ingest pipeline."""
-    from scripts.ingest import ingest
+    from scripts.ingestion.ingest import ingest
 
     ingest(path)
 

@@ -1394,7 +1394,7 @@ async def stream_ingest(request: Request):
         try:
             # Get the project root directory
             project_root = Path(__file__).parent.parent.parent
-            ingest_script = project_root / "scripts" / "ingest.py"
+            ingest_script = project_root / "scripts" / "ingestion" / "ingest.py"
 
             if not ingest_script.exists():
                 yield f"data: {json.dumps({'event': 'error', 'message': f'❌ Ingest script not found: {ingest_script}', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
@@ -1402,7 +1402,7 @@ async def stream_ingest(request: Request):
 
             # Run the ingest script with full ingestion
             process = subprocess.Popen(
-                [sys.executable, "-m", "scripts.ingest", "--full"],
+                [sys.executable, "-m", "scripts.ingestion.ingest", "--full"],
                 cwd=str(project_root),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

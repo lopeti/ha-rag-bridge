@@ -45,7 +45,7 @@ def ingest(
     # Load environment variables from .env file
     load_dotenv()
     
-    from scripts.ingest import ingest as run_ingest
+    from scripts.ingestion.ingest import ingest as run_ingest
 
     # Set debug logging if requested
     if debug:

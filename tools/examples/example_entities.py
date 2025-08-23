@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from scripts.ingest import build_text
+from scripts.ingestion.ingest import build_text
 
 # Plda entitások
 entities = [
