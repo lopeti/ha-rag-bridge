@@ -31,6 +31,14 @@ from ha_rag_bridge.settings import HTTP_TIMEOUT
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = get_logger(__name__)
 
+# Container name mapping for different Docker Compose projects
+CONTAINER_NAME_MAP = {
+    "bridge": "docker-compose-bridge-1",
+    "litellm": "ha-rag-bridge-litellm-1",
+    "homeassistant": "homeassistant",
+    "arangodb": "arangodb",
+}
+
 
 def _check_token(request: Request) -> None:
     # Skip token check in debug mode
@@ -1056,19 +1064,13 @@ async def get_monitoring_logs(
     from datetime import datetime
 
     # Define available containers
-    available_containers = {
-        "bridge": "docker-compose-bridge-1",
-        "litellm": "ha-rag-bridge-litellm-1",
-        "homeassistant": "homeassistant",
-        "arangodb": "arangodb",
-    }
 
     # Default to bridge if no container specified
     container_key = container or "bridge"
-    if container_key not in available_containers:
+    if container_key not in CONTAINER_NAME_MAP:
         container_key = "bridge"
 
-    container_name = available_containers[container_key]
+    container_name = CONTAINER_NAME_MAP[container_key]
 
     try:
         # Check if docker CLI is available
@@ -1153,7 +1155,7 @@ async def get_monitoring_logs(
             "items": logs[:50],  # Limit to 50 entries
             "nextCursor": None,
             "container": container_key,
-            "available_containers": list(available_containers.keys()),
+            "available_containers": list(CONTAINER_NAME_MAP.keys()),
         }
 
     except Exception as e:
@@ -1227,14 +1229,7 @@ async def stream_logs(
     """Stream real-time logs from Docker containers"""
     _check_token(request)
 
-    available_containers = {
-        "bridge": "docker-compose-bridge-1",
-        "litellm": "ha-rag-bridge-litellm-1",
-        "homeassistant": "homeassistant",
-        "arangodb": "arangodb",
-    }
-
-    container_name = available_containers.get(container, "docker-compose-bridge-1")
+    container_name = CONTAINER_NAME_MAP.get(container, "docker-compose-bridge-1")
 
     async def generate_log_stream():
         """Stream real-time Docker logs"""
@@ -2483,7 +2478,7 @@ async def restart_container(request: Request, service: str):
         logger.info(f"Restarting container service: {service}")
 
         # Use docker restart for the specific container
-        container_name = f"ha-rag-bridge-{service}-1"
+        container_name = CONTAINER_NAME_MAP.get(service, f"ha-rag-bridge-{service}-1")
         result = subprocess.run(
             ["docker", "restart", container_name],
             capture_output=True,
@@ -2531,7 +2526,7 @@ async def rebuild_container(request: Request, service: str):
         logger.info(f"Rebuilding container service: {service}")
 
         # Stop the container, rebuild, and start it again
-        container_name = f"ha-rag-bridge-{service}-1"
+        container_name = CONTAINER_NAME_MAP.get(service, f"ha-rag-bridge-{service}-1")
 
         # First stop the container
         subprocess.run(["docker", "stop", container_name], timeout=30)
@@ -2910,7 +2905,7 @@ async def stream_container_logs(request: Request, service: str, tail: int = 100)
 
     async def generate_log_stream():
         """Generate real-time log streaming data"""
-        container_name = f"ha-rag-bridge-{service}-1"
+        container_name = CONTAINER_NAME_MAP.get(service, f"ha-rag-bridge-{service}-1")
 
         # Send initial message
         yield f"data: {json.dumps({'event': 'info', 'message': f'🔍 Starting log stream for {service}...', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
