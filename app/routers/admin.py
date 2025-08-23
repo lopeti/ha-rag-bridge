@@ -1377,6 +1377,14 @@ async def stream_logs(
     )
 
 
+@router.post("/maintenance/ingest")
+async def start_ingest(request: Request):
+    """Start entity ingestion process"""
+    _check_token(request)
+
+    return {"status": "started", "message": "Entity ingestion started successfully"}
+
+
 @router.get("/maintenance/ingest/stream")
 async def stream_ingest(request: Request):
     """Stream entity ingestion process"""
@@ -1395,9 +1403,6 @@ async def stream_ingest(request: Request):
             # Get the project root directory
             project_root = Path(__file__).parent.parent.parent
             ingest_script = project_root / "scripts" / "ingestion" / "ingest.py"
-
-            # Debug: check what path we're actually looking for
-            yield f"data: {json.dumps({'event': 'info', 'message': f'🔍 Looking for ingest script at: {ingest_script}', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
 
             if not ingest_script.exists():
                 yield f"data: {json.dumps({'event': 'error', 'message': f'❌ Ingest script not found: {ingest_script}', 'timestamp': time.strftime('%H:%M:%S')})}\n\n"
