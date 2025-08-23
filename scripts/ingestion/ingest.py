@@ -24,13 +24,15 @@ from arango import ArangoClient
 from ha_rag_bridge.logging import get_logger
 from ha_rag_bridge.settings import HTTP_TIMEOUT
 
-from .embedding_backends import (
+from app.services.integrations.embeddings.backends import (
     BaseEmbeddingBackend as EmbeddingBackend,
     LocalBackend,  # noqa: F401 - used in tests
     OpenAIBackend,  # noqa: F401 - used in tests
     get_backend,
 )
-from .friendly_name_generator import FriendlyNameGenerator
+from app.services.integrations.embeddings.friendly_name_generator import (
+    FriendlyNameGenerator,
+)
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 

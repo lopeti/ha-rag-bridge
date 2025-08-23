@@ -6,7 +6,9 @@ contextual Hungarian friendly names for entities that lack them,
 improving embedding quality without modifying HA configuration.
 """
 
-from scripts.friendly_name_generator import FriendlyNameGenerator
+from app.services.integrations.embeddings.friendly_name_generator import (
+    FriendlyNameGenerator,
+)
 
 
 def simulate_build_text_enhanced(entity, generator=None):

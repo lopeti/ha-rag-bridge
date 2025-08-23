@@ -126,8 +126,8 @@ docker compose up -d # Return to quiet production mode
 - `make deploy` - Gyors deploy ha-rag-core könyvtárba
 - `make deploy-start` - Deploy + automatikus indítás
 - `make deploy-check` - Éles verzió státusza
-- `./deploy` - Közvetlen deploy parancs
-- `./quick-deploy.sh [target_dir]` - Teljes deploy script
+- `deployments/scripts/deploy` - Közvetlen deploy parancs
+- `deployments/scripts/quick-deploy.sh [target_dir]` - Teljes deploy script
 
 ### Frontend Development & Build Process
 ⚠️ **CRITICAL**: Frontend changes require build process to be visible in production
@@ -184,7 +184,7 @@ npm run build  # Build React app to dist/
 - `poetry run uvicorn app.main:app --reload` - Run FastAPI server in development
 - `poetry run python demo.py "query"` - Run demo with query
 - `poetry run python scripts/watch_entities.py` - Watch entity updates
-- `poetry run python scripts/ingest_docs.py --file path --device_id id` - Ingest device manuals
+- `poetry run python scripts/ingestion/ingest_docs.py --file path --device_id id` - Ingest device manuals
 
 ### Admin UI & Monitoring
 - **Access**: `http://localhost:8001` (when FastAPI server is running)
@@ -206,26 +206,26 @@ npm run build  # Build React app to dist/
   - Area name resolution (friendly names vs IDs) for better LLM understanding
 
 ### Configuration Analysis & Optimization
-- `scripts/advisor.sh --detailed` - Run HA Configuration Advisor with detailed analysis
-- `scripts/advisor.sh --format json --output report.json` - Generate JSON report
-- `scripts/advisor.sh --category entity_orphaned` - Filter by specific issue category
-- `scripts/advisor.sh --level warning` - Show only warning-level issues
+- `scripts/analysis/advisor.sh --detailed` - Run HA Configuration Advisor with detailed analysis
+- `scripts/analysis/advisor.sh --format json --output report.json` - Generate JSON report
+- `scripts/analysis/advisor.sh --category entity_orphaned` - Filter by specific issue category
+- `scripts/analysis/advisor.sh --level warning` - Show only warning-level issues
 - Categories: `entity_orphaned`, `friendly_name`, `device_class`, `device_naming`, `device_area`, `area_consistency`, `redundant_area`
 - Levels: `info`, `warning`, `error`, `critical`
 
 ### Intelligent Friendly Name Management
-- `scripts/advisor.sh --suggest-friendly-names` - Generate intelligent Hungarian friendly name suggestions
-- `scripts/advisor.sh --suggest-friendly-names --confidence 0.8` - Higher confidence threshold
-- `scripts/advisor.sh --apply-friendly-names --dry-run` - Show what would be updated
-- `scripts/advisor.sh --apply-friendly-names` - Apply friendly name suggestions to HA entity registry
-- `scripts/friendly_name_generator.py --test` - Test friendly name generation algorithms
+- `scripts/analysis/advisor.sh --suggest-friendly-names` - Generate intelligent Hungarian friendly name suggestions
+- `scripts/analysis/advisor.sh --suggest-friendly-names --confidence 0.8` - Higher confidence threshold
+- `scripts/analysis/advisor.sh --apply-friendly-names --dry-run` - Show what would be updated
+- `scripts/analysis/advisor.sh --apply-friendly-names` - Apply friendly name suggestions to HA entity registry
+- `python -c "from app.services.integrations.embeddings.friendly_name_generator import FriendlyNameGenerator; generator = FriendlyNameGenerator(); print('Test friendly name generation')"` - Test friendly name generation algorithms
 
 ### Docker Cleanup & Maintenance
 - `make docker-system-info` - Show Docker disk usage and image count
 - `make docker-cleanup` - Safe cleanup: unused containers, networks, dangling images
 - `make docker-clean-dev` - Remove old ha-rag-bridge images and `<none>` tags
 - `make docker-prune` - Aggressive: remove ALL unused resources (⚠️ use with caution)
-- `./scripts/auto-cleanup.sh [mild|aggressive|info]` - Interactive cleanup script
+- `scripts/maintenance/auto-cleanup.sh [mild|aggressive|info]` - Interactive cleanup script
 
 ### MCP (Model Context Protocol) Integration ✅ PRODUCTION READY
 - **Docker MCP**: `uvx docker-mcp` - Container and compose stack management through Claude
@@ -336,7 +336,7 @@ This is a Home Assistant RAG (Retrieval Augmented Generation) bridge that syncs 
 
 ### Intelligent Friendly Name System
 
-**Ingestion-Time Name Generation** (`scripts/friendly_name_generator.py`, `scripts/ingest.py`)
+**Ingestion-Time Name Generation** (`app/services/integrations/embeddings/friendly_name_generator.py`, `scripts/ingestion/ingest.py`)
 - **Non-Invasive Approach**: Generates friendly names only for embedding enhancement, never modifies HA entity registry
 - **Rule-Based Intelligence**: 140+ Hungarian-English translation mappings with domain-specific patterns
 - **Confidence Scoring**: 0.7-1.0 threshold ensures only high-quality suggestions are used
@@ -518,7 +518,7 @@ The project uses Docker Compose for development with multiple stack configuratio
 
 **Bilingual Text Generation System** ✅ IMPLEMENTED (2025-08-08)
 - **Dual Language Architecture**: Separate UI language (Hungarian) and system language (English) fields in database
-- **Enhanced Entity Processing**: Modified `scripts/ingest.py` with `build_system_text()` for English embeddings
+- **Enhanced Entity Processing**: Modified `scripts/ingestion/ingest.py` with `build_system_text()` for English embeddings
 - **Database Schema Updates**: Added `text_system` field alongside existing `text` field in entity collection
 - **Vector Search Optimization**: Embeddings now generated from English `text_system` for better semantic consistency
 - **Area Name Translation**: Automatic Hungarian→English translation (nappali→living room, konyha→kitchen)

@@ -30,8 +30,10 @@ except Exception:  # pragma: no cover - Home Assistant not available
 from .const import DOMAIN
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(config_entries.ConfigFlow):
     """Handle a config flow for the component."""
+
+    domain = DOMAIN
 
     _configured: bool = False
 

@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from scripts.ingest import ingest as run_ingest
+from scripts.ingestion.ingest import ingest as run_ingest
 
 
 def load_dotenv():
