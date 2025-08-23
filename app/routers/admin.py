@@ -1057,10 +1057,10 @@ async def get_monitoring_logs(
 
     # Define available containers
     available_containers = {
-        "bridge": "ha-rag-bridge-bridge-1",
+        "bridge": "docker-compose-bridge-1",
         "litellm": "ha-rag-bridge-litellm-1",
-        "homeassistant": "ha-rag-bridge-homeassistant-1",
-        "arangodb": "ha-rag-bridge-arangodb-1",
+        "homeassistant": "homeassistant",
+        "arangodb": "arangodb",
     }
 
     # Default to bridge if no container specified
@@ -1228,13 +1228,13 @@ async def stream_logs(
     _check_token(request)
 
     available_containers = {
-        "bridge": "ha-rag-bridge-bridge-1",
+        "bridge": "docker-compose-bridge-1",
         "litellm": "ha-rag-bridge-litellm-1",
-        "homeassistant": "ha-rag-bridge-homeassistant-1",
-        "arangodb": "ha-rag-bridge-arangodb-1",
+        "homeassistant": "homeassistant",
+        "arangodb": "arangodb",
     }
 
-    container_name = available_containers.get(container, "ha-rag-bridge-bridge-1")
+    container_name = available_containers.get(container, "docker-compose-bridge-1")
 
     async def generate_log_stream():
         """Stream real-time Docker logs"""
@@ -2394,55 +2394,66 @@ async def get_containers_status(request: Request):
     _check_token(request)
 
     try:
-        # Get list of containers using docker ps with label filter for compose project
-        result = subprocess.run(
-            [
-                "docker",
-                "ps",
-                "-a",
-                "--filter",
-                "label=com.docker.compose.project=ha-rag-bridge",
-                "--format",
-                "{{.Names}},{{.Image}},{{.Status}},{{.Ports}},{{.Labels}}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
+        # Get list of containers from both ha-rag-bridge and docker-compose projects
         containers = []
-        if result.returncode == 0 and result.stdout.strip():
-            lines = result.stdout.strip().split("\n")
-            for line in lines:
-                if line.strip():
-                    parts = line.split(",")
-                    if len(parts) >= 4:
-                        name = parts[0]
-                        image = parts[1]
-                        status = parts[2]
-                        ports = parts[3] if len(parts) > 3 else ""
 
-                        # Extract service name from container name (remove prefix/suffix)
-                        service = name.replace("ha-rag-bridge-", "").replace("-1", "")
+        for project in ["ha-rag-bridge", "docker-compose"]:
+            result = subprocess.run(
+                [
+                    "docker",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"label=com.docker.compose.project={project}",
+                    "--format",
+                    "{{.Names}},{{.Image}},{{.Status}},{{.Ports}},{{.Labels}}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
 
-                        # Determine status
-                        if "Up" in status:
-                            container_status = "running"
-                        elif "Exited" in status:
-                            container_status = "exited"
-                        else:
-                            container_status = "unknown"
+            if result.returncode == 0 and result.stdout.strip():
+                lines = result.stdout.strip().split("\n")
+                for line in lines:
+                    if line.strip():
+                        parts = line.split(",")
+                        if len(parts) >= 4:
+                            name = parts[0]
+                            image = parts[1]
+                            status = parts[2]
+                            ports = parts[3] if len(parts) > 3 else ""
 
-                        containers.append(
-                            {
-                                "name": name,
-                                "service": service,
-                                "status": container_status,
-                                "health": "unknown",  # Health check requires separate command
-                                "image": image,
-                                "ports": ports.split(", ") if ports else [],
-                            }
-                        )
+                            # Extract service name from container name
+                            service = (
+                                name.replace("ha-rag-bridge-", "")
+                                .replace("docker-compose-", "")
+                                .replace("-1", "")
+                            )
+
+                            # Determine status
+                            container_status = (
+                                "running" if "Up" in status else "stopped"
+                            )
+
+                            # Determine health (simplified)
+                            health = "healthy" if "(healthy)" in status else "unknown"
+
+                            # Parse ports
+                            port_list = []
+                            if ports:
+                                port_list = ports.split(", ") if ports else []
+
+                            containers.append(
+                                {
+                                    "name": name,
+                                    "service": service,
+                                    "status": container_status,
+                                    "health": health,
+                                    "image": image,
+                                    "ports": port_list,
+                                }
+                            )
 
         return {"containers": containers, "timestamp": datetime.now().isoformat()}
 
@@ -2604,7 +2615,7 @@ async def restart_stack(request: Request):
                 [
                     "docker",
                     "restart",
-                    "ha-rag-bridge-bridge-1",
+                    "docker-compose-bridge-1",
                     "ha-rag-bridge-litellm-1",
                 ],
                 capture_output=True,
