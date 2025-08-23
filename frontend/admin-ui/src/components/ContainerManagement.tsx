@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -46,6 +46,16 @@ export function ContainerManagement() {
   const [streamTitle, setStreamTitle] = useState('Container Logs');
   const eventSourceRef = useRef<EventSource | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Cleanup EventSource connections when component unmounts
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
 
   // Get container status
   const { data: containerData, isLoading: statusLoading } = useQuery({

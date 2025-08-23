@@ -242,11 +242,11 @@ async def test_streaming(request: Request):
 
     return StreamingResponse(
         generate_test_stream(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Content-Type": "text/event-stream",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
 
@@ -868,11 +868,11 @@ async def stream_reindex_vectors(request: Request):
 
     return StreamingResponse(
         generate_reindex_stream(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Content-Type": "text/event-stream",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
 
@@ -933,11 +933,11 @@ async def stream_bootstrap(request: Request):
 
     return StreamingResponse(
         generate_bootstrap_stream(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Content-Type": "text/event-stream",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
 
@@ -1368,11 +1368,11 @@ async def stream_logs(
 
     return StreamingResponse(
         generate_log_stream(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Content-Type": "text/event-stream",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
 
@@ -1452,11 +1452,11 @@ async def stream_ingest(request: Request):
 
     return StreamingResponse(
         generate_ingest_stream(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Content-Type": "text/event-stream",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
 

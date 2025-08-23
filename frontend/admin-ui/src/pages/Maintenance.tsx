@@ -1,5 +1,5 @@
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -20,6 +20,16 @@ export function Maintenance() {
   const [streamTitle, setStreamTitle] = useState('Művelet');
   const eventSourceRef = useRef<EventSource | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Cleanup EventSource connections when component unmounts
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
   
   const { data: health } = useQuery({
     queryKey: ['health'],
