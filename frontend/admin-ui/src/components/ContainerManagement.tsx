@@ -448,7 +448,11 @@ export function ContainerManagement() {
       )}
 
       {/* Log Stream Dialog */}
-      <Dialog open={showLogDialog} onOpenChange={setShowLogDialog}>
+      <Dialog open={showLogDialog} onOpenChange={(open) => {
+        if (!open) {
+          closeLogDialog();
+        }
+      }}>
         <DialogContent className="max-w-4xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center">

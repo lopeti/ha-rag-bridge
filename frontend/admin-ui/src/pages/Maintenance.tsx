@@ -622,7 +622,11 @@ export function Maintenance() {
       </Card>
 
       {/* Stream Dialog */}
-      <Dialog open={showStreamDialog} onOpenChange={setShowStreamDialog}>
+      <Dialog open={showStreamDialog} onOpenChange={(open) => {
+        if (!open) {
+          closeStreamDialog();
+        }
+      }}>
         <DialogContent className="max-w-4xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center">
