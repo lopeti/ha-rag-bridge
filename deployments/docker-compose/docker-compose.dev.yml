@@ -11,7 +11,7 @@ services:
         context: .
         dockerfile: Dockerfile     # Point to the Dockerfile
         target: dev                # Use the dev stage
-    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini
+    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-config config/docker/uvicorn_log.ini
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock

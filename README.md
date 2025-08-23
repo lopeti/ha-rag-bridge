@@ -118,7 +118,7 @@ Run `make migrate` to set up the database.
 Run the realtime watcher to ingest entity metadata whenever it changes:
 
 ```bash
-python scripts/watch_entities.py
+python scripts/ingestion/watch_entities.py
 # add --debug for verbose output
 ```
 
@@ -151,7 +151,7 @@ curl -X POST :8000/graph/edge \
 Add device manuals to the graph:
 
 ```bash
-poetry run python scripts/ingest_docs.py --file manuals/gree.pdf --device_id=gree_klima
+poetry run python scripts/ingestion/ingest_docs.py --file manuals/gree.pdf --device_id=gree_klima
 ```
 
 After ingest you can ask for instructions, e.g.:

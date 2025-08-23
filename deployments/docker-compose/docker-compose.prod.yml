@@ -184,7 +184,7 @@ services:
       - ha_rag_logs:/logs
     networks:
       - ha-rag-network
-    command: /bin/sh -c "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config docker/uvicorn_log.ini"
+    command: /bin/sh -c "ha-rag-bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config config/docker/uvicorn_log.ini"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

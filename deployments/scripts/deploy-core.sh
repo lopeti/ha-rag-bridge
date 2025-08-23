@@ -132,11 +132,11 @@ fi
 mkdir -p ./docker
 
 # Copy uvicorn_log.ini file
-if [ -f "$APP_DIR/docker/uvicorn_log.ini" ]; then
-    cp "$APP_DIR/docker/uvicorn_log.ini" ./docker/
+if [ -f "$APP_DIR/config/docker/uvicorn_log.ini" ]; then
+    cp "$APP_DIR/config/docker/uvicorn_log.ini" ./docker/
     print_success "Copied uvicorn_log.ini to $(pwd)/docker"
 else
-    print_info "uvicorn_log.ini not found in $APP_DIR/docker"
+    print_info "uvicorn_log.ini not found in $APP_DIR/config/docker"
 fi
 
 echo ""
