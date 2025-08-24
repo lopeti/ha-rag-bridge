@@ -576,38 +576,35 @@ class EntityReranker:
         @classmethod
         def compact_format(cls, primary_entities, related_entities, areas_info):
             """Ultra-compact format for token-limited contexts or many entities"""
-            parts = ["You are a Home Assistant agent.\n"]
+            all_strs = []
 
             if primary_entities:
-                primary_strs = []
                 for pe in primary_entities:
                     entity = pe.entity
                     name = cls._get_clean_name(entity)
                     area = cls._get_area_display_name(entity)
                     value = cls._get_value_str(entity, use_fresh_data=True)
-                    primary_strs.append(f"{name} [{area}]{value}")
-                parts.append(f"Primary: {' | '.join(primary_strs)}")
+
+                    # Only add area if it's not empty
+                    if area:
+                        all_strs.append(f"{name} {area}{value}")
+                    else:
+                        all_strs.append(f"{name}{value}")
 
             if related_entities:
-                related_strs = []
                 for re in related_entities:
                     entity = re.entity
                     name = cls._get_clean_name(entity)
                     area = cls._get_area_display_name(entity)
                     value = cls._get_value_str(entity, use_fresh_data=True)
-                    related_strs.append(f"{name} [{area}]{value}")
-                parts.append(f"Related: {' | '.join(related_strs)}")
 
-            if areas_info:
-                area_strs = []
-                for area, aliases in areas_info.items():
-                    if aliases:
-                        area_strs.append(f"{area} ({', '.join(aliases)})")
+                    # Only add area if it's not empty
+                    if area:
+                        all_strs.append(f"{name} {area}{value}")
                     else:
-                        area_strs.append(area)
-                parts.append(f"Areas: {', '.join(area_strs)}")
+                        all_strs.append(f"{name}{value}")
 
-            return "\n".join(parts)
+            return " | ".join(all_strs)
 
         @classmethod
         def detailed_format(cls, primary_entities, related_entities, areas_info):
@@ -711,18 +708,41 @@ class EntityReranker:
 
         @classmethod
         def _get_area_display_name(cls, entity):
-            """Get human-readable area name, preferring area_name over area ID"""
-            area_name = entity.get("area_name", "")
+            """Get human-readable area name with aliases lookup from database"""
             area_id = entity.get("area", "")
 
-            # Prefer friendly area name if available
-            if area_name:
-                return area_name
-            # Fall back to area ID if no friendly name
-            elif area_id:
-                return area_id
-            else:
+            if not area_id:
                 return ""
+
+            try:
+                # Import here to avoid circular imports
+                from ha_rag_bridge.api import get_arango_db
+
+                db = get_arango_db()
+
+                # Try to find area in collection
+                cursor = db.aql.execute(
+                    "FOR area IN area FILTER area._key == @area_id RETURN area",
+                    bind_vars={"area_id": area_id},
+                )
+                results = list(cursor)
+
+                if results:
+                    area_doc = results[0]
+                    name = area_doc.get("name", area_id)
+                    aliases = area_doc.get("aliases", [])
+
+                    if aliases and any(
+                        alias.strip() for alias in aliases
+                    ):  # Only if non-empty aliases
+                        return f"[{name} ({', '.join(alias for alias in aliases if alias.strip())})]"
+                    return f"[{name}]"
+
+            except Exception as e:
+                logger.warning(f"Could not lookup area '{area_id}': {e}")
+
+            # Fallback to capitalized area ID
+            return f"[{area_id.replace('_', ' ').title()}]"
 
         @classmethod
         def _get_clean_name(cls, entity):
