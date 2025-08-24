@@ -5,7 +5,7 @@ embedding for efficient entity search while maintaining conversation context.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import os
 
 from . import register_strategy, StrategyConfig
