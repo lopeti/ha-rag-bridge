@@ -1474,12 +1474,14 @@ async def search_entities_debug(request: Request):
 
     # Import required services
     from app.services.integrations.embeddings import get_backend
-    from app.main import retrieve_entities_with_clusters
     from app.services.rag.entity_reranker import entity_reranker
     from app.services.rag.query_scope_detector import query_scope_detector
     from app.services.rag.search_debugger import search_debugger
+    from app.rag_strategies import registry, StrategyConfig
+    from app.conversation_utils import extract_messages
     from arango import ArangoClient
     import os
+    import time
 
     try:
         # Database connection
@@ -1513,43 +1515,56 @@ async def search_entities_debug(request: Request):
             similarity_threshold=search_request.threshold,
         )
 
-        # Stage 1: Cluster + Vector Search
-        import time
-
+        # Stage 1: Use new conversation-aware strategy
         start_time = time.time()
 
-        entities = retrieve_entities_with_clusters(
-            db=db,
-            q_vec=query_embedding,
-            q_text=search_request.query,
-            scope_config=scope_config,
-            cluster_types=scope_config.cluster_types,
-            k=search_request.limit * 2,  # Get more for reranking
+        # Extract actual user query from potential OpenWebUI meta-task wrapper
+        raw_messages = [{"role": "user", "content": search_request.query}]
+        messages = extract_messages(search_request.query) or raw_messages
+
+        # DEBUG: Log extraction results
+        logger.info(f"ADMIN DEBUG: Raw query length: {len(search_request.query)}")
+        logger.info(f"ADMIN DEBUG: Query preview: {search_request.query[:200]}...")
+        logger.info(f"ADMIN DEBUG: Extracted {len(messages)} messages from query")
+        for i, msg in enumerate(messages):
+            content_preview = (
+                msg.get("content", "")[:100] + "..."
+                if len(msg.get("content", "")) > 100
+                else msg.get("content", "")
+            )
+            logger.info(
+                f"ADMIN DEBUG: Extracted message {i+1}: {msg.get('role')} - {content_preview}"
+            )
+
+        # Create strategy config
+        strategy_config = StrategyConfig(
+            max_messages=1, user_weight=1.0, assistant_weight=0.5, recency_boost=0.3
         )
 
-        cluster_time = (time.time() - start_time) * 1000
+        # Execute hybrid strategy
+        strategy_result = await registry.execute("hybrid", messages, strategy_config)
+        entities = strategy_result.entities
+
+        cluster_time = strategy_result.execution_time_ms
 
         # Import PipelineStage enum
         from app.services.rag.search_debugger import PipelineStage
 
-        # Mock stage capture for cluster search (retrieve_entities_with_clusters handles both)
+        # Capture hybrid strategy execution stage
         search_debugger.capture_stage(
-            stage=PipelineStage.CLUSTER_SEARCH,
+            stage=PipelineStage.CLUSTER_SEARCH,  # Using legacy stage name for compatibility
             entities_in=[],
             entities_out=entities,
-            execution_time_ms=cluster_time * 0.6,  # Estimate cluster portion
+            execution_time_ms=cluster_time,
             metadata={
-                "clusters_found": scope_config.cluster_types,
+                "strategy_used": strategy_result.strategy_used,
+                "strategy_success": strategy_result.success,
+                "message_count": strategy_result.message_count,
                 "scope_detected": detected_scope.value,
+                "pipeline_type": "hybrid",
+                "vector_candidates": len(entities),
+                "extraction_successful": len(messages) != len(raw_messages),
             },
-        )
-
-        search_debugger.capture_stage(
-            stage=PipelineStage.VECTOR_FALLBACK,
-            entities_in=entities,
-            entities_out=entities,
-            execution_time_ms=cluster_time * 0.4,  # Estimate vector portion
-            metadata={"vector_search_k": search_request.limit * 2},
         )
 
         # Stage 3: Reranking
@@ -1566,21 +1581,25 @@ async def search_entities_debug(request: Request):
         rerank_time = (time.time() - start_time) * 1000
 
         search_debugger.capture_stage(
-            stage=PipelineStage.RERANKING,
+            stage=PipelineStage.HYBRID_RERANKING,
             entities_in=entities,
             entities_out=[
                 entity.to_dict() if hasattr(entity, "to_dict") else entity
                 for entity in ranked_entities
             ],
             execution_time_ms=rerank_time,
-            metadata={"reranker_model": entity_reranker.model_name},
+            metadata={
+                "reranker_model": entity_reranker.model_name,
+                "cross_encoder_used": True,
+                "ranking_algorithm": "multi_factor_scoring",
+            },
         )
 
         # Stage 4: Final Selection
         final_entities = ranked_entities[: search_request.limit]
 
         search_debugger.capture_stage(
-            stage=PipelineStage.FINAL_SELECTION,
+            stage=PipelineStage.HYBRID_SELECTION,
             entities_in=[
                 entity.to_dict() if hasattr(entity, "to_dict") else entity
                 for entity in ranked_entities
@@ -1605,7 +1624,8 @@ async def search_entities_debug(request: Request):
                         if e.ranking_factors.get("has_active_value", 0) <= 0
                     ]
                 ),
-                "selection_criteria": "multi_stage_prioritization",
+                "selection_criteria": "hybrid_multi_factor_prioritization",
+                "threshold_applied": search_request.threshold,
             },
         )
 
@@ -2958,3 +2978,100 @@ async def stream_container_logs(request: Request, service: str, tail: int = 100)
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+# Debug endpoints for Pipeline Debugger
+@router.post("/debug/toggle")
+async def toggle_debug(request: Request):
+    """Toggle debug mode for conversation processing"""
+    _check_token(request)
+
+    # Import debug variables from main.py
+    from app.main import debug_sessions
+
+    body = await request.json()
+    session_id = body.get("session_id", "default")
+    enabled = body.get("enabled", False)
+
+    debug_sessions[session_id] = enabled
+    logger.info(
+        f"Debug mode {'enabled' if enabled else 'disabled'} for session {session_id}"
+    )
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "debug_enabled": enabled,
+        "active_sessions": len([s for s in debug_sessions.values() if s]),
+    }
+
+
+@router.get("/debug/status")
+async def get_debug_status(request: Request):
+    """Get current debug session status with enhanced information"""
+    _check_token(request)
+
+    # Import debug variables from main.py
+    from app.main import debug_sessions, debug_results
+
+    active_sessions = [s for s in debug_sessions.values() if s]
+    recent_results = sorted(
+        debug_results.items(), key=lambda x: x[1].get("timestamp", 0), reverse=True
+    )[
+        :5
+    ]  # Last 5 results
+
+    return {
+        "debug_enabled": len(active_sessions) > 0,
+        "active_sessions": len(active_sessions),
+        "sessions": debug_sessions,
+        "total_results": len(debug_results),
+        "recent_hook_calls": len(
+            [
+                r
+                for _, r in recent_results
+                if r.get("hook_source_info", {}).get("source") == "litellm_hook"
+            ]
+        ),
+        "listening_status": (
+            "Listening for hook calls..."
+            if len(active_sessions) > 0
+            else "Debug mode OFF"
+        ),
+        "last_activity": (
+            recent_results[0][1].get("timestamp") if recent_results else None
+        ),
+    }
+
+
+@router.get("/debug/results")
+async def get_debug_results(request: Request, limit: int = 20):
+    """Get recent debug results"""
+    _check_token(request)
+
+    # Import debug variables from main.py
+    from app.main import debug_results
+
+    # Return recent results sorted by timestamp
+    sorted_results = sorted(
+        debug_results.items(), key=lambda x: x[1].get("timestamp", 0), reverse=True
+    )[:limit]
+
+    return {
+        "results": [{"id": k, **v} for k, v in sorted_results],
+        "total": len(debug_results),
+    }
+
+
+@router.get("/debug/results/{result_id}")
+async def get_debug_result(request: Request, result_id: str):
+    """Get specific debug result by ID"""
+    _check_token(request)
+
+    # Import debug variables from main.py
+    from app.main import debug_results
+
+    if result_id not in debug_results:
+        raise HTTPException(status_code=404, detail="Debug result not found")
+
+    return debug_results[result_id]

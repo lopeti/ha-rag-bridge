@@ -798,9 +798,28 @@ class EntityReranker:
 
             if entity.get("domain") == "sensor":
                 entity_id = entity.get("entity_id", "")
-                current_value = get_state_func(entity_id)
-                if current_value is not None:
-                    return f": {current_value}"
+                current_state = get_state_func(entity_id)
+                if current_state is not None:
+                    # Extract the actual state value and unit from the response
+                    if isinstance(current_state, dict) and "state" in current_state:
+                        state_value = current_state["state"]
+                        # Get unit from attributes if available
+                        unit = ""
+                        if (
+                            "attributes" in current_state
+                            and current_state["attributes"]
+                        ):
+                            unit = current_state["attributes"].get(
+                                "unit_of_measurement", ""
+                            )
+
+                        if unit:
+                            return f": {state_value} {unit}"
+                        else:
+                            return f": {state_value}"
+                    else:
+                        # Fallback for simple string/number values
+                        return f": {current_state}"
             return ""
 
         @classmethod
@@ -1154,6 +1173,52 @@ class EntityReranker:
             return self.SystemPromptFormatter.detailed_format(
                 primary_entities, related_entities, areas_info
             )
+
+    async def format_entities_for_prompt(
+        self,
+        entities: List[Dict[str, Any]],
+        force_formatter: Optional[str] = None,
+        use_fresh_data: bool = True,
+    ) -> str:
+        """
+        Format entities for LLM prompt injection with fresh state data.
+
+        Args:
+            entities: List of entity dictionaries from database
+            force_formatter: Force specific formatter ('compact', 'detailed', etc.)
+            use_fresh_data: Whether to fetch fresh state/attributes from HA
+
+        Returns:
+            Formatted string ready for LLM prompt injection
+        """
+        if not entities:
+            return "No relevant entities found for the conversation."
+
+        logger.info(
+            f"Formatting {len(entities)} entities for prompt with fresh_data={use_fresh_data}"
+        )
+
+        # Convert to EntityScore objects for consistent formatting
+        entity_scores = []
+        for entity in entities:
+            # Create minimal EntityScore for formatting
+            entity_score = EntityScore(
+                entity=entity,
+                base_score=entity.get("score", 0.0),
+                context_boost=0.0,
+                final_score=entity.get("score", 0.0),
+                ranking_factors={},
+            )
+            entity_scores.append(entity_score)
+
+        # Use the specified formatter or default to compact
+        if force_formatter == "compact":
+            return self.SystemPromptFormatter.compact_format(entity_scores, [], {})
+        elif force_formatter == "detailed":
+            return self.SystemPromptFormatter.detailed_format(entity_scores, [], {})
+        else:
+            # Default to compact for hook integration
+            return self.SystemPromptFormatter.compact_format(entity_scores, [], {})
 
 
 # Global instance for reuse

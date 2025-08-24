@@ -198,6 +198,14 @@ npm run build  # Build React app to dist/
 - **System Overview**: `/overview` - Health status, database metrics, and system statistics
 - **Real-time Monitoring**: `/monitoring` - Live log streaming and performance metrics
 - **Cluster Management**: `/clusters` - Semantic entity cluster configuration
+- **🔧 Hook Debugger**: `/hook-debugger` - **NEW** Real-time LiteLLM hook monitoring system:
+  - **Live Hook Capture**: Zero-friction debugging - just toggle monitoring and use OpenWebUI
+  - **Entity State Display**: Fresh sensor values formatted cleanly (e.g., "Temperature [nappali]: 23.13 °C")
+  - **Token Injection Metrics**: Character count and estimated token usage for context optimization
+  - **Source Detection**: Automatic labeling of "From LiteLLM Hook" vs manual test queries
+  - **Session Management**: Multi-session debugging with hook call statistics and timing
+  - **Real-time Updates**: Live UI updates without page refresh, 40ms entity retrieval performance
+- **Pipeline Debugger**: `/pipeline-debugger` - **OBSOLETE** Legacy workflow trace system (use Hook Debugger)
 - **Maintenance Tools**: Built-in bootstrap, reindex, cleanup operations
 - **Debug Features**: 
   - Prompt format preview showing exact LLM input with real-time values
@@ -620,3 +628,15 @@ The project uses Docker Compose for development with multiple stack configuratio
   - Service-specific components with proper state management
   - Clear visual feedback with proper auto-hide timers
   - Contextual positioning in configuration category headers
+
+**Hook Debugger System** ✅ COMPLETED (2025-08-24)
+- **Real-time LiteLLM Hook Monitoring**: Live capture of OpenWebUI interactions with zero-friction debugging
+- **Professional Admin Interface**: Modern React UI with live statistics (total captures, recent hooks, active sessions)
+- **Entity State Integration**: Fresh Home Assistant sensor values with clean formatting ("Temperature [nappali]: 23.13 °C")
+- **Token Injection Metrics**: Character count and estimated token display for context optimization analysis
+- **Session Management**: Multi-session debugging with automatic hook source detection using `hook_*` prefix patterns
+- **Performance Optimization**: 40ms entity retrieval with 25 entities, context reduction from 8216 to 814 characters
+- **Clean Architecture**: Separation of Hook Debugger (production) from Pipeline Debugger (marked OBSOLETE)
+- **Production Integration**: Seamless LiteLLM hook → Bridge API → Fresh HA states → Clean prompt formatting workflow
+- **Authentication**: Secure admin token integration with proper error handling and state management
+- **Live UI Updates**: Real-time polling without page refresh, professional loading states and status indicators

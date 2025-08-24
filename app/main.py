@@ -1,6 +1,6 @@
 import re
 import json
-from typing import List, Sequence, Dict, Any, Optional
+from typing import List, Sequence, Dict, Any, Optional, Union
 from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +11,17 @@ from ha_rag_bridge.config import get_settings
 from ha_rag_bridge.similarity_config import get_current_config
 from app.middleware.request_id import request_id_middleware
 
+# Import the new RAG strategy system
+from app.rag_strategies import registry, StrategyConfig
+from app.conversation_utils import extract_messages
+
 logger = get_logger(__name__)
+
+# Global debug session management
+debug_sessions = {}
+debug_results = {}
+import uuid
+from datetime import datetime, timezone
 
 from .routers.graph import router as graph_router  # noqa: E402
 from .routers.admin import router as admin_router  # noqa: E402
@@ -823,6 +833,290 @@ async def process_request_workflow(payload: schemas.Request):
         raise HTTPException(
             status_code=500, detail=f"Phase 3 workflow error: {str(exc)}"
         )
+
+
+# Initialize strategy config
+default_strategy_config = StrategyConfig(
+    max_messages=5, user_weight=1.0, assistant_weight=0.5, recency_boost=0.3
+)
+
+
+def is_meta_task(user_msg: str) -> bool:
+    """Check if this is an OpenWebUI meta-task (title/tag generation)."""
+    return "### Task:" in user_msg and (
+        "Generate" in user_msg or "categoriz" in user_msg
+    )
+
+
+def extract_user_query_from_meta_task(user_msg: str) -> str | None:
+    """Extract the actual user query from OpenWebUI meta-task format."""
+    # Look for chat history section
+    chat_history_match = re.search(
+        r"<chat_history>(.*?)</chat_history>", user_msg, re.DOTALL
+    )
+    if not chat_history_match:
+        return None
+
+    chat_content = chat_history_match.group(1).strip()
+
+    # Extract the LAST user question (most recent)
+    user_questions = re.findall(
+        r"USER:\s*(.*?)(?=\nASSISTANT:|$)", chat_content, re.DOTALL
+    )
+
+    if user_questions:
+        last_question = user_questions[-1].strip()
+        return last_question
+    else:
+        return None
+
+
+def detect_hook_source(raw_input: str | dict, session_id: str = None) -> dict:
+    """Detect if this is a hook call and extract source information."""
+    debug_info = {
+        "source": "manual_test",
+        "is_meta_task": False,
+        "meta_task_details": None,
+        "extracted_query": None,
+    }
+
+    # Convert to string if dict
+    input_str = str(raw_input)
+
+    # Check if session_id indicates this is from a hook
+    is_hook_call = session_id and session_id.startswith("hook_")
+
+    # Check if it's a meta-task (likely from LiteLLM hook)
+    if is_meta_task(input_str):
+        debug_info["source"] = "litellm_hook"
+        debug_info["is_meta_task"] = True
+
+        # Extract meta-task details
+        extracted_query = extract_user_query_from_meta_task(input_str)
+        if extracted_query:
+            debug_info["extracted_query"] = extracted_query
+
+        # Extract task type
+        task_match = re.search(r"### Task:\s*(.*?)(?=\n|$)", input_str)
+        if task_match:
+            task_type = task_match.group(1).strip()
+            debug_info["meta_task_details"] = {
+                "task_type": task_type,
+                "full_meta_task": (
+                    input_str[:500] + "..." if len(input_str) > 500 else input_str
+                ),
+            }
+    elif is_hook_call:
+        # Direct user query from hook (not meta-task)
+        debug_info["source"] = "litellm_hook"
+        debug_info["is_meta_task"] = False
+        debug_info["extracted_query"] = (
+            input_str if len(input_str) < 500 else input_str[:500] + "..."
+        )
+
+    return debug_info
+
+
+@router.post("/process-conversation")
+async def process_conversation(
+    request: Union[schemas.Request, Dict[str, Any]], include_debug: bool = False
+):
+    """Process conversation using configurable RAG strategies
+
+    This endpoint supports:
+    1. Raw OpenWebUI queries (string with meta-task format)
+    2. Structured conversation messages
+    3. Legacy single-query format
+
+    Uses strategy pattern for flexible A/B testing of different approaches.
+    """
+
+    try:
+        # Handle different input formats
+        if isinstance(request, dict):
+            if "user_message" in request:
+                # Legacy format
+                raw_input = request["user_message"]
+            elif "messages" in request:
+                # Already structured messages
+                raw_input = request["messages"]
+            elif "query" in request:
+                # Simple query format
+                raw_input = request["query"]
+            else:
+                # Assume the whole dict is the raw query content
+                raw_input = str(request)
+        else:
+            # ProcessRequestPayload or ProcessWorkflowRequest
+            raw_input = request.user_message
+
+        # Extract session_id from request
+        if isinstance(request, dict):
+            session_id = request.get("session_id") or request.get(
+                "conversation_id", "default_session"
+            )
+        else:
+            session_id = getattr(request, "session_id", None) or getattr(
+                request, "conversation_id", "default_session"
+            )
+
+        logger.info(f"Using session_id: {session_id}")
+
+        # Extract structured messages from input
+        messages = extract_messages(raw_input)
+
+        if not messages:
+            logger.warning(
+                f"No valid messages extracted from input: {str(raw_input)[:100]}..."
+            )
+            return {
+                "success": False,
+                "error": "No valid messages found in input",
+                "entities": [],
+                "formatted_content": "",
+            }
+
+        logger.info(f"Extracted {len(messages)} messages from conversation")
+
+        # Detect hook source and meta-task information
+        hook_source_info = detect_hook_source(raw_input, session_id)
+
+        # Check if debug mode is enabled globally or via parameter
+        debug_enabled = include_debug or any(debug_sessions.values())
+
+        # Determine strategy (default to hybrid, can be configured)
+        strategy_name = (
+            getattr(request, "strategy", "hybrid")
+            if hasattr(request, "strategy")
+            else "hybrid"
+        )
+
+        debug_info = {}
+        if debug_enabled:
+            # Start enhanced debug capture
+            debug_session_id = str(uuid.uuid4())
+            debug_info = {
+                "session_id": debug_session_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "raw_input": (
+                    str(raw_input)[:1000] + "..."
+                    if len(str(raw_input)) > 1000
+                    else str(raw_input)
+                ),
+                "extracted_messages": messages,
+                "strategy_name": strategy_name,
+                "hook_source_info": hook_source_info,
+                "source_label": (
+                    "From LiteLLM Hook"
+                    if hook_source_info["source"] == "litellm_hook"
+                    else "Manual Test"
+                ),
+                "pipeline_stages": [],
+            }
+
+        # Execute strategy using registry
+        strategy_result = await registry.execute(
+            strategy_name, messages, default_strategy_config
+        )
+
+        entities = strategy_result.entities
+        execution_time = strategy_result.execution_time_ms
+
+        logger.info(
+            f"Strategy '{strategy_result.strategy_used}' retrieved {len(entities)} entities in {execution_time:.1f}ms"
+        )
+
+        # Format entities for prompt injection using entity reranker service
+        if entities:
+            try:
+                # Use the entity reranker service to format entities properly
+                formatted_content = await entity_reranker.format_entities_for_prompt(
+                    entities,
+                    force_formatter="compact",  # Use compact format for hook integration
+                )
+            except Exception as e:
+                logger.warning(f"Entity formatting failed, using simple format: {e}")
+                # Fallback to simple formatting
+                formatted_entities = []
+                for entity in entities[:10]:  # Limit to 10 entities
+                    entity_text = f"{entity.get('entity_id', 'unknown')}"
+                    if entity.get("text"):
+                        entity_text += f": {entity['text'][:100]}"
+                    if entity.get("state"):
+                        entity_text += f" (current: {entity['state']})"
+                    formatted_entities.append(entity_text)
+                formatted_content = "\n".join(formatted_entities)
+        else:
+            formatted_content = "No relevant entities found for the conversation."
+
+        # Store enhanced debug info if enabled
+        if debug_enabled and debug_info:
+            debug_info.update(
+                {
+                    "strategy_result": {
+                        "strategy_used": strategy_result.strategy_used,
+                        "execution_time_ms": execution_time,
+                        "entity_count": len(entities),
+                        "success": strategy_result.success,
+                    },
+                    "entities": (
+                        entities[:15] if entities else []
+                    ),  # Store more entities for debugging
+                    "formatted_content": (
+                        formatted_content[:2000] if formatted_content else ""
+                    ),  # More content
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "pipeline_summary": f"{len(entities)} entities retrieved in {execution_time:.1f}ms via {strategy_result.strategy_used}",
+                    "processing_info": {
+                        "messages_extracted": len(messages),
+                        "raw_input_length": len(str(raw_input)),
+                        "formatted_content_length": (
+                            len(formatted_content) if formatted_content else 0
+                        ),
+                    },
+                }
+            )
+
+            # Store in global debug results
+            debug_results[debug_info["session_id"]] = debug_info
+            logger.info(
+                f"Stored debug result: {debug_info['source_label']} - {debug_info['session_id']}"
+            )
+
+            # Keep only last 100 results to prevent memory issues
+            if len(debug_results) > 100:
+                oldest_key = min(
+                    debug_results.keys(),
+                    key=lambda k: debug_results[k].get("timestamp", ""),
+                )
+                del debug_results[oldest_key]
+
+        response = {
+            "success": strategy_result.success,
+            "entities": entities,
+            "formatted_content": formatted_content,
+            "strategy_used": strategy_result.strategy_used,
+            "execution_time_ms": execution_time,
+            "message_count": len(messages),
+        }
+
+        # Add debug info to response if requested
+        if include_debug and debug_info:
+            response["debug"] = debug_info
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error in process_conversation: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "entities": [],
+            "formatted_content": "",
+        }
+
+
+# Debug endpoints moved to admin router
 
 
 logger.info("Including main router with routes")

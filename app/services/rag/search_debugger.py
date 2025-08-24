@@ -15,10 +15,18 @@ logger = get_logger(__name__)
 class PipelineStage(Enum):
     """Pipeline stages for entity retrieval."""
 
+    # Old cluster-based pipeline stages (legacy)
     CLUSTER_SEARCH = "cluster_search"
     VECTOR_FALLBACK = "vector_fallback"
     RERANKING = "reranking"
     FINAL_SELECTION = "final_selection"
+
+    # New hybrid strategy pipeline stages
+    MESSAGE_PROCESSING = "message_processing"
+    VECTOR_SEARCH = "vector_search"
+    CONTEXT_BOOSTING = "context_boosting"
+    HYBRID_RERANKING = "hybrid_reranking"
+    HYBRID_SELECTION = "hybrid_selection"
 
 
 @dataclass
@@ -30,16 +38,26 @@ class EntityDebugInfo:
     domain: str
     area: str
 
-    # Stage 1: Cluster search
+    # Legacy cluster search stages
     cluster_score: Optional[float] = None
     source_cluster: Optional[str] = None
     cluster_relevance: Optional[float] = None
 
-    # Stage 2: Vector search
+    # Vector search (both legacy and hybrid)
     vector_score: Optional[float] = None
     embedding_similarity: Optional[float] = None
 
-    # Stage 3: Reranking
+    # Hybrid strategy specific
+    conversation_boost: Optional[float] = None
+    boost_factors: Optional[Dict[str, float]] = None
+    original_score: Optional[float] = None
+    boosted_score: Optional[float] = None
+
+    # Text search fallback
+    text_search_score: Optional[float] = None
+    search_source: Optional[str] = None  # "vector" or "text" or "hybrid"
+
+    # Reranking (both legacy and hybrid)
     base_score: Optional[float] = None
     context_boost: Optional[float] = None
     final_score: Optional[float] = None
@@ -52,11 +70,16 @@ class EntityDebugInfo:
     cross_encoder_inference_ms: Optional[float] = None
     used_fallback_matching: Optional[bool] = None
 
-    # Stage 4: Selection
+    # Selection stage
     is_active: Optional[bool] = None
     is_selected: Optional[bool] = None
     selection_rank: Optional[int] = None
     in_prompt: Optional[bool] = None
+    passed_threshold: Optional[bool] = None
+
+    # Strategy metadata
+    strategy_used: Optional[str] = None
+    filtered_by_score: Optional[bool] = None
 
     # Metadata
     pipeline_stage_reached: Optional[PipelineStage] = None
@@ -165,9 +188,18 @@ class SearchDebugger:
             self._update_cluster_stage(entities_out, metadata)
         elif stage == PipelineStage.VECTOR_FALLBACK:
             self._update_vector_stage(entities_out, metadata)
-        elif stage == PipelineStage.RERANKING:
+        elif stage == PipelineStage.VECTOR_SEARCH:
+            self._update_hybrid_vector_stage(entities_out, metadata)
+        elif stage == PipelineStage.CONTEXT_BOOSTING:
+            self._update_context_boosting_stage(entities_out, metadata)
+        elif (
+            stage == PipelineStage.RERANKING or stage == PipelineStage.HYBRID_RERANKING
+        ):
             self._update_reranking_stage(entities_out, metadata)
-        elif stage == PipelineStage.FINAL_SELECTION:
+        elif (
+            stage == PipelineStage.FINAL_SELECTION
+            or stage == PipelineStage.HYBRID_SELECTION
+        ):
             self._update_selection_stage(entities_out, metadata)
 
         logger.debug(
@@ -180,7 +212,9 @@ class SearchDebugger:
     ) -> None:
         """Update entity registry with cluster search results."""
         for entity in entities:
-            entity_id = entity.get("_key") or entity.get("id", "")
+            entity_id = (
+                entity.get("entity_id") or entity.get("_key") or entity.get("id", "")
+            )
             if not entity_id:
                 continue
 
@@ -193,7 +227,7 @@ class SearchDebugger:
     def _update_vector_stage(
         self, entities: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]]
     ) -> None:
-        """Update entity registry with vector search results."""
+        """Update entity registry with legacy vector search results."""
         for entity in entities:
             debug_info = self._get_or_create_entity_debug(entity)
             # Check for ArangoDB vector score (_score) first, then fallback to other score fields
@@ -203,6 +237,33 @@ class SearchDebugger:
             debug_info.embedding_similarity = debug_info.vector_score
             debug_info.pipeline_stage_reached = PipelineStage.VECTOR_FALLBACK
 
+    def _update_hybrid_vector_stage(
+        self, entities: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]]
+    ) -> None:
+        """Update entity registry with hybrid vector search results."""
+        for entity in entities:
+            debug_info = self._get_or_create_entity_debug(entity)
+            score = entity.get("score", entity.get("_score", 0.0))
+            debug_info.vector_score = score
+            debug_info.original_score = score
+            debug_info.embedding_similarity = score
+            debug_info.search_source = (
+                "vector"  # Default, may be overridden by metadata
+            )
+            debug_info.strategy_used = entity.get("_strategy")
+            debug_info.pipeline_stage_reached = PipelineStage.VECTOR_SEARCH
+
+    def _update_context_boosting_stage(
+        self, entities: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]]
+    ) -> None:
+        """Update entity registry with context boosting results."""
+        for entity in entities:
+            debug_info = self._get_or_create_entity_debug(entity)
+            debug_info.boosted_score = entity.get("score", 0.0)
+            debug_info.boost_factors = entity.get("_boost_factors", {})
+            debug_info.conversation_boost = entity.get("_total_boost", 0.0)
+            debug_info.pipeline_stage_reached = PipelineStage.CONTEXT_BOOSTING
+
     def _update_reranking_stage(
         self, entities: List[Any], metadata: Optional[Dict[str, Any]]
     ) -> None:
@@ -211,7 +272,11 @@ class SearchDebugger:
         for entity_score in entities:
             if hasattr(entity_score, "entity"):
                 entity = entity_score.entity
-                entity_id = entity.get("_key") or entity.get("id", "")
+                entity_id = (
+                    entity.get("entity_id")
+                    or entity.get("_key")
+                    or entity.get("id", "")
+                )
                 if not entity_id:
                     continue
 
@@ -252,40 +317,64 @@ class SearchDebugger:
         self, entities: List[Any], metadata: Optional[Dict[str, Any]]
     ) -> None:
         """Update entity registry with final selection results."""
-        for idx, entity_score in enumerate(entities):
-            if hasattr(entity_score, "entity"):
-                entity = entity_score.entity
-                entity_id = entity.get("_key") or entity.get("id", "")
-                if not entity_id:
-                    continue
+        for idx, entity_item in enumerate(entities):
+            # Handle both EntityScore objects and plain dictionaries
+            if hasattr(entity_item, "entity"):  # EntityScore object
+                entity = entity_item.entity
+                entity_id = (
+                    entity.get("entity_id")
+                    or entity.get("_key")
+                    or entity.get("id", "")
+                )
+            else:  # Plain dictionary
+                entity = entity_item
+                entity_id = (
+                    entity.get("entity_id")
+                    or entity.get("_key")
+                    or entity.get("id", "")
+                )
 
-                debug_info = self._get_or_create_entity_debug(entity)
+            if not entity_id:
+                continue
 
-                # Determine if entity is active based on ranking factors
-                is_active = False
-                if debug_info.ranking_factors:
-                    has_active_value = (
-                        debug_info.ranking_factors.get("has_active_value", 0) > 0
-                    )
-                    no_unavailable_penalty = (
-                        debug_info.ranking_factors.get("unavailable_penalty", 0) == 0
-                    )
-                    is_active = has_active_value and no_unavailable_penalty
+            debug_info = self._get_or_create_entity_debug(entity)
 
-                debug_info.is_active = is_active
-                debug_info.is_selected = True  # All entities here are selected
-                debug_info.selection_rank = idx + 1
-                debug_info.in_prompt = (
+            # Determine if entity is active based on ranking factors
+            is_active = False
+            if debug_info.ranking_factors:
+                has_active_value = (
+                    debug_info.ranking_factors.get("has_active_value", 0) > 0
+                )
+                no_unavailable_penalty = (
+                    debug_info.ranking_factors.get("unavailable_penalty", 0) == 0
+                )
+                is_active = has_active_value and no_unavailable_penalty
+            elif "state" in entity:  # Fallback: check if entity has an active state
+                state = str(entity.get("state", "")).lower()
+                is_active = state not in ["unavailable", "unknown", "none", ""]
+
+            debug_info.is_active = is_active
+            debug_info.is_selected = True  # All entities here are selected
+            debug_info.selection_rank = idx + 1
+            debug_info.passed_threshold = (
+                (
                     debug_info.final_score is not None
                     and self.current_pipeline is not None
                     and debug_info.final_score
                     >= self.current_pipeline.similarity_threshold
                 )
-                debug_info.pipeline_stage_reached = PipelineStage.FINAL_SELECTION
+                if debug_info.final_score is not None
+                else True
+            )
+            debug_info.in_prompt = debug_info.passed_threshold
+            debug_info.filtered_by_score = entity.get("_filtered_by_score")
+            debug_info.pipeline_stage_reached = PipelineStage.FINAL_SELECTION
 
     def _get_or_create_entity_debug(self, entity: Dict[str, Any]) -> EntityDebugInfo:
         """Get or create EntityDebugInfo for an entity."""
-        entity_id = entity.get("_key") or entity.get("id", "")
+        entity_id = (
+            entity.get("entity_id") or entity.get("_key") or entity.get("id", "")
+        )
 
         if entity_id in self.entity_registry:
             return self.entity_registry[entity_id]
@@ -294,7 +383,7 @@ class SearchDebugger:
             entity_id=entity_id,
             entity_name=entity.get("friendly_name", entity.get("name", entity_id)),
             domain=entity.get("domain", "unknown"),
-            area=entity.get("area", "unknown"),
+            area=entity.get("area", entity.get("area_name", "unknown")),
         )
 
         self.entity_registry[entity_id] = debug_info
@@ -320,6 +409,9 @@ class SearchDebugger:
             [e for e in self.current_pipeline.entities if e.is_selected]
         )
 
+        # Detect pipeline type and update stage names for better display
+        self._update_stage_display_names()
+
         result = self.current_pipeline
 
         # Clean up
@@ -333,6 +425,35 @@ class SearchDebugger:
         )
 
         return result
+
+    def _update_stage_display_names(self) -> None:
+        """Update stage display names based on pipeline type detected."""
+        if not self.current_pipeline:
+            return
+
+        # Detect if this is a hybrid pipeline by looking for hybrid-specific stages
+        has_hybrid_stages = any(
+            stage.stage
+            in [
+                PipelineStage.MESSAGE_PROCESSING,
+                PipelineStage.VECTOR_SEARCH,
+                PipelineStage.CONTEXT_BOOSTING,
+            ]
+            for stage in self.current_pipeline.stage_results
+        )
+
+        # Update stage names for better readability
+        for stage_result in self.current_pipeline.stage_results:
+            if stage_result.stage == PipelineStage.CLUSTER_SEARCH and has_hybrid_stages:
+                stage_result.stage_name = "Hybrid Strategy Execution"
+            elif stage_result.stage == PipelineStage.VECTOR_SEARCH:
+                stage_result.stage_name = "Vector + Text Search"
+            elif stage_result.stage == PipelineStage.CONTEXT_BOOSTING:
+                stage_result.stage_name = "Conversation Boosting"
+            elif stage_result.stage == PipelineStage.HYBRID_RERANKING:
+                stage_result.stage_name = "Cross-encoder Reranking"
+            elif stage_result.stage == PipelineStage.HYBRID_SELECTION:
+                stage_result.stage_name = "Final Entity Selection"
 
     def _calculate_efficiency_metrics(self) -> Dict[str, float]:
         """Calculate pipeline efficiency metrics."""
