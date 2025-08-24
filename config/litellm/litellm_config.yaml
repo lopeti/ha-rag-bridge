@@ -109,4 +109,4 @@ router_settings:
   local_model_timeout: 30
   
 litellm_settings:
-  callbacks: ["litellm_ha_rag_hooks_phase3.ha_rag_hook_clean_instance"]
+  success_callback: ["litellm_ha_rag_hooks_phase3.ha_rag_hook_enhanced_instance"]
