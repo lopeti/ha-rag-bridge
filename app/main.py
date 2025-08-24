@@ -1,6 +1,8 @@
 import re
 import json
+import uuid
 from typing import List, Sequence, Dict, Any, Optional, Union
+from datetime import datetime, timezone
 from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,10 +20,8 @@ from app.conversation_utils import extract_messages
 logger = get_logger(__name__)
 
 # Global debug session management
-debug_sessions = {}
-debug_results = {}
-import uuid
-from datetime import datetime, timezone
+debug_sessions: Dict[str, bool] = {}
+debug_results: Dict[str, Dict[str, Any]] = {}
 
 from .routers.graph import router as graph_router  # noqa: E402
 from .routers.admin import router as admin_router  # noqa: E402
@@ -871,7 +871,7 @@ def extract_user_query_from_meta_task(user_msg: str) -> str | None:
         return None
 
 
-def detect_hook_source(raw_input: str | dict, session_id: str = None) -> dict:
+def detect_hook_source(raw_input: str | dict, session_id: Optional[str] = None) -> dict:
     """Detect if this is a hook call and extract source information."""
     debug_info = {
         "source": "manual_test",
@@ -963,7 +963,14 @@ async def process_conversation(
         logger.info(f"Using session_id: {session_id}")
 
         # Extract structured messages from input
-        messages = extract_messages(raw_input)
+        if isinstance(raw_input, list):
+            # Already a messages array - use directly for conversation processing
+            messages = raw_input
+            logger.info(f"Using direct messages array: {len(messages)} messages")
+        else:
+            # String input - needs parsing
+            messages = extract_messages(raw_input)
+            logger.info(f"Parsed messages from string: {len(messages)} messages")
 
         if not messages:
             logger.warning(
@@ -976,7 +983,7 @@ async def process_conversation(
                 "formatted_content": "",
             }
 
-        logger.info(f"Extracted {len(messages)} messages from conversation")
+        logger.info(f"Processing conversation with {len(messages)} messages")
 
         # Detect hook source and meta-task information
         hook_source_info = detect_hook_source(raw_input, session_id)
@@ -985,16 +992,50 @@ async def process_conversation(
         debug_enabled = include_debug or any(debug_sessions.values())
 
         # Determine strategy (default to hybrid, can be configured)
-        strategy_name = (
-            getattr(request, "strategy", "hybrid")
-            if hasattr(request, "strategy")
-            else "hybrid"
-        )
+        if isinstance(request, dict):
+            strategy_name = request.get("strategy", "hybrid")
+        else:
+            strategy_name = getattr(request, "strategy", "hybrid")
+
+        logger.info(f"Using RAG strategy: {strategy_name}")
 
         debug_info = {}
         if debug_enabled:
             # Start enhanced debug capture
             debug_session_id = str(uuid.uuid4())
+            # Calculate message weights for debug display
+            from app.conversation_utils.embedding_utils import calculate_message_weights
+
+            # Use the global default_strategy_config defined in this file
+
+            message_weights = []
+            if messages:
+                try:
+                    message_weights = calculate_message_weights(
+                        messages, default_strategy_config
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to calculate message weights: {e}")
+                    message_weights = [1.0] * len(messages)
+
+            # Conversation statistics
+            conversation_stats = {
+                "total_messages": len(messages),
+                "user_messages": len([m for m in messages if m.get("role") == "user"]),
+                "assistant_messages": len(
+                    [m for m in messages if m.get("role") == "assistant"]
+                ),
+                "system_messages": len(
+                    [m for m in messages if m.get("role") == "system"]
+                ),
+                "conversation_turns": len(
+                    [m for m in messages if m.get("role") == "user"]
+                ),
+                "is_multi_turn": len([m for m in messages if m.get("role") == "user"])
+                > 1,
+                "message_weights": message_weights,
+            }
+
             debug_info = {
                 "session_id": debug_session_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1004,6 +1045,7 @@ async def process_conversation(
                     else str(raw_input)
                 ),
                 "extracted_messages": messages,
+                "conversation_stats": conversation_stats,
                 "strategy_name": strategy_name,
                 "hook_source_info": hook_source_info,
                 "source_label": (
@@ -1069,6 +1111,23 @@ async def process_conversation(
                     "pipeline_summary": f"{len(entities)} entities retrieved in {execution_time:.1f}ms via {strategy_result.strategy_used}",
                     "processing_info": {
                         "messages_extracted": len(messages),
+                        "conversation_turns": len(
+                            [m for m in messages if m.get("role") == "user"]
+                        ),
+                        "is_multi_turn": len(
+                            [m for m in messages if m.get("role") == "user"]
+                        )
+                        > 1,
+                        "embedding_strategy": strategy_name,
+                        "weights_applied": len(
+                            [
+                                w
+                                for w in debug_info.get("conversation_stats", {}).get(
+                                    "message_weights", []
+                                )
+                                if w > 0
+                            ]
+                        ),
                         "raw_input_length": len(str(raw_input)),
                         "formatted_content_length": (
                             len(formatted_content) if formatted_content else 0

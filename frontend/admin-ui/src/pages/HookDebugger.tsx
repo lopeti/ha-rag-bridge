@@ -12,6 +12,15 @@ interface HookResult {
   timestamp: string;
   raw_input: string;
   extracted_messages: Array<{role: string; content: string}>;
+  conversation_stats?: {
+    total_messages: number;
+    user_messages: number;
+    assistant_messages: number;
+    system_messages: number;
+    conversation_turns: number;
+    is_multi_turn: boolean;
+    message_weights: number[];
+  };
   strategy_name: string;
   hook_source_info: {
     source: string;
@@ -32,6 +41,10 @@ interface HookResult {
   pipeline_summary: string;
   processing_info: {
     messages_extracted: number;
+    conversation_turns?: number;
+    is_multi_turn?: boolean;
+    embedding_strategy?: string;
+    weights_applied?: number;
     raw_input_length: number;
     formatted_content_length: number;
   };
@@ -46,6 +59,13 @@ interface DebugStatus {
   listening_status: string;
   last_activity?: string;
 }
+
+// Helper function to calculate message weight based on backend logic
+const calculateWeight = (role: string, position: number): number => {
+  const baseWeight = role === 'user' ? 1.0 : role === 'assistant' ? 0.5 : 0.3;
+  const recencyBoost = 1.0 + (position * 0.3);
+  return baseWeight * recencyBoost;
+};
 
 export default function HookDebugger() {
   const [debugMode, setDebugMode] = useState(false);
@@ -252,11 +272,20 @@ export default function HookDebugger() {
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">
+                          <div className="font-medium truncate flex items-center gap-2">
+                            {/* Multi-turn conversation indicator */}
+                            {result.conversation_stats?.is_multi_turn && (
+                              <Badge variant="outline" className="text-xs">
+                                {result.conversation_stats.total_messages} msgs
+                              </Badge>
+                            )}
                             {result.hook_source_info.extracted_query}
                           </div>
                           <div className="text-sm text-muted-foreground mt-1">
                             {formatTimestamp(result.timestamp)} • {result.strategy_result.entity_count} entities • {formatDuration(result.strategy_result.execution_time_ms)}
+                            {result.conversation_stats?.is_multi_turn && (
+                              <> • {result.conversation_stats.conversation_turns} turns</>
+                            )}
                           </div>
                         </div>
                         <Badge variant="outline" className="ml-2">
@@ -283,8 +312,9 @@ export default function HookDebugger() {
               </div>
             ) : (
               <Tabs defaultValue="overview" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="conversation">Conversation</TabsTrigger>
                   <TabsTrigger value="entities">Entities</TabsTrigger>
                   <TabsTrigger value="context">Context</TabsTrigger>
                 </TabsList>
@@ -318,12 +348,100 @@ export default function HookDebugger() {
                   </div>
                   
                   <div>
+                    <h4 className="font-semibold">Conversation Info</h4>
+                    <div className="text-sm space-y-1">
+                      <div>Total Messages: {selectedResult.processing_info.messages_extracted}</div>
+                      {selectedResult.conversation_stats && (
+                        <>
+                          <div>User Messages: {selectedResult.conversation_stats.user_messages}</div>
+                          <div>Assistant Messages: {selectedResult.conversation_stats.assistant_messages}</div>
+                          <div>Conversation Turns: {selectedResult.conversation_stats.conversation_turns}</div>
+                          <div>
+                            <Badge variant={selectedResult.conversation_stats.is_multi_turn ? "default" : "secondary"} className="text-xs">
+                              {selectedResult.conversation_stats.is_multi_turn ? "Multi-turn" : "Single-turn"}
+                            </Badge>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div>
                     <h4 className="font-semibold">Processing Info</h4>
                     <div className="text-sm space-y-1">
-                      <div>Messages: {selectedResult.processing_info.messages_extracted}</div>
+                      <div>Strategy: <Badge variant="outline">{selectedResult.processing_info.embedding_strategy || selectedResult.strategy_name}</Badge></div>
+                      <div>Weights Applied: {selectedResult.processing_info.weights_applied || 'N/A'}</div>
                       <div>Input Length: {selectedResult.processing_info.raw_input_length} chars</div>
                       <div>Context Length: {selectedResult.processing_info.formatted_content_length} chars</div>
                     </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="conversation" className="space-y-2">
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      Full Conversation ({selectedResult.extracted_messages?.length || 0} messages)
+                    </h4>
+                    
+                    {selectedResult.extracted_messages && selectedResult.extracted_messages.length > 0 ? (
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {selectedResult.extracted_messages.map((msg, idx) => (
+                          <Card 
+                            key={idx} 
+                            className={`p-3 ${
+                              msg.role === 'user' ? 'ml-0 mr-12 bg-primary/5 border-primary/20' : 
+                              msg.role === 'assistant' ? 'ml-12 mr-0 bg-success/5 border-success/20' :
+                              'bg-muted/50 border-muted'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              {/* Role indicator */}
+                              <Badge variant={
+                                msg.role === 'user' ? 'default' : 
+                                msg.role === 'assistant' ? 'secondary' : 
+                                'outline'
+                              } className="shrink-0 text-xs">
+                                {msg.role.toUpperCase()}
+                              </Badge>
+                              
+                              {/* Message content */}
+                              <div className="flex-1">
+                                <div className="text-sm whitespace-pre-wrap">
+                                  {msg.content}
+                                </div>
+                                
+                                {/* Weight indicator for this message */}
+                                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span>Position: {idx + 1}/{selectedResult.extracted_messages.length}</span>
+                                  <span>•</span>
+                                  <span>
+                                    Weight: {selectedResult.conversation_stats?.message_weights?.[idx]?.toFixed(2) || 
+                                           calculateWeight(msg.role, idx).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No conversation messages available</p>
+                      </div>
+                    )}
+                    
+                    {/* Combined embedding info */}
+                    {selectedResult.extracted_messages && selectedResult.extracted_messages.length > 1 && (
+                      <Alert className="mt-4">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Embedding Strategy:</strong> {selectedResult.strategy_name === 'hybrid' ? 
+                            'Combined weighted embedding from all messages' : 
+                            'Single query embedding (legacy mode)'}
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 </TabsContent>
                 
