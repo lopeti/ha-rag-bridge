@@ -10,7 +10,8 @@ import {
   Moon,
   Sun,
   Wrench,
-  GitBranch
+  GitBranch,
+  Zap
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { LanguageSwitcher } from '../LanguageSwitcher';
@@ -27,6 +28,7 @@ export function Layout() {
     { name: t('entities'), href: '/entities', icon: Database },
     { name: t('clusters'), href: '/clusters', icon: Layers },
     { name: 'Pipeline Debugger', href: '/pipeline-debugger', icon: GitBranch },
+    { name: 'Hook Debugger', href: '/hook-debugger', icon: Zap },
     { name: t('maintenance'), href: '/maintenance', icon: Wrench },
     { name: t('monitoring'), href: '/monitoring', icon: Activity },
     { name: t('settings'), href: '/settings', icon: Settings },

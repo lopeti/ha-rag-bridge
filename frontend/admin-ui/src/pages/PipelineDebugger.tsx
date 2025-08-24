@@ -217,7 +217,10 @@ export const PipelineDebugger: React.FC = () => {
         <CardHeader>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <CardTitle className="text-2xl font-bold">Pipeline Debugger</CardTitle>
+              <CardTitle className="text-2xl font-bold">
+                Pipeline Debugger 
+                <Badge variant="destructive" className="ml-2 text-xs">OBSOLETE</Badge>
+              </CardTitle>
               <Badge variant={isLive ? "default" : "secondary"}>
                 {isLive ? 'Live' : 'Historical'}
               </Badge>
@@ -281,6 +284,13 @@ export const PipelineDebugger: React.FC = () => {
               </Button>
             </div>
           </div>
+          
+          <Alert className="mt-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              This Pipeline Debugger is <strong>OBSOLETE</strong>. Please use the new <strong>Hook Debugger</strong> page for monitoring LiteLLM hook calls and entity retrieval debugging.
+            </AlertDescription>
+          </Alert>
         </CardHeader>
       </Card>
 
