@@ -248,6 +248,27 @@ def _collect_static(
 
         # Include entity if it's exposed OR if include_all is True
         if actual_is_exposed or include_all:
+            # Collect static attributes from entity state
+            static_attributes = {}
+            state = hass.states.get(ent.entity_id)
+
+            if state and state.attributes:
+                # Static attributes that are useful for embedding and context
+                static_attr_names = [
+                    "friendly_name",  # User custom name ⭐ MOST IMPORTANT
+                    "icon",  # mdi:thermometer, mdi:lightbulb
+                    "device_class",  # temperature, humidity, power
+                    "unit_of_measurement",  # °C, %, W, kWh
+                    "entity_category",  # config, diagnostic, system
+                    "attribution",  # "Powered by XY"
+                    "supported_features",  # Supported functionality
+                    "device_name",  # Device name
+                ]
+
+                for attr_name in static_attr_names:
+                    if attr_name in state.attributes:
+                        static_attributes[attr_name] = state.attributes[attr_name]
+
             entities.append(
                 {
                     "entity_id": ent.entity_id,
@@ -256,8 +277,10 @@ def _collect_static(
                     "area_id": ent.area_id,
                     "domain": ent.domain,
                     "original_name": ent.original_name,
-                    "friendly_name": ent.name,  # Add friendly name from entity registry
+                    "registry_friendly_name": ent.name,  # Registry friendly name
+                    "friendly_name": ent.name,  # Keep for backward compatibility
                     "exposed": actual_is_exposed,  # Always show the actual HA exposed status
+                    "attributes": static_attributes,  # Static attributes from state
                 }
             )
             # Track devices that have at least one exposed entity

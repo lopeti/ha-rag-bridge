@@ -225,24 +225,46 @@ def fetch_states(entity_id: Optional[str] = None) -> dict:
                             area_name = area_map.get(area_id, "") if area_id else ""
 
                             # Create a structure similar to what the original API returns
+                            # Get custom friendly name from attributes (priority), fallback to registry/original
+                            entity_attributes = entity.get("attributes", {})
+                            custom_friendly_name = entity_attributes.get(
+                                "friendly_name", ""
+                            )
+                            registry_friendly_name = entity.get(
+                                "registry_friendly_name", ""
+                            ) or entity.get("friendly_name", "")
+                            effective_friendly_name = (
+                                custom_friendly_name
+                                or registry_friendly_name
+                                or entity.get("original_name", "")
+                            )
+
                             processed_entity = {
                                 "entity_id": entity["entity_id"],
                                 "state": entity.get(
                                     "state", ""
                                 ),  # Try to get state if available
+                                "registry_friendly_name": registry_friendly_name,  # Add registry name for reference
                                 "attributes": {
-                                    "friendly_name": entity.get("original_name", "")
-                                    or entity.get("friendly_name", ""),
+                                    "friendly_name": effective_friendly_name,  # Use prioritized name
                                     "device_id": entity.get("device_id"),
                                     "area_id": area_id,
                                     "area": area_name,  # Add area name from the areas list
                                     # Include additional entity metadata if available
-                                    "entity_category": entity.get("entity_category"),
-                                    "device_class": entity.get("device_class"),
-                                    "unit_of_measurement": entity.get(
+                                    "entity_category": entity_attributes.get(
+                                        "entity_category"
+                                    )
+                                    or entity.get("entity_category"),
+                                    "device_class": entity_attributes.get(
+                                        "device_class"
+                                    )
+                                    or entity.get("device_class"),
+                                    "unit_of_measurement": entity_attributes.get(
                                         "unit_of_measurement"
-                                    ),
-                                    "icon": entity.get("icon"),
+                                    )
+                                    or entity.get("unit_of_measurement"),
+                                    "icon": entity_attributes.get("icon")
+                                    or entity.get("icon"),
                                 },
                             }
                             processed_entities.append(processed_entity)
@@ -283,11 +305,34 @@ def build_text(
     attrs = entity.get("attributes", {})
     entity_id = entity.get("entity_id", "")
 
-    # Collect all available metadata
-    # Check both RAG API structure and states API structure for friendly_name
-    friendly_name = entity.get("friendly_name", "") or attrs.get("friendly_name", "")
+    # Collect all available metadata with priority for custom user names
+    # Priority: 1. Custom user friendly_name (from attributes)
+    #          2. Registry friendly_name (from entity root)
+    #          3. Generated friendly_name (if generator provided)
+    #          4. Original name fallback
 
-    # Generate friendly name if missing and generator provided
+    # Get custom user friendly_name from state attributes (highest priority)
+    custom_friendly_name = attrs.get("friendly_name", "")
+
+    # Get registry friendly_name from entity root or legacy location
+    registry_friendly_name = entity.get("registry_friendly_name", "") or entity.get(
+        "friendly_name", ""
+    )
+
+    # Use custom name if available, otherwise fall back to registry name
+    friendly_name = custom_friendly_name or registry_friendly_name
+
+    # Debug log to track which name source is being used
+    if custom_friendly_name:
+        logger.debug(
+            f"Using custom friendly name for {entity_id}: '{custom_friendly_name}'"
+        )
+    elif registry_friendly_name:
+        logger.debug(
+            f"Using registry friendly name for {entity_id}: '{registry_friendly_name}'"
+        )
+
+    # Generate friendly name if still missing and generator provided
     if not friendly_name and friendly_name_generator and entity_id:
         suggestion = friendly_name_generator.generate_suggestion(entity)
         if suggestion.confidence >= 0.7:  # Only use high-confidence suggestions
